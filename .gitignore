@@ -1,0 +1,13 @@
+# Release artifacts
+dist/
+
+# SDL2 shared libraries extracted at build time
+lib/tg5040/*.so
+lib/my355/*.so
+
+# Release zips
+*.pak.zip
+*.pakz
+
+# Native build binary
+cmd/itchio-pak/itchio-pak
