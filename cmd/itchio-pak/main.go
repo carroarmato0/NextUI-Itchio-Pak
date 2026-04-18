@@ -22,6 +22,5 @@ func main() {
 		os.Exit(0)
 	}
 
-	// SDL2 UI wired in Task 17
-	log.Fatal("SDL2 not yet wired up")
+	runSDL()
 }
