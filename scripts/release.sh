@@ -60,6 +60,7 @@ for PLATFORM in tg5040 tg5050 my355; do
     cd - >/dev/null
 
     # Also copy into .pakz structure
+    mkdir -p "dist/all/Tools/$PLATFORM"
     cp -r "$PAK_DIR" "dist/all/Tools/$PLATFORM/Itch.io.pak"
 done
 
