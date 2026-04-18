@@ -27,9 +27,13 @@ if [ -z "$TARGET" ]; then
     exit 1
 fi
 
-RUNTIME="${RUNTIME_OVERRIDE:-$(detect_runtime)}"
-if [ -z "$RUNTIME" ]; then
-    echo "ERROR: docker or podman required" >&2; exit 1
+# Only need a container runtime when launching from the host.
+RUNTIME=""
+if [ -z "${IN_CONTAINER:-}" ]; then
+    RUNTIME="${RUNTIME_OVERRIDE:-$(detect_runtime)}"
+    if [ -z "$RUNTIME" ]; then
+        echo "ERROR: docker or podman required" >&2; exit 1
+    fi
 fi
 
 IMAGE="itchio-pak-dev"
