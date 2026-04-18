@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -58,10 +60,7 @@ func TestParseDownloadPageFiltersROMs(t *testing.T) {
 		t.Fatal("expected at least one upload")
 	}
 	for _, u := range uploads {
-		ext := u.Filename
-		if len(ext) >= 4 {
-			ext = ext[len(ext)-4:]
-		}
+		ext := strings.ToLower(filepath.Ext(u.Filename))
 		if ext != ".gbc" && ext != ".gb" {
 			t.Errorf("unexpected non-ROM upload: %q", u.Filename)
 		}
