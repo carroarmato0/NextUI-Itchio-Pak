@@ -1,4 +1,4 @@
-.PHONY: test test-coverage build-native build-tg5040 build-tg5050 build-my355 build-all release deploy deploy-sd debug-logs debug-push debug-run clean
+.PHONY: test test-coverage build-native build-tg5040 build-tg5050 build-my355 build-all release deploy deploy-sd deploy-adb debug-logs debug-push debug-run clean
 
 test:
 	./scripts/test.sh
@@ -29,6 +29,9 @@ deploy:
 
 deploy-sd:
 	./scripts/deploy.sh $(SD)
+
+deploy-adb:
+	./scripts/deploy.sh
 
 debug-logs:
 	./scripts/debug.sh logs

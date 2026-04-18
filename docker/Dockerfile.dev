@@ -1,6 +1,9 @@
 FROM golang:1.22-bookworm
 ENV GOTOOLCHAIN=local
-RUN apt-get update && apt-get install -y \
+RUN dpkg --add-architecture arm64 && \
+    apt-get update && apt-get install -y \
     libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev \
+    libsdl2-dev:arm64 libsdl2-ttf-dev:arm64 \
+    gcc-aarch64-linux-gnu \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace

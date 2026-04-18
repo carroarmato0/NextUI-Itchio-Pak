@@ -2,8 +2,8 @@
 dist/
 
 # SDL2 shared libraries extracted at build time
-lib/tg5040/*.so
-lib/my355/*.so
+lib/tg5040/*.so*
+lib/my355/*.so*
 
 # Release zips
 *.pak.zip
