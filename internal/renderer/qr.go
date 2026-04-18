@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"unsafe"
 
 	"github.com/skip2/go-qrcode"
 	"github.com/veandco/go-sdl2/sdl"
@@ -32,9 +33,9 @@ func (r *Renderer) QRTexture(url string, size int) (*sdl.Texture, error) {
 	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
 
 	surface, err := sdl.CreateRGBSurfaceFrom(
-		rgba.Pix,
+		unsafe.Pointer(&rgba.Pix[0]),
 		int32(bounds.Dx()), int32(bounds.Dy()),
-		32, int32(bounds.Dx()*4),
+		32, bounds.Dx()*4,
 		0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
 	)
 	if err != nil {
