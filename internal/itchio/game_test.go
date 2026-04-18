@@ -1,0 +1,73 @@
+package itchio_test
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+)
+
+func serveFile(t *testing.T, path string) *httptest.Server {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+}
+
+func TestFetchGameDetailExtractsGameID(t *testing.T) {
+	srv := serveFile(t, "../../testdata/game_page_free.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.GameID == "" {
+		t.Error("GameID is empty — game id not found in page")
+	}
+}
+
+func TestFetchGameDetailPaidDoesNotCrash(t *testing.T) {
+	srv := serveFile(t, "../../testdata/game_page_paid.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	_, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail on paid page: %v", err)
+	}
+}
+
+func TestParseDownloadPageFiltersROMs(t *testing.T) {
+	srv := serveFile(t, "../../testdata/download_page.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	uploads, err := c.ParseDownloadPage(srv.URL)
+	if err != nil {
+		t.Fatalf("ParseDownloadPage: %v", err)
+	}
+	if len(uploads) == 0 {
+		t.Fatal("expected at least one upload")
+	}
+	for _, u := range uploads {
+		ext := u.Filename
+		if len(ext) >= 4 {
+			ext = ext[len(ext)-4:]
+		}
+		if ext != ".gbc" && ext != ".gb" {
+			t.Errorf("unexpected non-ROM upload: %q", u.Filename)
+		}
+	}
+	// Should have found both .gbc and .gb from our fixture
+	if len(uploads) != 2 {
+		t.Errorf("expected 2 ROM uploads, got %d", len(uploads))
+	}
+}
