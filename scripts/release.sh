@@ -56,7 +56,7 @@ for PLATFORM in tg5040 tg5050 my355; do
     esac
 
     cd dist/"$PLATFORM"
-    zip -r ../dist/"$PLATFORM"/Itch.io.pak.zip Itch.io.pak
+    zip -r ../Itch.io.pak.zip Itch.io.pak
     cd - >/dev/null
 
     # Also copy into .pakz structure
