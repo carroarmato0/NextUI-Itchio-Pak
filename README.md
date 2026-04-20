@@ -121,6 +121,16 @@ required.
       <sub>Download complete — saved path shown, ready to play</sub>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/content_filters.png" alt="Content filters" width="480"/><br/>
+      <sub>Content Moderation — per-category filter toggles in Settings</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/content_warning.png" alt="Content warning" width="480"/><br/>
+      <sub>Content Warning — shown instead of detail view when a filter triggers</sub>
+    </td>
+  </tr>
 </table>
 
 ---

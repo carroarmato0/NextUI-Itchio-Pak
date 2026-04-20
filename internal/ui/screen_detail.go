@@ -274,28 +274,37 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
-	cy := r.H / 2
+	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
 
-	r.DrawTextCentered("[!]", 0, cy-90, r.W, 240, 180, 60)
-	r.DrawTextCentered("Content Warning", 0, cy-54, r.W, 240, 180, 60)
+	const pad = 8
+	// Block: [!] + gap + "Content Warning" + gap + divider + gap + body1 + gap + body2 + gap + divider + gap + "B Go back"
+	blockH := fontH + pad + fontH + pad + 1 + pad + smallFH + pad + smallFH + pad + 1 + pad + fontH
+	y := (r.H - blockH) / 2
 
-	r.DrawRect(r.W/4, cy-28, r.W/2, 1, 60, 60, 60)
+	r.DrawTextCentered("[!]", 0, y, r.W, 240, 180, 60)
+	y += fontH + pad
 
-	_, lh := r.TextSize("Ag")
-	if lh < 20 {
-		lh = 20
-	}
-	r.DrawWrappedText(
-		"This game contains content matched by one of your active filters.",
-		r.W/8, cy-16, r.W*3/4, lh+2, 180, 180, 180,
-	)
-	r.DrawWrappedText(
-		"You can adjust your filters in Settings.",
-		r.W/8, cy-16+lh+6, r.W*3/4, lh+2, 180, 180, 180,
-	)
+	r.DrawTextCentered("Content Warning", 0, y, r.W, 240, 180, 60)
+	y += fontH + pad
 
-	r.DrawRect(r.W/4, cy+60, r.W/2, 1, 60, 60, 60)
-	r.DrawTextCentered("B  Go back", 0, cy+72, r.W, 180, 80, 80)
+	r.DrawRect(r.W/4, y, r.W/2, 1, 60, 60, 60)
+	y += 1 + pad
+
+	r.DrawSmallTextCentered("This game contains content matched by one of your active filters.", 0, y, r.W, 180, 180, 180)
+	y += smallFH + pad
+
+	r.DrawSmallTextCentered("You can adjust your filters in Settings.", 0, y, r.W, 180, 180, 180)
+	y += smallFH + pad
+
+	r.DrawRect(r.W/4, y, r.W/2, 1, 60, 60, 60)
+	y += 1 + pad
+
+	r.DrawTextCentered("B  Go back", 0, y, r.W, 180, 80, 80)
+
+	footerH := int32(40)
+	ftrY := r.DrawFooterBar(footerH)
+	r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
 }
 
 // drawQR renders the QR code centered within the given box.
