@@ -58,3 +58,51 @@ func TestLoadCorruptedFileReturnsDefaults(t *testing.T) {
 		t.Errorf("corrupted load should return defaults, got ROMSelection = %q", cfg.ROMSelection)
 	}
 }
+
+func TestDefaultsHaveParentalAdvisoryEnabled(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path/config.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Parental.MatureEnabled {
+		t.Error("expected MatureEnabled=true by default")
+	}
+	if !cfg.Parental.SensitiveEnabled {
+		t.Error("expected SensitiveEnabled=true by default")
+	}
+	if cfg.Parental.SensitiveDisabled != nil {
+		t.Errorf("expected SensitiveDisabled=nil by default, got %v", cfg.Parental.SensitiveDisabled)
+	}
+}
+
+func TestParentalAdvisoryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/config.json"
+
+	cfg := &settings.Config{
+		APIKey:       "",
+		ROMSelection: "auto",
+		Parental: settings.ParentalAdvisory{
+			MatureEnabled:     false,
+			SensitiveEnabled:  true,
+			SensitiveDisabled: []string{"lgbtq", "sexy"},
+		},
+	}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Parental.MatureEnabled != false {
+		t.Error("MatureEnabled not preserved")
+	}
+	if loaded.Parental.SensitiveEnabled != true {
+		t.Error("SensitiveEnabled not preserved")
+	}
+	if len(loaded.Parental.SensitiveDisabled) != 2 {
+		t.Errorf("SensitiveDisabled: expected 2 entries, got %v", loaded.Parental.SensitiveDisabled)
+	}
+}
