@@ -16,9 +16,33 @@ type Game struct {
 	CoverURL string
 	Price    float64
 	IsFree   bool
+	Tags     []string // extracted from [Tag] brackets in the RSS title
 }
 
-var coverRegex = regexp.MustCompile(`<img[^>]+src="([^"]+)"`)
+var (
+	coverRegex = regexp.MustCompile(`<img[^>]+src="([^"]+)"`)
+	tagRegex   = regexp.MustCompile(`\s*\[([^\]]+)\]`)
+)
+
+// parseTitle strips [Tag] brackets from the raw RSS title.
+func parseTitle(raw string) string {
+	return strings.TrimSpace(tagRegex.ReplaceAllString(raw, ""))
+}
+
+// parseTags extracts the contents of every [Tag] bracket in the raw RSS title.
+func parseTags(raw string) []string {
+	matches := tagRegex.FindAllStringSubmatch(raw, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	tags := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) > 1 && m[1] != "" {
+			tags = append(tags, m[1])
+		}
+	}
+	return tags
+}
 
 type rssItem struct {
 	Title       string `xml:"title"`
@@ -83,7 +107,8 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	for _, item := range feed.Items {
 		price := parsePrice(item.Price)
 		games = append(games, Game{
-			Title:    item.Title,
+			Title:    parseTitle(item.Title),
+			Tags:     parseTags(item.Title),
 			Author:   parseAuthor(item.Link),
 			URL:      item.Link,
 			CoverURL: parseCover(item.ImageURL, item.Description),
@@ -94,10 +119,37 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	return games, nil
 }
 
+const PerPage = 36 // itch.io XML feeds return 36 items per page
+
 func (c *Client) FetchGames(page int, query string) ([]Game, error) {
 	url := fmt.Sprintf("https://itch.io/games/made-with-gb-studio.xml?page=%d", page)
 	if query != "" {
 		url += "&q=" + query
 	}
 	return c.FetchGamesFromURL(url)
+}
+
+var resultCountRegex = regexp.MustCompile(`(?i)(\d[\d,]*)\s+result`)
+
+// FetchTotalGames scrapes the HTML browse page to find the total result count.
+func (c *Client) FetchTotalGames() (int, error) {
+	resp, err := c.http.Get("https://itch.io/games/made-with-gb-studio")
+	if err != nil {
+		return 0, fmt.Errorf("fetch browse page: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("read browse page: %w", err)
+	}
+	m := resultCountRegex.FindStringSubmatch(string(body))
+	if len(m) < 2 {
+		return 0, fmt.Errorf("result count not found on browse page")
+	}
+	countStr := strings.ReplaceAll(m[1], ",", "")
+	count, err := strconv.Atoi(countStr)
+	if err != nil {
+		return 0, fmt.Errorf("parse result count: %w", err)
+	}
+	return count, nil
 }
