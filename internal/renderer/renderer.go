@@ -11,10 +11,11 @@ import (
 )
 
 type Renderer struct {
-	Window   *sdl.Window
-	Renderer *sdl.Renderer
-	Font     *ttf.Font
-	W, H     int32
+	Window    *sdl.Window
+	Renderer  *sdl.Renderer
+	Font      *ttf.Font  // main font (~35px at 768)
+	SmallFont *ttf.Font  // hint/footer font (~24px at 768)
+	W, H      int32
 }
 
 func New(title string, w, h int) (*Renderer, error) {
@@ -37,24 +38,37 @@ func New(title string, w, h int) (*Renderer, error) {
 		return nil, fmt.Errorf("create renderer: %w", err)
 	}
 
-	// Scale font with screen height: h/32 gives ~24pt at 768, ~22pt at 720.
-	// Clamp to a minimum of 18 so it stays readable on very small displays.
-	fontSize := h / 32
-	if fontSize < 18 {
-		fontSize = 18
+	// Scale font with screen height: h/22 gives ~35pt at 768.
+	// Clamp to a minimum of 22 so it stays readable on very small displays.
+	fontSize := h / 22
+	if fontSize < 22 {
+		fontSize = 22
 	}
 	font, err := ttf.OpenFont("assets/font.ttf", fontSize)
 	if err != nil {
 		return nil, fmt.Errorf("open font: %w", err)
 	}
 
+	// Small font for footer hint text — keeps it readable without taking much space.
+	smallSize := h / 32
+	if smallSize < 18 {
+		smallSize = 18
+	}
+	smallFont, err := ttf.OpenFont("assets/font.ttf", smallSize)
+	if err != nil {
+		return nil, fmt.Errorf("open small font: %w", err)
+	}
+
 	return &Renderer{
-		Window: win, Renderer: ren, Font: font,
+		Window: win, Renderer: ren, Font: font, SmallFont: smallFont,
 		W: int32(w), H: int32(h),
 	}, nil
 }
 
 func (r *Renderer) Close() {
+	if r.SmallFont != nil {
+		r.SmallFont.Close()
+	}
 	if r.Font != nil {
 		r.Font.Close()
 	}
@@ -115,6 +129,12 @@ func (r *Renderer) DrawTextCentered(text string, x, y, w int32, red, green, blue
 	r.DrawText(text, x+(w-tw)/2, y, red, green, blue)
 }
 
+// DrawSmallTextCentered draws small hint text horizontally centered within [x, x+w].
+func (r *Renderer) DrawSmallTextCentered(text string, x, y, w int32, red, green, blue uint8) {
+	tw, _ := r.SmallTextSize(text)
+	r.DrawSmallText(text, x+(w-tw)/2, y, red, green, blue)
+}
+
 func (r *Renderer) DrawTextureAt(tex *sdl.Texture, x, y, w, h int32) {
 	r.Renderer.Copy(tex, nil, &sdl.Rect{X: x, Y: y, W: w, H: h})
 }
@@ -172,6 +192,50 @@ func splitWords(s string) []string {
 		}
 	}
 	return words
+}
+
+// DrawSmallText draws text using the small hint font.
+func (r *Renderer) DrawSmallText(text string, x, y int32, red, green, blue uint8) error {
+	surface, err := r.SmallFont.RenderUTF8Blended(text, sdl.Color{R: red, G: green, B: blue, A: 255})
+	if err != nil {
+		return err
+	}
+	defer surface.Free()
+	texture, err := r.Renderer.CreateTextureFromSurface(surface)
+	if err != nil {
+		return err
+	}
+	defer texture.Destroy()
+	_, _, tw, th, _ := texture.Query()
+	r.Renderer.Copy(texture, nil, &sdl.Rect{X: x, Y: y, W: tw, H: th})
+	return nil
+}
+
+// SmallTextSize returns the pixel width and height of text in the small font.
+func (r *Renderer) SmallTextSize(text string) (int32, int32) {
+	w, h, err := r.SmallFont.SizeUTF8(text)
+	if err != nil {
+		return 0, 0
+	}
+	return int32(w), int32(h)
+}
+
+// DrawHeaderBar draws the standard dark header bar, separator, and returns the
+// Y coordinate for vertically-centred single-line text.
+func (r *Renderer) DrawHeaderBar(h int32) int32 {
+	r.DrawRect(0, 0, r.W, h, 30, 30, 30)
+	r.DrawRect(0, h, r.W, 2, 50, 50, 50)
+	_, fh := r.TextSize("Ag")
+	return (h - fh) / 2
+}
+
+// DrawFooterBar draws the standard dark footer bar and returns the Y coordinate
+// for vertically-centred small hint text.
+func (r *Renderer) DrawFooterBar(h int32) int32 {
+	r.DrawRect(0, r.H-h, r.W, 2, 50, 50, 50)
+	r.DrawRect(0, r.H-h+2, r.W, h-2, 30, 30, 30)
+	_, fh := r.SmallTextSize("Ag")
+	return r.H - h + 2 + (h-2-fh)/2
 }
 
 // DrawWrappedText renders word-wrapped text starting at (x, y) within maxWidth,

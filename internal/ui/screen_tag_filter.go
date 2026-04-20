@@ -3,14 +3,15 @@
 package ui
 
 import (
+	"time"
+
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-const tagPageJump = 5  // rows to skip with L1/R1
-const tagAreaTop = 120 // y where the scrollable tag list begins
+const tagPageJump = 5 // rows to skip with L1/R1
 
 // TagFilterScreen is a generic per-tag toggle screen used for content filter
 // categories that support individual tag opt-out.
@@ -28,10 +29,16 @@ type TagFilterScreen struct {
 	setEnabled  func(bool)
 	getDisabled func() []string
 	setDisabled func([]string)
-	cursor   int
-	scrollY  int32
-	tagAreaH int32 // set during Draw; used for scroll clamping in HandleEvent
-	prev     Screen
+	cursor     int
+	scrollY    int32
+	tagAreaTop int32 // set during Draw; used in HandleEvent
+	tagAreaH   int32 // set during Draw; used for scroll clamping in HandleEvent
+	rowH       int32 // set during Draw; used in ensureCursorVisible
+	prev       Screen
+
+	heldDir    int
+	heldSince  time.Time
+	lastRepeat time.Time
 }
 
 // NewAdultContentFilterScreen returns a TagFilterScreen for Adult Content.
@@ -102,10 +109,10 @@ func (s *TagFilterScreen) anyTagEnabled() bool {
 }
 
 func (s *TagFilterScreen) clampScroll() {
-	if s.tagAreaH == 0 {
+	if s.tagAreaH == 0 || s.rowH == 0 {
 		return
 	}
-	maxScroll := int32(len(s.tags))*40 - s.tagAreaH
+	maxScroll := int32(len(s.tags))*s.rowH - s.tagAreaH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -120,12 +127,12 @@ func (s *TagFilterScreen) clampScroll() {
 // ensureCursorVisible scrolls so that the currently selected tag row is visible.
 // The master toggle (cursor==0) lives in the fixed header and is always visible.
 func (s *TagFilterScreen) ensureCursorVisible() {
-	if s.tagAreaH == 0 || s.cursor == 0 {
+	if s.tagAreaH == 0 || s.rowH == 0 || s.cursor == 0 {
 		return
 	}
 	tagIdx := s.cursor - 1
-	rowTop := int32(tagIdx) * 40
-	rowBottom := rowTop + 40
+	rowTop := int32(tagIdx) * s.rowH
+	rowBottom := rowTop + s.rowH
 	if rowTop < s.scrollY {
 		s.scrollY = rowTop
 	}
@@ -135,20 +142,72 @@ func (s *TagFilterScreen) ensureCursorVisible() {
 	s.clampScroll()
 }
 
+func (s *TagFilterScreen) processAutoRepeat() {
+	if s.heldDir == 0 {
+		return
+	}
+	now := time.Now()
+	if now.Sub(s.heldSince) < repeatDelay {
+		return
+	}
+	if now.Sub(s.lastRepeat) < repeatInterval {
+		return
+	}
+	if s.heldDir > 0 && s.cursor < s.rowCount()-1 {
+		s.cursor++
+		s.ensureCursorVisible()
+	} else if s.heldDir < 0 && s.cursor > 0 {
+		s.cursor--
+		s.ensureCursorVisible()
+	}
+	s.lastRepeat = now
+}
+
+func (s *TagFilterScreen) startHold(dir int) {
+	if s.heldDir == dir {
+		return
+	}
+	s.heldDir = dir
+	s.heldSince = time.Now()
+	s.lastRepeat = s.heldSince
+	if dir > 0 && s.cursor < s.rowCount()-1 {
+		s.cursor++
+		s.ensureCursorVisible()
+	} else if dir < 0 && s.cursor > 0 {
+		s.cursor--
+		s.ensureCursorVisible()
+	}
+}
+
+func (s *TagFilterScreen) stopHold(dir int) {
+	if s.heldDir == dir {
+		s.heldDir = 0
+	}
+}
+
 func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
+	s.processAutoRepeat()
 	r.Clear(colorBG, colorBG, colorBG)
 
-	s.tagAreaH = r.H - int32(tagAreaTop) - 28
-	s.clampScroll()
+	headerH := int32(72)
+	footerH := int32(40)
 
-	// ── Fixed header ──────────────────────────────────────────────────────────
-	r.DrawText(s.title, 20, 20, colorText, colorText, colorText)
-	r.DrawText("Note: coverage depends on creators' tagging.", 20, 44, 110, 110, 110)
+	// ── Header bar ────────────────────────────────────────────────────────────
+	textY := r.DrawHeaderBar(headerH)
+	r.DrawText(s.title, 20, textY, colorText, colorText, colorText)
 
-	// Master toggle (always visible — not part of scrollable area)
-	masterY := int32(80)
+	// Warning note (small font) just below header
+	_, smallFH := r.SmallTextSize("Ag")
+	noteY := headerH + 8
+	r.DrawSmallText("Note: coverage depends on creators' tagging.", 20, noteY, 110, 110, 110)
+
+	// Master toggle row
+	_, fontH := r.TextSize("Ag")
+	rowH := fontH + 14
+	s.rowH = rowH
+	masterY := noteY + smallFH + 10
 	if s.cursor == 0 {
-		r.DrawRect(0, masterY-4, r.W, 36, colorHighlight, colorHighlight, colorHighlight+20)
+		r.DrawRect(0, masterY-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 	}
 	allLabel := "All: Allowed"
 	if s.getEnabled() && s.anyTagEnabled() {
@@ -157,11 +216,16 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	r.DrawText(allLabel, 20, masterY, colorText, colorText, colorText)
 
 	// ── Scrollable tag list ───────────────────────────────────────────────────
-	r.SetClipRect(0, int32(tagAreaTop), r.W, s.tagAreaH)
+	tagAreaTop := masterY + rowH + 6
+	s.tagAreaTop = tagAreaTop
+	s.tagAreaH = r.H - tagAreaTop - footerH
+	s.clampScroll()
+
+	r.SetClipRect(0, tagAreaTop, r.W, s.tagAreaH)
 	for i, tag := range s.tags {
-		rowY := int32(tagAreaTop) + int32(i)*40 - s.scrollY
+		rowY := tagAreaTop + int32(i)*rowH - s.scrollY
 		if s.cursor == i+1 {
-			r.DrawRect(0, rowY-4, r.W, 36, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawRect(0, rowY-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 		state := "Allowed"
 		if s.getEnabled() && s.isTagEnabled(tag) {
@@ -172,27 +236,34 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	r.ClearClipRect()
 
 	// ── Footer ────────────────────────────────────────────────────────────────
-	r.DrawText("L/R skip · B toggle · A back", 10, r.H-24, 140, 140, 140)
+	ftrY := r.DrawFooterBar(footerH)
+	r.DrawSmallText("L/R skip · B toggle · A back", 10, ftrY, 140, 140, 140)
 	r.Present()
 }
 
 func (s *TagFilterScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
+		switch ev.Keysym.Sym {
+		case sdl.K_DOWN:
+			if ev.Type == sdl.KEYDOWN {
+				s.startHold(1)
+			} else {
+				s.stopHold(1)
+			}
+			return s
+		case sdl.K_UP:
+			if ev.Type == sdl.KEYDOWN {
+				s.startHold(-1)
+			} else {
+				s.stopHold(-1)
+			}
+			return s
+		}
 		if ev.Type != sdl.KEYDOWN {
 			return s
 		}
 		switch ev.Keysym.Sym {
-		case sdl.K_DOWN:
-			if s.cursor < s.rowCount()-1 {
-				s.cursor++
-				s.ensureCursorVisible()
-			}
-		case sdl.K_UP:
-			if s.cursor > 0 {
-				s.cursor--
-				s.ensureCursorVisible()
-			}
 		case sdl.K_RIGHT:
 			s.cursor += tagPageJump
 			if s.cursor >= s.rowCount() {
@@ -211,20 +282,26 @@ func (s *TagFilterScreen) HandleEvent(e sdl.Event) Screen {
 			return s.prev
 		}
 	case *sdl.ControllerButtonEvent:
+		switch ev.Button {
+		case sdl.CONTROLLER_BUTTON_DPAD_DOWN:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startHold(1)
+			} else {
+				s.stopHold(1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_DPAD_UP:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startHold(-1)
+			} else {
+				s.stopHold(-1)
+			}
+			return s
+		}
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_DPAD_DOWN:
-			if s.cursor < s.rowCount()-1 {
-				s.cursor++
-				s.ensureCursorVisible()
-			}
-		case sdl.CONTROLLER_BUTTON_DPAD_UP:
-			if s.cursor > 0 {
-				s.cursor--
-				s.ensureCursorVisible()
-			}
 		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
 			s.cursor -= tagPageJump
 			if s.cursor < 0 {

@@ -3,29 +3,31 @@
 package ui
 
 import (
-	"os"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-type settingsItem int
+type contentModItem int
 
 const (
-	sItemAPIKey settingsItem = iota
-	sItemROMMode
-	sItemClearCache
-	sItemContentModeration
-	sItemAbout
-	sItemCount
+	cmItemAdultContent contentModItem = iota
+	cmItemQueerContent
+	cmItemHeavyThemes
+	cmItemSubstanceUse
+	cmItemCount
 )
 
-type SettingsScreen struct {
+// ContentModerationScreen lists the four content filter categories.
+// Per-tag categories (Adult Content, Queer Content, Heavy Themes) open a
+// TagFilterScreen sub-screen. Substance Use is a single toggle.
+type ContentModerationScreen struct {
 	cfg     *settings.Config
 	cfgPath string
-	cursor  settingsItem
+	cursor  contentModItem
 	prev    Screen
 
 	heldDir    int
@@ -33,11 +35,11 @@ type SettingsScreen struct {
 	lastRepeat time.Time
 }
 
-func NewSettingsScreen(cfg *settings.Config, cfgPath string, prev Screen) *SettingsScreen {
-	return &SettingsScreen{cfg: cfg, cfgPath: cfgPath, prev: prev}
+func NewContentModerationScreen(cfg *settings.Config, cfgPath string, prev Screen) *ContentModerationScreen {
+	return &ContentModerationScreen{cfg: cfg, cfgPath: cfgPath, prev: prev}
 }
 
-func (s *SettingsScreen) processAutoRepeat() {
+func (s *ContentModerationScreen) processAutoRepeat() {
 	if s.heldDir == 0 {
 		return
 	}
@@ -48,7 +50,7 @@ func (s *SettingsScreen) processAutoRepeat() {
 	if now.Sub(s.lastRepeat) < repeatInterval {
 		return
 	}
-	if s.heldDir > 0 && int(s.cursor) < int(sItemCount)-1 {
+	if s.heldDir > 0 && int(s.cursor) < int(cmItemCount)-1 {
 		s.cursor++
 	} else if s.heldDir < 0 && s.cursor > 0 {
 		s.cursor--
@@ -56,28 +58,49 @@ func (s *SettingsScreen) processAutoRepeat() {
 	s.lastRepeat = now
 }
 
-func (s *SettingsScreen) Draw(r *renderer.Renderer) {
+func (s *ContentModerationScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
 	r.Clear(colorBG, colorBG, colorBG)
 
 	headerH := int32(72)
 	footerH := int32(40)
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText("Settings", 20, textY, colorText, colorText, colorText)
+	r.DrawText("Content Moderation", 20, textY, colorText, colorText, colorText)
+
+	f := s.cfg.Filter
+
+	adultLabel := "Adult Content: Allowed >"
+	if f.AdultContent.HasActiveTag(itchio.AdultContentTags) {
+		adultLabel = "Adult Content: Filtered >"
+	}
+
+	queerLabel := "Queer Content: Allowed >"
+	if f.QueerContent.HasActiveTag(itchio.QueerContentTags) {
+		queerLabel = "Queer Content: Filtered >"
+	}
+
+	heavyLabel := "Heavy Themes: Allowed >"
+	if f.HeavyThemes.HasActiveTag(itchio.HeavyThemesTags) {
+		heavyLabel = "Heavy Themes: Filtered >"
+	}
+
+	substanceLabel := "Substance Use: Allowed"
+	if f.SubstanceUse.Enabled {
+		substanceLabel = "Substance Use: Blocked"
+	}
+
+	items := []string{
+		adultLabel,
+		queerLabel,
+		heavyLabel,
+		substanceLabel,
+	}
 
 	_, fontH := r.TextSize("Ag")
 	rowH := fontH + 14
-	items := []string{
-		"API Key: " + maskKey(s.cfg.APIKey),
-		"ROM Selection: " + s.cfg.ROMSelection,
-		"Clear Image Cache",
-		"Content Moderation >",
-		"About",
-	}
-
 	for i, label := range items {
 		y := headerH + 10 + int32(i)*rowH
-		if settingsItem(i) == s.cursor {
+		if contentModItem(i) == s.cursor {
 			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 		r.DrawText(label, 20, y, colorText, colorText, colorText)
@@ -88,28 +111,27 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
-func (s *SettingsScreen) startHold(dir int) {
+func (s *ContentModerationScreen) startHold(dir int) {
 	if s.heldDir == dir {
 		return
 	}
 	s.heldDir = dir
 	s.heldSince = time.Now()
 	s.lastRepeat = s.heldSince
-	// Move immediately on first press
-	if dir > 0 && int(s.cursor) < int(sItemCount)-1 {
+	if dir > 0 && int(s.cursor) < int(cmItemCount)-1 {
 		s.cursor++
 	} else if dir < 0 && s.cursor > 0 {
 		s.cursor--
 	}
 }
 
-func (s *SettingsScreen) stopHold(dir int) {
+func (s *ContentModerationScreen) stopHold(dir int) {
 	if s.heldDir == dir {
 		s.heldDir = 0
 	}
 }
 
-func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
+func (s *ContentModerationScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
@@ -135,8 +157,6 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_RETURN:
 			return s.activate()
 		case sdl.K_ESCAPE:
-			return s.prev
-		case sdl.K_s:
 			return s.prev
 		}
 	case *sdl.ControllerButtonEvent:
@@ -164,8 +184,6 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 			return s.activate()
 		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
-		case sdl.CONTROLLER_BUTTON_START:
-			return s.prev
 		}
 	case *sdl.QuitEvent:
 		return nil
@@ -173,29 +191,17 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
-func (s *SettingsScreen) activate() Screen {
+func (s *ContentModerationScreen) activate() Screen {
 	switch s.cursor {
-	case sItemROMMode:
-		if s.cfg.ROMSelection == "auto" {
-			s.cfg.ROMSelection = "ask"
-		} else {
-			s.cfg.ROMSelection = "auto"
-		}
+	case cmItemAdultContent:
+		return NewAdultContentFilterScreen(s.cfg, s.cfgPath, s)
+	case cmItemQueerContent:
+		return NewQueerContentFilterScreen(s.cfg, s.cfgPath, s)
+	case cmItemHeavyThemes:
+		return NewHeavyThemesFilterScreen(s.cfg, s.cfgPath, s)
+	case cmItemSubstanceUse:
+		s.cfg.Filter.SubstanceUse.Enabled = !s.cfg.Filter.SubstanceUse.Enabled
 		s.cfg.Save(s.cfgPath)
-	case sItemClearCache:
-		os.RemoveAll("/tmp/itchio-pak/cache/")
-	case sItemContentModeration:
-		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
 	}
 	return s
-}
-
-func maskKey(key string) string {
-	if key == "" {
-		return "(not set)"
-	}
-	if len(key) <= 4 {
-		return "****"
-	}
-	return key[:4] + "****"
 }

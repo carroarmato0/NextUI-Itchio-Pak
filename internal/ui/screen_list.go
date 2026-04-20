@@ -5,6 +5,7 @@ package ui
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -42,6 +43,10 @@ type ListScreen struct {
 	heldDir    int       // -1 = up, +1 = down, 0 = none
 	heldSince  time.Time // when the button was first pressed
 	lastRepeat time.Time // when we last advanced the cursor
+
+	// Horizontal title scroll for selected row
+	titleScrollX   int32     // current pixel offset (increases over time)
+	titleScrollAt  time.Time // when the cursor last moved (scroll starts after a delay)
 }
 
 func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache) *ListScreen {
@@ -73,6 +78,8 @@ func (s *ListScreen) loadPage(page int, query string) {
 	s.games = games
 	s.err = err
 	s.cursor = 0
+	s.titleScrollX = 0
+	s.titleScrollAt = time.Now()
 	s.loading = false
 }
 
@@ -93,10 +100,17 @@ func (s *ListScreen) processAutoRepeat() {
 }
 
 func (s *ListScreen) moveCursor(dir int) {
+	moved := false
 	if dir > 0 && s.cursor < len(s.games)-1 {
 		s.cursor++
+		moved = true
 	} else if dir < 0 && s.cursor > 0 {
 		s.cursor--
+		moved = true
+	}
+	if moved {
+		s.titleScrollX = 0
+		s.titleScrollAt = time.Now()
 	}
 }
 
@@ -105,9 +119,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
 	// Header
-	headerH := int32(56)
+	headerH := int32(72)
 	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawText("Itch.io — GB Studio Games", 12, 14, colorText, colorText, colorText)
+	_, fontH := r.TextSize("Ag")
+	r.DrawText("Itch.io — GB Studio Games", 12, (headerH-fontH)/2, colorText, colorText, colorText)
 	// Thin separator line below header
 	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
 
@@ -128,13 +143,23 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	rightX := leftW + 24
 	rightW := r.W - rightX - 10
 
-	rowH := int32(32)
-	footerH := int32(28)
+	rowH := fontH + 12 // measured font height + padding
+	footerH := int32(40)
 	visibleRows := (r.H - contentTop - footerH) / rowH
 
 	startIdx := 0
 	if s.cursor >= int(visibleRows) {
 		startIdx = s.cursor - int(visibleRows) + 1
+	}
+
+	// Advance horizontal scroll for the selected title (1s pause, then 50px/s).
+	const scrollDelay = time.Second
+	const scrollSpeed = int32(50) // pixels per second
+	if !s.titleScrollAt.IsZero() {
+		elapsed := time.Since(s.titleScrollAt)
+		if elapsed > scrollDelay {
+			s.titleScrollX = int32((elapsed - scrollDelay).Seconds() * float64(scrollSpeed))
+		}
 	}
 
 	for i, g := range s.games {
@@ -145,20 +170,57 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		if int32(rowIdx) >= visibleRows {
 			break
 		}
-		y := contentTop + int32(rowIdx)*rowH
+		y := contentTop + int32(rowIdx)*rowH + (rowH-fontH)/2 // vertically centre text in row
+		rowTop := contentTop + int32(rowIdx)*rowH
 		if i == s.cursor {
-			r.DrawRect(0, y-2, leftW, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawRect(0, rowTop, leftW, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
-		label := g.Title
-		if len(label) > 40 {
-			label = label[:37] + "..."
-		}
-		r.DrawText(label, 10, y, colorText, colorText, colorText)
+
+		// Price badge — measure width to anchor it at the right edge.
+		// Draw it last so it always renders on top of any scrolling title.
+		var priceLabel string
+		var priceR, priceG, priceB uint8
 		if g.IsFree {
-			r.DrawText("free", leftW-60, y, 80, 200, 80)
+			priceLabel = "Free"
+			priceR, priceG, priceB = 80, 200, 80
 		} else {
-			r.DrawText(fmt.Sprintf("$%.2f", g.Price), leftW-70, y, 220, 180, 60)
+			priceLabel = fmt.Sprintf("$%.2f", g.Price)
+			priceR, priceG, priceB = 220, 180, 60
 		}
+		priceW, _ := r.TextSize(priceLabel)
+		priceX := leftW - priceW - 8
+
+		// Title — clip strictly to the area left of the price badge
+		titleAreaW := priceX - 14 // available width before the price badge
+		if i == s.cursor {
+			titleW, _ := r.TextSize(g.Title)
+			if titleW <= titleAreaW {
+				// Fits — draw normally and reset any scroll
+				s.titleScrollX = 0
+				r.DrawText(g.Title, 10, y, colorText, colorText, colorText)
+			} else {
+				// Clamp scroll so the end of the title lands flush at the right edge
+				maxScroll := titleW - titleAreaW
+				scrollX := s.titleScrollX
+				if scrollX > maxScroll {
+					scrollX = maxScroll
+				}
+				// Clip to the title area only — price badge stays outside this rect
+				r.SetClipRect(10, rowTop, titleAreaW, rowH)
+				r.DrawText(g.Title, 10-scrollX, y, colorText, colorText, colorText)
+				r.ClearClipRect()
+				// Reset cycle: once we've held at the end for 1s, restart
+				if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
+					s.titleScrollX = 0
+					s.titleScrollAt = time.Now()
+				}
+			}
+		} else {
+			r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
+		}
+
+		// Draw price badge after title so it always appears on top
+		r.DrawText(priceLabel, priceX, y, priceR, priceG, priceB)
 	}
 
 	// Right panel: cover art (or placeholder) + metadata
@@ -169,7 +231,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		boxH := rightW * 3 / 4 // 4:3 aspect ratio box
 
 		// Draw the box background for all states
-		r.DrawRect(rightX, metaY, boxW, boxH, 30, 30, 30)
+		r.DrawRect(rightX, metaY, boxW, boxH, colorBG, colorBG, colorBG)
 
 		if g.CoverURL != "" {
 			tex := s.cache.Get(r, g.CoverURL)
@@ -201,13 +263,30 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 		metaY += boxH + 12
 
+		lineGap := fontH + 5
+
 		if g.Author != "" {
 			r.DrawText("by "+g.Author, rightX, metaY, 160, 160, 160)
-			metaY += 26
+			metaY += lineGap
 		}
+		// Price — same colours as the list column
+		if g.IsFree {
+			r.DrawText("Free", rightX, metaY, 80, 200, 80)
+		} else {
+			r.DrawText(fmt.Sprintf("$%.2f", g.Price), rightX, metaY, 220, 180, 60)
+		}
+		metaY += lineGap
+		// Tags — skip duplicates of the price already shown:
+		// "Free" bracket tags and any bracket price tags like "$12.00"
 		for _, tag := range g.Tags {
+			if strings.EqualFold(tag, "free") {
+				continue
+			}
+			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
+				continue
+			}
 			r.DrawText(tag, rightX, metaY, 120, 180, 220)
-			metaY += 22
+			metaY += lineGap
 		}
 	}
 
@@ -225,7 +304,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		countInfo = fmt.Sprintf("%d games", len(s.games))
 	}
 	footer := fmt.Sprintf("%s · %s  |  A:select  L/R:page  B:exit  Start:settings", pageInfo, countInfo)
-	r.DrawText(footer, 10, r.H-24, 140, 140, 140)
+	ftrY := r.DrawFooterBar(footerH)
+	r.DrawSmallText(footer, 10, ftrY, 140, 140, 140)
 	r.Present()
 }
 
@@ -331,4 +411,24 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		return nil
 	}
 	return s
+}
+
+// truncateToWidth returns text truncated with "…" so it fits within maxW pixels.
+// Uses rune-based trimming and accounts for the ellipsis width itself.
+func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
+	tw, _ := r.TextSize(text)
+	if tw <= maxW {
+		return text
+	}
+	ellipsisW, _ := r.TextSize("…")
+	target := maxW - ellipsisW
+	runes := []rune(text)
+	for len(runes) > 0 {
+		tw, _ = r.TextSize(string(runes))
+		if tw <= target {
+			break
+		}
+		runes = runes[:len(runes)-1]
+	}
+	return strings.TrimRight(string(runes), " ") + "…"
 }

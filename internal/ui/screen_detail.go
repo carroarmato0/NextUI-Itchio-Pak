@@ -117,50 +117,63 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
 	// ── Header ──────────────────────────────────────────────
-	headerH := int32(56)
+	// Two-line header: main title (large font) + "by author" (small font).
+	_, mainFH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	headerH := mainFH + smallFH + 16 // 8px top + 4px gap + 4px bottom
 	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-
-	title := s.game.Title
-	if len(title) > 50 {
-		title = title[:47] + "..."
-	}
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawText("by "+s.game.Author, 12, 32, 140, 140, 140)
 	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
 
+	title := truncateToWidth(r, s.game.Title, r.W-24)
+	r.DrawText(title, 12, 8, colorText, colorText, colorText)
+	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, 140, 140, 140)
+
 	contentTop := headerH + 6
-	footerH := int32(28)
+	footerH := int32(40)
 	contentH := r.H - contentTop - footerH
 	s.viewportH = contentH
 	margin := int32(20)
 	usableW := r.W - margin*2
 
 	// ── Loading state ───────────────────────────────────────
+	// Use the same column geometry as the loaded layout so the image
+	// doesn't jump in size once the QR code and detail data arrive.
+	qrColW := r.W / 4
+	imgAreaW := r.W - qrColW - margin - 10
+	imgBoxW := imgAreaW - margin
+	imgBoxH := contentH * 2 / 3
+
 	if s.loading {
-		r.DrawText("Loading game details...", margin, contentTop+contentH/2-10, colorText, colorText, colorText)
+		r.DrawRect(margin, contentTop, imgBoxW, imgBoxH, colorBG, colorBG, colorBG)
 		if s.game.CoverURL != "" {
 			tex := s.cache.Get(r, s.game.CoverURL)
 			if tex != nil {
 				_, _, tw, th, _ := tex.Query()
-				maxH := contentH - 40
-				scaleW := float32(usableW) / float32(tw)
-				scaleH := float32(maxH) / float32(th)
+				scaleW := float32(imgBoxW) / float32(tw)
+				scaleH := float32(imgBoxH) / float32(th)
 				scale := scaleW
 				if scaleH < scaleW {
 					scale = scaleH
 				}
 				dw := int32(float32(tw) * scale)
 				dh := int32(float32(th) * scale)
-				r.DrawTextureAt(tex, margin, contentTop+10, dw, dh)
+				imgX := margin + (imgBoxW-dw)/2
+				imgY := contentTop + (imgBoxH-dh)/2
+				r.DrawTextureAt(tex, imgX, imgY, dw, dh)
 			}
 		}
-		r.DrawText("B:back  |  Start:settings", 10, r.H-24, 140, 140, 140)
+		// QR placeholder so the right column is visible while loading
+		r.DrawRect(margin+imgBoxW+10, contentTop, qrColW, imgBoxH, colorBG, colorBG, colorBG)
+		r.DrawText("Loading...", margin, contentTop+imgBoxH+16, colorText, colorText, colorText)
+		ftrY := r.DrawFooterBar(footerH)
+		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
 		r.Present()
 		return
 	}
 	if s.err != nil {
 		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, 200, 50, 50)
-		r.DrawText("B:back  |  Start:settings", 10, r.H-24, 140, 140, 140)
+		ftrY := r.DrawFooterBar(footerH)
+		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
 		r.Present()
 		return
 	}
@@ -170,20 +183,17 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	// Virtual Y tracks layout position; actual drawing offset by scrollY
 	y := contentTop - s.scrollY
+	_, fontH := r.TextSize("Ag")
 
 	// ── Top row: screenshot (left) + QR code (right) ────────
-	qrColW := r.W / 4
-	imgAreaW := r.W - qrColW - margin - 10 // 10px gap between image and QR
+	// qrColW, imgAreaW, imgBoxW, imgBoxH already declared above (shared with loading state)
 
 	if s.detail != nil && len(s.detail.ScreenshotURLs) > 0 {
 		ssURL := s.detail.ScreenshotURLs[s.screenshotIdx]
 		tex := s.cache.Get(r, ssURL)
 
-		imgBoxH := contentH * 2 / 3
-		imgBoxW := imgAreaW - margin
-
 		// Background box for screenshot
-		r.DrawRect(margin, y, imgBoxW, imgBoxH, 30, 30, 30)
+		r.DrawRect(margin, y, imgBoxW, imgBoxH, colorBG, colorBG, colorBG)
 
 		if tex != nil {
 			_, _, tw, th, _ := tex.Query()
@@ -211,7 +221,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += imgBoxH + 6
 		r.DrawText(fmt.Sprintf("Image %d/%d  (L/R)", s.screenshotIdx+1, len(s.detail.ScreenshotURLs)),
 			margin, y, 140, 140, 140)
-		y += 26
+		y += fontH + 6
 	} else {
 		// No screenshots — just QR code
 		qrBoxH := contentH / 3
@@ -227,16 +237,12 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	} else {
 		r.DrawText(fmt.Sprintf("[ A: Download ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
 	}
-	y += 30
+	y += fontH + 8
 
 	// ── Tags ────────────────────────────────────────────────
 	if s.detail != nil && len(s.detail.PageTags) > 0 {
 		tagLine := "Tags: " + strings.Join(s.detail.PageTags, ", ")
-		_, lineH := r.TextSize("Ag")
-		if lineH < 20 {
-			lineH = 20
-		}
-		tagsH := r.DrawWrappedText(tagLine, margin, y, usableW, lineH+2, 120, 180, 220)
+		tagsH := r.DrawWrappedText(tagLine, margin, y, usableW, fontH+4, 120, 180, 220)
 		y += tagsH + 8
 	}
 
@@ -245,12 +251,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += 10
 		r.DrawRect(margin, y, usableW, 1, 50, 50, 50) // separator
 		y += 10
-
-		_, lineH := r.TextSize("Ag")
-		if lineH < 20 {
-			lineH = 20
-		}
-		descH := r.DrawWrappedText(s.detail.Description, margin, y, usableW, lineH+4, 180, 180, 180)
+		descH := r.DrawWrappedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
 		y += descH
 	}
 
@@ -264,7 +265,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	if s.contentHeight > contentH {
 		scrollHint = "  |  Up/Down:scroll"
 	}
-	r.DrawText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, r.H-24, 140, 140, 140)
+	ftrY := r.DrawFooterBar(footerH)
+	r.DrawSmallText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, ftrY, 140, 140, 140)
 	r.Present()
 }
 
@@ -312,12 +314,13 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 
 	tex, err := r.QRTexture(s.game.URL, qrSize)
 	if err == nil && tex != nil {
+		_, smallFH := r.SmallTextSize("Ag")
 		qrX := x + (w-qrS)/2
-		qrY := y + (h-qrS)/2 - 16
+		qrY := y + (h-qrS)/2 - smallFH - 4
 		r.DrawTextureAt(tex, qrX, qrY, qrS, qrS)
 		tex.Destroy()
-		r.DrawTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
-		r.DrawTextCentered("in browser", x, qrY+qrS+22, w, 120, 120, 120)
+		r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
+		r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, 120, 120, 120)
 	}
 }
 
