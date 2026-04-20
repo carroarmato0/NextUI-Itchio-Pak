@@ -10,5 +10,11 @@ lib/my355/*.so*
 *.pak.zip
 *.pakz
 
+# Build output
+bin/
+
 # Native build binary
 cmd/itchio-pak/itchio-pak
+
+# Local tooling
+.superpowers/
