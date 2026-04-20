@@ -16,6 +16,8 @@ const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
 	sItemClearCache
+	sItemMature
+	sItemSensitive
 	sItemAbout
 	sItemCount
 )
@@ -35,10 +37,21 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 	r.DrawText("Settings", 20, 20, colorText, colorText, colorText)
 
+	matureLabel := "Mature Content: OFF"
+	if s.cfg.Parental.MatureEnabled {
+		matureLabel = "Mature Content: ON"
+	}
+	sensitiveLabel := "Sensitive Topics: OFF >"
+	if s.cfg.Parental.SensitiveEnabled {
+		sensitiveLabel = "Sensitive Topics: ON  >"
+	}
+
 	items := []string{
 		"API Key: " + maskKey(s.cfg.APIKey),
 		"ROM Selection: " + s.cfg.ROMSelection,
 		"Clear Image Cache",
+		matureLabel,
+		sensitiveLabel,
 		"About",
 	}
 
@@ -109,6 +122,11 @@ func (s *SettingsScreen) activate() Screen {
 		s.cfg.Save(s.cfgPath)
 	case sItemClearCache:
 		os.RemoveAll("/tmp/itchio-pak/cache/")
+	case sItemMature:
+		s.cfg.Parental.MatureEnabled = !s.cfg.Parental.MatureEnabled
+		s.cfg.Save(s.cfgPath)
+	case sItemSensitive:
+		return NewSensitiveTagsScreen(s.cfg, s.cfgPath, s)
 	}
 	return s
 }
