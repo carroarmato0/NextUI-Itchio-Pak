@@ -52,21 +52,21 @@ func TestParseDownloadPageFiltersROMs(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClient()
-	uploads, err := c.ParseDownloadPage(srv.URL)
+	result, err := c.ParseDownloadPage(srv.URL)
 	if err != nil {
 		t.Fatalf("ParseDownloadPage: %v", err)
 	}
-	if len(uploads) == 0 {
+	if len(result.Uploads) == 0 {
 		t.Fatal("expected at least one upload")
 	}
-	for _, u := range uploads {
+	for _, u := range result.Uploads {
 		ext := strings.ToLower(filepath.Ext(u.Filename))
 		if ext != ".gbc" && ext != ".gb" {
 			t.Errorf("unexpected non-ROM upload: %q", u.Filename)
 		}
 	}
 	// Should have found both .gbc and .gb from our fixture
-	if len(uploads) != 2 {
-		t.Errorf("expected 2 ROM uploads, got %d", len(uploads))
+	if len(result.Uploads) != 2 {
+		t.Errorf("expected 2 ROM uploads, got %d", len(result.Uploads))
 	}
 }
