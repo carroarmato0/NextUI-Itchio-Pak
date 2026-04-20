@@ -5,6 +5,6 @@
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
   "repo_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak",
-  "release_filename": "Itch.io.pak.zip",
+  "release_filename": "Itch-io.pak.zip",
   "platforms": ["tg5040", "tg5050", "my355"]
 }

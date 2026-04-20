@@ -41,7 +41,7 @@ rm -rf dist
 mkdir -p dist/all/Tools
 
 for PLATFORM in tg5040 tg5050 my355; do
-    PAK_DIR="dist/$PLATFORM/Itch.io.pak"
+    PAK_DIR="dist/$PLATFORM/Itch-io.pak"
     mkdir -p "$PAK_DIR/lib" "$PAK_DIR/assets"
 
     cp bin/"$PLATFORM"/itchio-pak "$PAK_DIR/itchio-pak"
@@ -49,24 +49,26 @@ for PLATFORM in tg5040 tg5050 my355; do
     cp pak.json "$PAK_DIR/pak.json"
     cp -r assets/. "$PAK_DIR/assets/"
 
-    # Copy platform SDL2 libs
+    # Copy platform SDL2 libs, dereferencing symlinks (-L) so the SD card
+    # (FAT32) gets real files — FAT32 cannot store symlinks and adb push
+    # would otherwise copy them as tiny text files, causing "file too short".
     case "$PLATFORM" in
-        tg5040|tg5050) cp lib/tg5040/. "$PAK_DIR/lib/" 2>/dev/null || true ;;
-        my355)          cp lib/my355/.  "$PAK_DIR/lib/" 2>/dev/null || true ;;
+        tg5040|tg5050) cp -L lib/tg5040/* "$PAK_DIR/lib/" 2>/dev/null || true ;;
+        my355)          cp -L lib/my355/*  "$PAK_DIR/lib/" 2>/dev/null || true ;;
     esac
 
     cd dist/"$PLATFORM"
-    zip -r ../Itch.io.pak.zip Itch.io.pak
+    zip -r ../Itch-io.pak.zip Itch-io.pak
     cd - >/dev/null
 
     # Also copy into .pakz structure
     mkdir -p "dist/all/Tools/$PLATFORM"
-    cp -r "$PAK_DIR" "dist/all/Tools/$PLATFORM/Itch.io.pak"
+    cp -r "$PAK_DIR" "dist/all/Tools/$PLATFORM/Itch-io.pak"
 done
 
 mkdir -p dist/all
 cd dist/all
-zip -r ../all/Itch.io.pakz Tools
+zip -r ../all/Itch-io.pakz Tools
 cd - >/dev/null
 
 echo "==> Release artifacts:"

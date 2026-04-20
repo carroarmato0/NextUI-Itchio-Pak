@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
 PLATFORM="${DEPLOY_PLATFORM:-tg5040}"
-PAK_DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch.io.pak"
+PAK_DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch-io.pak"
 LOG_PATH="/mnt/SDCARD/.userdata/$PLATFORM/Itchio/itchio-pak.log"
 
 check_adb() {
