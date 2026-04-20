@@ -186,6 +186,8 @@ func (s *SettingsScreen) activate() Screen {
 		os.RemoveAll("/tmp/itchio-pak/cache/")
 	case sItemContentModeration:
 		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
+	case sItemAbout:
+		return NewAboutScreen(s)
 	}
 	return s
 }
