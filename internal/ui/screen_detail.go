@@ -63,9 +63,25 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 		if d != nil && err == nil {
 			s.advisoryTriggered = itchio.IsAdvisoryTriggered(
 				d.PageTags,
-				cfg.Parental.MatureEnabled,
-				cfg.Parental.SensitiveEnabled,
-				cfg.Parental.SensitiveDisabled,
+				itchio.FilterConfig{
+					Mature: cfg.Filter.MatureEnabled,
+					LGBTQ: itchio.CategoryFilter{
+						Enabled:  cfg.Filter.LGBTQ.Enabled,
+						Disabled: cfg.Filter.LGBTQ.Disabled,
+					},
+					HeavyThemes: itchio.CategoryFilter{
+						Enabled:  cfg.Filter.HeavyThemes.Enabled,
+						Disabled: cfg.Filter.HeavyThemes.Disabled,
+					},
+					SubstanceUse: itchio.CategoryFilter{
+						Enabled:  cfg.Filter.SubstanceUse.Enabled,
+						Disabled: cfg.Filter.SubstanceUse.Disabled,
+					},
+					SexualContent: itchio.CategoryFilter{
+						Enabled:  cfg.Filter.SexualContent.Enabled,
+						Disabled: cfg.Filter.SexualContent.Disabled,
+					},
+				},
 			)
 		}
 		s.loading = false  // publish last — renderer sees consistent state
@@ -253,15 +269,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
-// drawAdvisoryOverlay renders the full-screen parental advisory cover.
-// Only B (go back) is available — Start is suppressed.
+// drawAdvisoryOverlay renders the full-screen content warning cover.
 func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
 	cy := r.H / 2
 
 	r.DrawTextCentered("[!]", 0, cy-90, r.W, 240, 180, 60)
-	r.DrawTextCentered("Grown-Ups Only", 0, cy-54, r.W, 240, 180, 60)
+	r.DrawTextCentered("Content Warning", 0, cy-54, r.W, 240, 180, 60)
 
 	r.DrawRect(r.W/4, cy-28, r.W/2, 1, 60, 60, 60)
 
@@ -270,11 +285,11 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 		lh = 20
 	}
 	r.DrawWrappedText(
-		"This game may have content that is not suitable for all ages.",
+		"This game contains content matched by one of your active filters.",
 		r.W/8, cy-16, r.W*3/4, lh+2, 180, 180, 180,
 	)
 	r.DrawWrappedText(
-		"Please ask a parent or guardian before continuing.",
+		"You can adjust your filters in Settings.",
 		r.W/8, cy-16+lh+6, r.W*3/4, lh+2, 180, 180, 180,
 	)
 
@@ -374,9 +389,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				return s.startDownload()
 			}
 		case sdl.K_s:
-			if !s.advisoryTriggered {
-				return NewSettingsScreen(s.cfg, s.cfgPath, s)
-			}
+			return NewSettingsScreen(s.cfg, s.cfgPath, s)
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -414,9 +427,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				return s.startDownload()
 			}
 		case sdl.CONTROLLER_BUTTON_START:
-			if !s.advisoryTriggered {
-				return NewSettingsScreen(s.cfg, s.cfgPath, s)
-			}
+			return NewSettingsScreen(s.cfg, s.cfgPath, s)
 		}
 	case *sdl.QuitEvent:
 		return nil
