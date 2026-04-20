@@ -12,6 +12,10 @@ required.
 > **Disclaimer:** This is an unofficial community project, not affiliated with
 > or endorsed by itch.io.
 
+> **Parental advisory:** A built-in content filter blocks game detail pages that
+> contain known mature or sensitive tags. It is enabled by default. See
+> [Parental Controls](#parental-controls) for details and limitations.
+
 ---
 
 ## Supported Devices
@@ -48,10 +52,22 @@ required.
   - `.gbc` → `Roms/Game Boy Color (GBC)/`
 - On download failure, a QR code is shown so you can try from a browser
 
+### Parental advisory
+- **Mature Content filter** — ON/OFF toggle. Blocks detail pages tagged with explicit adult content
+  (`adult`, `gore`, `hentai`, `nsfw`, `nudity`, `porn`, and similar). Default: ON.
+- **Sensitive Topics filter** — ON/OFF toggle with per-tag control. Blocks detail pages tagged
+  with potentially sensitive topics (`gay`, `gender`, `lesbian`, `lgbtq`, `sexy`, `transgender`).
+  Individual tags can be enabled or disabled independently. Default: all ON.
+- When a filter triggers, a full-screen "Grown-Ups Only" cover replaces the detail view. Only
+  **B** (go back) is available — there is no in-game bypass.
+- A parent or guardian can adjust the filters in **Settings** (press Start from any screen).
+
 ### Settings
 - **API Key** — store your itch.io API key for paid game access (masked in the UI)
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **Clear Image Cache** — removes cached cover art from `/tmp`
+- **Mature Content** — enable or disable the mature content filter
+- **Sensitive Topics** — enable or disable the sensitive topics filter (with per-tag control)
 
 ### Controls
 
@@ -110,6 +126,46 @@ Free games can be downloaded without any account or API key.
 To download paid games you already own, enter your itch.io API key in the
 **Settings** screen (press Start from any screen). Generate an API key at
 <https://itch.io/user/settings/api-keys>.
+
+---
+
+## Parental Controls
+
+The pak includes a built-in parental advisory system. When a game's detail page contains tags
+from the configured filter lists, a full-screen warning replaces the detail view. The child can
+only press **B** to go back — there is no way to continue without a parent disabling the filter
+in Settings.
+
+### How it works
+
+Tags are **not available in itch.io's RSS feed**. They are scraped from each game's detail page
+when that game is opened. This means filtering only applies at the moment a game is viewed, not
+before. The game list itself is always unfiltered.
+
+### Limitations
+
+> **This is not a bulletproof solution.** Parents should be aware of the following:
+
+- **Tag-based, not rating-based** — itch.io has no machine-readable content rating system.
+  Filtering relies entirely on tags that game creators choose to apply. A creator can omit tags
+  or use non-standard wording, causing content to slip through undetected.
+- **Scrape-time only** — tags are fetched when a game detail page is opened. The game list
+  is always shown in full; cover art alone may hint at content.
+- **Curated tag list** — the filter covers known tags but the list is not exhaustive. New or
+  unusual tags will not be caught until a future app update adds them.
+- **No PIN protection** — the Settings screen is accessible to anyone who presses Start. A
+  determined older child may discover that the filter can be toggled off. The advisory screen
+  deliberately gives no hint of this to minimise curiosity.
+- **No substitute for supervision** — parental involvement remains the most effective safeguard.
+
+### Filter categories
+
+| Category | Default | Tags covered |
+|---|---|---|
+| **Mature Content** | ON | `adult`, `boobs`, `eroge`, `erotic`, `femdom`, `gore`, `hentai`, `lewd`, `nsfw`, `nudity`, `porn`, `softcore`, `tits`, `titties`, `xxx`, `yaoi`, `yuri` |
+| **Sensitive Topics** | ON (all tags) | `gay`, `gender`, `lesbian`, `lgbtq`, `sexy`, `transgender` |
+
+Sensitive Topics supports per-tag control — a parent can allow some topics while blocking others.
 
 ---
 
