@@ -18,7 +18,10 @@ const (
 	sItemROMMode
 	sItemClearCache
 	sItemMature
-	sItemSensitive
+	sItemLGBTQ
+	sItemHeavyThemes
+	sItemSubstanceUse
+	sItemSexualContent
 	sItemAbout
 	sItemCount
 )
@@ -38,13 +41,31 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 	r.DrawText("Settings", 20, 20, colorText, colorText, colorText)
 
+	f := s.cfg.Filter
+
 	matureLabel := "Mature Content: Allowed"
-	if s.cfg.Parental.MatureEnabled {
+	if f.MatureEnabled {
 		matureLabel = "Mature Content: Blocked"
 	}
-	sensitiveLabel := "Sensitive Topics: Allowed >"
-	if s.cfg.Parental.SensitiveEnabled && sensitiveHasActiveTag(s.cfg) {
-		sensitiveLabel = "Sensitive Topics: Filtered >"
+
+	lgbtqLabel := "LGBTQ+ Content: Allowed >"
+	if f.LGBTQ.HasActiveTag(itchio.LGBTQTags) {
+		lgbtqLabel = "LGBTQ+ Content: Filtered >"
+	}
+
+	heavyLabel := "Heavy Themes: Allowed >"
+	if f.HeavyThemes.HasActiveTag(itchio.HeavyThemesTags) {
+		heavyLabel = "Heavy Themes: Filtered >"
+	}
+
+	substanceLabel := "Substance Use: Allowed"
+	if f.SubstanceUse.Enabled {
+		substanceLabel = "Substance Use: Blocked"
+	}
+
+	sexualLabel := "Sexual Content: Allowed"
+	if f.SexualContent.Enabled {
+		sexualLabel = "Sexual Content: Blocked"
 	}
 
 	items := []string{
@@ -52,14 +73,17 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		"ROM Selection: " + s.cfg.ROMSelection,
 		"Clear Image Cache",
 		matureLabel,
-		sensitiveLabel,
+		lgbtqLabel,
+		heavyLabel,
+		substanceLabel,
+		sexualLabel,
 		"About",
 	}
 
 	for i, label := range items {
-		y := int32(80 + i*40)
+		y := int32(60 + i*36)
 		if settingsItem(i) == s.cursor {
-			r.DrawRect(0, y-4, r.W, 36, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawRect(0, y-4, r.W, 32, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 		r.DrawText(label, 20, y, colorText, colorText, colorText)
 	}
@@ -87,6 +111,8 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 			return s.activate()
 		case sdl.K_ESCAPE:
 			return s.prev
+		case sdl.K_s:
+			return s.prev
 		}
 	case *sdl.ControllerButtonEvent:
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
@@ -104,6 +130,8 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_B:
 			return s.activate()
 		case sdl.CONTROLLER_BUTTON_A:
+			return s.prev
+		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev
 		}
 	case *sdl.QuitEvent:
@@ -124,34 +152,20 @@ func (s *SettingsScreen) activate() Screen {
 	case sItemClearCache:
 		os.RemoveAll("/tmp/itchio-pak/cache/")
 	case sItemMature:
-		s.cfg.Parental.MatureEnabled = !s.cfg.Parental.MatureEnabled
+		s.cfg.Filter.MatureEnabled = !s.cfg.Filter.MatureEnabled
 		s.cfg.Save(s.cfgPath)
-	case sItemSensitive:
-		return NewSensitiveTagsScreen(s.cfg, s.cfgPath, s)
+	case sItemLGBTQ:
+		return NewLGBTQFilterScreen(s.cfg, s.cfgPath, s)
+	case sItemHeavyThemes:
+		return NewHeavyThemesFilterScreen(s.cfg, s.cfgPath, s)
+	case sItemSubstanceUse:
+		s.cfg.Filter.SubstanceUse.Enabled = !s.cfg.Filter.SubstanceUse.Enabled
+		s.cfg.Save(s.cfgPath)
+	case sItemSexualContent:
+		s.cfg.Filter.SexualContent.Enabled = !s.cfg.Filter.SexualContent.Enabled
+		s.cfg.Save(s.cfgPath)
 	}
 	return s
-}
-
-// sensitiveHasActiveTag reports whether at least one sensitive tag is currently
-// being filtered (i.e. SensitiveEnabled is true and at least one tag is not
-// individually disabled).
-func sensitiveHasActiveTag(cfg *settings.Config) bool {
-	if !cfg.Parental.SensitiveEnabled {
-		return false
-	}
-	for _, tag := range itchio.SensitiveTags {
-		found := false
-		for _, d := range cfg.Parental.SensitiveDisabled {
-			if d == tag {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return true
-		}
-	}
-	return false
 }
 
 func maskKey(key string) string {
