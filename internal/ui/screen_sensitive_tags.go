@@ -127,7 +127,7 @@ func (s *SensitiveTagsScreen) toggle() {
 		s.cfg.Parental.SensitiveDisabled = append(s.cfg.Parental.SensitiveDisabled, tag)
 	} else {
 		// Enable: remove from SensitiveDisabled
-		updated := s.cfg.Parental.SensitiveDisabled[:0]
+		var updated []string
 		for _, d := range s.cfg.Parental.SensitiveDisabled {
 			if d != tag {
 				updated = append(updated, d)
