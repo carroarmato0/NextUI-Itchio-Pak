@@ -69,3 +69,9 @@ func TestIsAdvisoryTriggered_NonFlaggedTag(t *testing.T) {
 		t.Error("expected no trigger for non-flagged tags")
 	}
 }
+
+func TestIsAdvisoryTriggered_WhitespaceTrimmed(t *testing.T) {
+	if !itchio.IsAdvisoryTriggered([]string{" nsfw "}, true, false, nil) {
+		t.Error("expected trigger for tag with surrounding whitespace")
+	}
+}

@@ -1,6 +1,9 @@
 package itchio
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // MatureTags is the hardcoded list of tag slugs considered mature content.
 // Parents can enable/disable the whole category but cannot edit this list.
@@ -25,22 +28,18 @@ var SensitiveTags = []string{
 //   - sensitiveEnabled: whether the Sensitive Topics filter is active
 //   - sensitiveDisabled: individual sensitive tags that are turned off
 func IsAdvisoryTriggered(pageTags []string, matureEnabled, sensitiveEnabled bool, sensitiveDisabled []string) bool {
+	// normalise sensitiveDisabled once
+	disabledNorm := make([]string, len(sensitiveDisabled))
+	for i, d := range sensitiveDisabled {
+		disabledNorm[i] = strings.ToLower(strings.TrimSpace(d))
+	}
+
 	for _, tag := range pageTags {
 		slug := strings.ToLower(strings.TrimSpace(tag))
-		if matureEnabled && containsStr(MatureTags, slug) {
+		if matureEnabled && slices.Contains(MatureTags, slug) {
 			return true
 		}
-		if sensitiveEnabled && containsStr(SensitiveTags, slug) && !containsStr(sensitiveDisabled, slug) {
-			return true
-		}
-	}
-	return false
-}
-
-// containsStr reports whether list contains s.
-func containsStr(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
+		if sensitiveEnabled && slices.Contains(SensitiveTags, slug) && !slices.Contains(disabledNorm, slug) {
 			return true
 		}
 	}
