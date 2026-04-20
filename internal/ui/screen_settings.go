@@ -88,7 +88,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		r.DrawText(label, 20, y, colorText, colorText, colorText)
 	}
 
-	r.DrawText("D-pad navigate · A select · B back", 10, r.H-24, 140, 140, 140)
+	r.DrawText("D-pad navigate · B select · A back", 10, r.H-24, 140, 140, 140)
 	r.Present()
 }
 
