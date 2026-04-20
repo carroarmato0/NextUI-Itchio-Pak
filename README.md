@@ -148,10 +148,11 @@ section:
 
 - **Mature Content** — a single toggle covering explicit adult content. Most families will want
   to leave this on.
-- **Sensitive Topics** — a toggle with per-tag control. This category covers topics that may be
-  sensitive depending on family values but can appear in otherwise wholesome games (for example,
-  games with LGBTQ representation). A parent can enable or disable individual tags to match their
-  household's preferences, rather than blocking or allowing the entire category at once.
+- **Sensitive Topics** — a toggle with per-tag control. This category covers topics that are
+  not inherently inappropriate — games with these tags are often entirely wholesome — but where
+  a parent may want to be the one to introduce the subject to their child, in their own time and
+  context, rather than having it come up unexpectedly in a game. Individual tags can be enabled
+  or disabled independently, so a parent can make that choice on a topic-by-topic basis.
 
 The specific tags covered by each category are listed and togglable directly in the Settings
 screen on the device.
