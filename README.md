@@ -140,8 +140,8 @@ To download paid games you already own, enter your itch.io API key in the
 
 The pak includes a built-in content filter system. Filters are useful for anyone
 who wants to be aware of — or avoid — specific themes before opening a game,
-whether that is a parent managing what their child encounters, or an adult who
-prefers not to encounter certain content unexpectedly.
+whether that is someone who prefers not to encounter certain content
+unexpectedly, or a parent managing what their child encounters.
 
 When a game's tags match an active filter, a **Content Warning** screen replaces
 the detail view. Press **B** to go back, or **Start** to open Settings and adjust
