@@ -48,7 +48,9 @@ func TestRoundTrip(t *testing.T) {
 func TestLoadCorruptedFileReturnsDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	os.WriteFile(path, []byte("not json"), 0644)
+	if err := os.WriteFile(path, []byte("not json"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
 
 	cfg, err := settings.Load(path)
 	if err != nil {
@@ -59,33 +61,42 @@ func TestLoadCorruptedFileReturnsDefaults(t *testing.T) {
 	}
 }
 
-func TestDefaultsHaveParentalAdvisoryEnabled(t *testing.T) {
+// Mature content is the only filter that defaults to ON.
+func TestDefaultsMatureEnabled(t *testing.T) {
 	cfg, err := settings.Load("/nonexistent/path/config.json")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !cfg.Parental.MatureEnabled {
+	if !cfg.Filter.MatureEnabled {
 		t.Error("expected MatureEnabled=true by default")
 	}
-	if !cfg.Parental.SensitiveEnabled {
-		t.Error("expected SensitiveEnabled=true by default")
+	if cfg.Filter.LGBTQ.Enabled {
+		t.Error("expected LGBTQ.Enabled=false by default")
 	}
-	if cfg.Parental.SensitiveDisabled != nil {
-		t.Errorf("expected SensitiveDisabled=nil by default, got %v", cfg.Parental.SensitiveDisabled)
+	if cfg.Filter.HeavyThemes.Enabled {
+		t.Error("expected HeavyThemes.Enabled=false by default")
+	}
+	if cfg.Filter.SubstanceUse.Enabled {
+		t.Error("expected SubstanceUse.Enabled=false by default")
+	}
+	if cfg.Filter.SexualContent.Enabled {
+		t.Error("expected SexualContent.Enabled=false by default")
 	}
 }
 
-func TestParentalAdvisoryRoundTrip(t *testing.T) {
+func TestContentFilterRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	path := dir + "/config.json"
+	path := filepath.Join(dir, "config.json")
 
 	cfg := &settings.Config{
 		APIKey:       "",
 		ROMSelection: "auto",
-		Parental: settings.ParentalAdvisory{
-			MatureEnabled:     false,
-			SensitiveEnabled:  true,
-			SensitiveDisabled: []string{"lgbtq", "sexy"},
+		Filter: settings.ContentFilter{
+			MatureEnabled: false,
+			LGBTQ:         settings.CategoryFilter{Enabled: true, Disabled: []string{"lgbtq", "gay"}},
+			HeavyThemes:   settings.CategoryFilter{Enabled: true, Disabled: []string{"grief"}},
+			SubstanceUse:  settings.CategoryFilter{Enabled: true},
+			SexualContent: settings.CategoryFilter{},
 		},
 	}
 	if err := cfg.Save(path); err != nil {
@@ -96,13 +107,47 @@ func TestParentalAdvisoryRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.Parental.MatureEnabled != false {
+	if loaded.Filter.MatureEnabled {
 		t.Error("MatureEnabled not preserved")
 	}
-	if loaded.Parental.SensitiveEnabled != true {
-		t.Error("SensitiveEnabled not preserved")
+	if !loaded.Filter.LGBTQ.Enabled {
+		t.Error("LGBTQ.Enabled not preserved")
 	}
-	if len(loaded.Parental.SensitiveDisabled) != 2 {
-		t.Errorf("SensitiveDisabled: expected 2 entries, got %v", loaded.Parental.SensitiveDisabled)
+	if len(loaded.Filter.LGBTQ.Disabled) != 2 {
+		t.Errorf("LGBTQ.Disabled: expected 2 entries, got %v", loaded.Filter.LGBTQ.Disabled)
+	}
+	if len(loaded.Filter.HeavyThemes.Disabled) != 1 {
+		t.Errorf("HeavyThemes.Disabled: expected 1 entry, got %v", loaded.Filter.HeavyThemes.Disabled)
+	}
+	if !loaded.Filter.SubstanceUse.Enabled {
+		t.Error("SubstanceUse.Enabled not preserved")
+	}
+}
+
+func TestHasActiveTag(t *testing.T) {
+	tags := []string{"grief", "suicide", "war"}
+
+	// All enabled, none disabled → true
+	cf := settings.CategoryFilter{Enabled: true}
+	if !cf.HasActiveTag(tags) {
+		t.Error("expected HasActiveTag=true when all tags enabled")
+	}
+
+	// Master off → false
+	cf = settings.CategoryFilter{Enabled: false}
+	if cf.HasActiveTag(tags) {
+		t.Error("expected HasActiveTag=false when master disabled")
+	}
+
+	// All individually disabled → false
+	cf = settings.CategoryFilter{Enabled: true, Disabled: []string{"grief", "suicide", "war"}}
+	if cf.HasActiveTag(tags) {
+		t.Error("expected HasActiveTag=false when all tags individually disabled")
+	}
+
+	// One still active → true
+	cf = settings.CategoryFilter{Enabled: true, Disabled: []string{"grief", "suicide"}}
+	if !cf.HasActiveTag(tags) {
+		t.Error("expected HasActiveTag=true when one tag still active")
 	}
 }
