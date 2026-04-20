@@ -36,6 +36,31 @@ func TestFetchGameDetailExtractsGameID(t *testing.T) {
 	}
 }
 
+func TestFetchGameDetailExtractsPageTags(t *testing.T) {
+	srv := serveFile(t, "../../testdata/game_page_free.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if len(detail.PageTags) == 0 {
+		t.Fatal("PageTags is empty — tag links not found in page")
+	}
+	// The free fixture (Opossum Country) has "horror" slug among its tags
+	found := false
+	for _, tag := range detail.PageTags {
+		if tag == "horror" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected tag 'horror' in PageTags, got: %v", detail.PageTags)
+	}
+}
+
 func TestFetchGameDetailPaidDoesNotCrash(t *testing.T) {
 	srv := serveFile(t, "../../testdata/game_page_paid.html")
 	defer srv.Close()

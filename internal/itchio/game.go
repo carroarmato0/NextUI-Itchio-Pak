@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,6 +19,7 @@ type GameDetail struct {
 	Uploads        []Upload
 	GameID         string
 	CSRFToken      string
+	PageTags       []string // itch.io tag labels scraped from the game page
 }
 
 type Upload struct {
@@ -30,6 +32,9 @@ var (
 	// itch:path meta tag: <meta name="itch:path" content="games/850892" />
 	gameIDRegex = regexp.MustCompile(`name="itch:path"\s+content="games/(\d+)"`)
 	csrfRegex   = regexp.MustCompile(`name="csrf_token"\s+(?:content|value)="([^"]+)"`)
+	// tag links: <a href="https://itch.io/games/tag-horror">Horror</a>
+	// Capture the slug from the URL (e.g. "horror", "lgbtq") for reliable filter matching.
+	pageTagRegex = regexp.MustCompile(`href="https://itch\.io/games/tag-([^"]+)"`)
 )
 
 func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
@@ -53,6 +58,14 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 	if m := csrfRegex.FindStringSubmatch(s); len(m) > 1 {
 		detail.CSRFToken = m[1]
 	}
+
+	// Extract itch.io page tags from tag links
+	for _, m := range pageTagRegex.FindAllStringSubmatch(s, -1) {
+		if len(m) > 1 {
+			detail.PageTags = append(detail.PageTags, strings.TrimSpace(m[1]))
+		}
+	}
+	log.Printf("FetchGameDetail: %d page tags: %v", len(detail.PageTags), detail.PageTags)
 
 	// Extract screenshot URLs from screenshot img elements
 	screenshotReg := regexp.MustCompile(`class="[^"]*screenshot[^"]*"[^>]+src="([^"]+)"`)

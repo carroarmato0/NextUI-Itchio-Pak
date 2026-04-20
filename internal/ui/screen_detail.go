@@ -370,7 +370,9 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				s.screenshotIdx++
 			}
 		case sdl.K_RETURN:
-			return s.startDownload()
+			if !s.advisoryTriggered {
+				return s.startDownload()
+			}
 		case sdl.K_s:
 			if !s.advisoryTriggered {
 				return NewSettingsScreen(s.cfg, s.cfgPath, s)
@@ -408,7 +410,9 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				s.screenshotIdx++
 			}
 		case sdl.CONTROLLER_BUTTON_B:
-			return s.startDownload()
+			if !s.advisoryTriggered {
+				return s.startDownload()
+			}
 		case sdl.CONTROLLER_BUTTON_START:
 			if !s.advisoryTriggered {
 				return NewSettingsScreen(s.cfg, s.cfgPath, s)
