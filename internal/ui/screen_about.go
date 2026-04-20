@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	appVersion  = "1.0.0"
+	appVersion  = "v1.0.0"
 	appRepoURL  = "https://github.com/carroarmato0/NextUI-Itchio-Pak"
 	appDescLine1 = "Browse and download GB/GBC games"
 	appDescLine2 = "from Itch.io's GB Studio collection."

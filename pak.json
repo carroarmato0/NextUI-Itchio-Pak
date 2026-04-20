@@ -1,10 +1,20 @@
 {
   "name": "Itch.io",
-  "version": "1.0.0",
-  "type": "tool",
+  "version": "v1.0.0",
+  "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
   "repo_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak",
   "release_filename": "Itch-io.pak.zip",
-  "platforms": ["tg5040", "tg5050", "my355"]
+  "screenshots": [
+    "docs/screenshots/main.png",
+    "docs/screenshots/game.png",
+    "docs/screenshots/content_warning.png",
+    "docs/screenshots/settings.png",
+    "docs/screenshots/downloaded.png"
+  ],
+  "platforms": ["tg5040", "tg5050", "my355"],
+  "changelog": {
+    "v1.0.0": "Initial release — browse and download free and paid GB/GBC games from itch.io's GB Studio collection, with built-in content filters."
+  }
 }
