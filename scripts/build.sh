@@ -61,14 +61,23 @@ build_native() {
 build_platform() {
     PLATFORM="$1"
 
-    mkdir -p bin/"$PLATFORM" lib/tg5040 lib/my355
+    mkdir -p bin/"$PLATFORM" lib/tg5040 lib/my355 assets
+
+    # Copy the Debian CA bundle into assets/ so launch.sh can point SSL_CERT_FILE
+    # at it — the device has no system CA store, so HTTPS would fail otherwise.
+    cp /etc/ssl/certs/ca-certificates.crt assets/ca-certificates.crt 2>/dev/null || true
 
     # Cross-compile for ARM64 using the aarch64-linux-gnu toolchain installed in
     # the dev image. PKG_CONFIG_PATH points at the arm64 SDL2 .pc files so that
     # the go-sdl2 cgo directives pick up the right library paths.
+    # -tags netgo: use Go's built-in DNS resolver instead of the CGo one.
+    #   Without this, the CGo net resolver links res_search@GLIBC_2.34 which
+    #   is unavailable on TrimUI/Miyoo devices that ship glibc 2.33.
+    # -a: force recompile of all packages; without this, cached .a files from
+    #   a previous toolchain/image can embed GLIBC_2.34 symbol version tags.
     PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
     CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
-        go build -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
+        go build -a -tags netgo -buildvcs=false -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
     echo "Built: bin/$PLATFORM/itchio-pak"
 
     # Extract SDL2 shared libs for bundling inside the pak.

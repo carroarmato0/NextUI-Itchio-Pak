@@ -1,9 +1,12 @@
-FROM golang:1.22-bookworm
+# Bullseye (glibc 2.31) keeps GLIBC_2.34 pthread symbols out of the binary,
+# ensuring compatibility with TrimUI/Miyoo devices that ship glibc 2.33.
+FROM golang:1.22-bullseye
 ENV GOTOOLCHAIN=local
 RUN dpkg --add-architecture arm64 && \
     apt-get update && apt-get install -y \
     libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev \
     libsdl2-dev:arm64 libsdl2-ttf-dev:arm64 \
     gcc-aarch64-linux-gnu \
+    zip \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace
