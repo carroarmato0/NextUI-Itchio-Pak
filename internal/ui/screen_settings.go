@@ -17,11 +17,10 @@ const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
 	sItemClearCache
-	sItemMature
-	sItemLGBTQ
+	sItemAdultContent
+	sItemQueerContent
 	sItemHeavyThemes
 	sItemSubstanceUse
-	sItemSexualContent
 	sItemAbout
 	sItemCount
 )
@@ -43,14 +42,14 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 
 	f := s.cfg.Filter
 
-	matureLabel := "Mature Content: Allowed"
-	if f.MatureEnabled {
-		matureLabel = "Mature Content: Blocked"
+	adultLabel := "Adult Content: Allowed >"
+	if f.AdultContent.HasActiveTag(itchio.AdultContentTags) {
+		adultLabel = "Adult Content: Filtered >"
 	}
 
-	lgbtqLabel := "LGBTQ+ Content: Allowed >"
-	if f.LGBTQ.HasActiveTag(itchio.LGBTQTags) {
-		lgbtqLabel = "LGBTQ+ Content: Filtered >"
+	queerLabel := "Queer Content: Allowed >"
+	if f.QueerContent.HasActiveTag(itchio.QueerContentTags) {
+		queerLabel = "Queer Content: Filtered >"
 	}
 
 	heavyLabel := "Heavy Themes: Allowed >"
@@ -63,25 +62,28 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		substanceLabel = "Substance Use: Blocked"
 	}
 
-	sexualLabel := "Sexual Content: Allowed"
-	if f.SexualContent.Enabled {
-		sexualLabel = "Sexual Content: Blocked"
-	}
-
 	items := []string{
 		"API Key: " + maskKey(s.cfg.APIKey),
 		"ROM Selection: " + s.cfg.ROMSelection,
 		"Clear Image Cache",
-		matureLabel,
-		lgbtqLabel,
+		adultLabel,
+		queerLabel,
 		heavyLabel,
 		substanceLabel,
-		sexualLabel,
 		"About",
 	}
 
 	for i, label := range items {
 		y := int32(60 + i*36)
+		if settingsItem(i) >= sItemAdultContent {
+			y += 22 // shift filter items down past "Content Moderation" header
+		}
+		if settingsItem(i) == sItemAdultContent {
+			// Draw section header between Clear Image Cache and Adult Content
+			headerY := int32(60+2*36) + 10 // = 142
+			r.DrawText("Content Moderation", 20, headerY, 100, 100, 100)
+			r.DrawRect(0, headerY+16, r.W, 1, 50, 50, 50)
+		}
 		if settingsItem(i) == s.cursor {
 			r.DrawRect(0, y-4, r.W, 32, colorHighlight, colorHighlight, colorHighlight+20)
 		}
@@ -151,18 +153,14 @@ func (s *SettingsScreen) activate() Screen {
 		s.cfg.Save(s.cfgPath)
 	case sItemClearCache:
 		os.RemoveAll("/tmp/itchio-pak/cache/")
-	case sItemMature:
-		s.cfg.Filter.MatureEnabled = !s.cfg.Filter.MatureEnabled
-		s.cfg.Save(s.cfgPath)
-	case sItemLGBTQ:
-		return NewLGBTQFilterScreen(s.cfg, s.cfgPath, s)
+	case sItemAdultContent:
+		return NewAdultContentFilterScreen(s.cfg, s.cfgPath, s)
+	case sItemQueerContent:
+		return NewQueerContentFilterScreen(s.cfg, s.cfgPath, s)
 	case sItemHeavyThemes:
 		return NewHeavyThemesFilterScreen(s.cfg, s.cfgPath, s)
 	case sItemSubstanceUse:
 		s.cfg.Filter.SubstanceUse.Enabled = !s.cfg.Filter.SubstanceUse.Enabled
-		s.cfg.Save(s.cfgPath)
-	case sItemSexualContent:
-		s.cfg.Filter.SexualContent.Enabled = !s.cfg.Filter.SexualContent.Enabled
 		s.cfg.Save(s.cfgPath)
 	}
 	return s

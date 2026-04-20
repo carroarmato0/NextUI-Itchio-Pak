@@ -34,13 +34,13 @@ func (cf CategoryFilter) HasActiveTag(tagList []string) bool {
 }
 
 // ContentFilter holds the complete content filter configuration.
-// MatureEnabled defaults to true; all other categories default to false.
+// AdultContent, HeavyThemes, and SubstanceUse default to enabled.
+// QueerContent defaults to disabled.
 type ContentFilter struct {
-	MatureEnabled bool           `json:"mature_enabled"`
-	LGBTQ         CategoryFilter `json:"lgbtq"`
-	HeavyThemes   CategoryFilter `json:"heavy_themes"`
-	SubstanceUse  CategoryFilter `json:"substance_use"`
-	SexualContent CategoryFilter `json:"sexual_content"`
+	AdultContent CategoryFilter `json:"adult_content"`
+	QueerContent CategoryFilter `json:"queer_content"`
+	HeavyThemes  CategoryFilter `json:"heavy_themes"`
+	SubstanceUse CategoryFilter `json:"substance_use"`
 }
 
 // Config is the top-level application configuration.
@@ -55,8 +55,10 @@ func defaults() *Config {
 		APIKey:       "",
 		ROMSelection: "auto",
 		Filter: ContentFilter{
-			MatureEnabled: true,
-			// All other categories default to disabled (zero value).
+			AdultContent: CategoryFilter{Enabled: true},
+			HeavyThemes:  CategoryFilter{Enabled: true},
+			SubstanceUse: CategoryFilter{Enabled: true},
+			// QueerContent defaults to disabled (zero value).
 		},
 	}
 }

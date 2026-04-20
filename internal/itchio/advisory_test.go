@@ -6,78 +6,101 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 )
 
-func cfg(mature bool, lgbtq, heavy, substance, sexual itchio.CategoryFilter) itchio.FilterConfig {
+func cfg(adult, queer, heavy, substance itchio.CategoryFilter) itchio.FilterConfig {
 	return itchio.FilterConfig{
-		Mature:        mature,
-		LGBTQ:         lgbtq,
-		HeavyThemes:   heavy,
-		SubstanceUse:  substance,
-		SexualContent: sexual,
+		AdultContent: adult,
+		QueerContent: queer,
+		HeavyThemes:  heavy,
+		SubstanceUse: substance,
 	}
 }
 
-var offAll = itchio.CategoryFilter{}
+var off = itchio.CategoryFilter{}
 
-// ── Mature ────────────────────────────────────────────────────────────────────
+// ── Adult Content ─────────────────────────────────────────────────────────────
 
-func TestMatureMatch(t *testing.T) {
-	if !itchio.IsAdvisoryTriggered([]string{"nsfw"}, cfg(true, offAll, offAll, offAll, offAll)) {
-		t.Error("expected trigger for mature tag 'nsfw'")
+func TestAdultContentMatchExplicit(t *testing.T) {
+	on := itchio.CategoryFilter{Enabled: true}
+	if !itchio.IsAdvisoryTriggered([]string{"nsfw"}, cfg(on, off, off, off)) {
+		t.Error("expected trigger for explicit adult tag 'nsfw'")
 	}
 }
 
-func TestMatureCaseInsensitive(t *testing.T) {
-	if !itchio.IsAdvisoryTriggered([]string{"NSFW"}, cfg(true, offAll, offAll, offAll, offAll)) {
+func TestAdultContentMatchSuggestive(t *testing.T) {
+	on := itchio.CategoryFilter{Enabled: true}
+	if !itchio.IsAdvisoryTriggered([]string{"suggestive"}, cfg(on, off, off, off)) {
+		t.Error("expected trigger for suggestive tag 'suggestive'")
+	}
+}
+
+func TestAdultContentCaseInsensitive(t *testing.T) {
+	on := itchio.CategoryFilter{Enabled: true}
+	if !itchio.IsAdvisoryTriggered([]string{"NSFW"}, cfg(on, off, off, off)) {
 		t.Error("expected trigger for uppercase 'NSFW'")
 	}
 }
 
-func TestMatureDisabled(t *testing.T) {
-	if itchio.IsAdvisoryTriggered([]string{"nsfw"}, cfg(false, offAll, offAll, offAll, offAll)) {
-		t.Error("expected no trigger when mature filter disabled")
+func TestAdultContentDisabled(t *testing.T) {
+	if itchio.IsAdvisoryTriggered([]string{"nsfw"}, cfg(off, off, off, off)) {
+		t.Error("expected no trigger when adult content filter disabled")
 	}
 }
 
-func TestMatureWhitespaceTrimmed(t *testing.T) {
-	if !itchio.IsAdvisoryTriggered([]string{" nsfw "}, cfg(true, offAll, offAll, offAll, offAll)) {
+func TestAdultContentWhitespaceTrimmed(t *testing.T) {
+	on := itchio.CategoryFilter{Enabled: true}
+	if !itchio.IsAdvisoryTriggered([]string{" nsfw "}, cfg(on, off, off, off)) {
 		t.Error("expected trigger for tag with surrounding whitespace")
 	}
 }
 
-// ── LGBTQ ─────────────────────────────────────────────────────────────────────
+func TestAdultContentTagIndividuallyDisabled(t *testing.T) {
+	on := itchio.CategoryFilter{Enabled: true, Disabled: []string{"nsfw"}}
+	if itchio.IsAdvisoryTriggered([]string{"nsfw"}, cfg(on, off, off, off)) {
+		t.Error("expected no trigger when nsfw individually disabled")
+	}
+}
 
-func TestLGBTQMatch(t *testing.T) {
+func TestAdultContentOtherTagStillActive(t *testing.T) {
+	on := itchio.CategoryFilter{Enabled: true, Disabled: []string{"nsfw"}}
+	if !itchio.IsAdvisoryTriggered([]string{"porn"}, cfg(on, off, off, off)) {
+		t.Error("expected trigger for 'porn' even when 'nsfw' individually disabled")
+	}
+}
+
+// ── Queer Content ─────────────────────────────────────────────────────────────
+
+func TestQueerContentMatch(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true}
-	if !itchio.IsAdvisoryTriggered([]string{"lgbtq"}, cfg(false, on, offAll, offAll, offAll)) {
-		t.Error("expected trigger for lgbtq tag")
+	if !itchio.IsAdvisoryTriggered([]string{"queer"}, cfg(off, on, off, off)) {
+		t.Error("expected trigger for queer content tag 'queer'")
 	}
 }
 
-func TestLGBTQMasterDisabled(t *testing.T) {
-	if itchio.IsAdvisoryTriggered([]string{"lgbtq"}, cfg(false, offAll, offAll, offAll, offAll)) {
-		t.Error("expected no trigger when lgbtq filter disabled")
+func TestQueerContentMasterDisabled(t *testing.T) {
+	if itchio.IsAdvisoryTriggered([]string{"gay"}, cfg(off, off, off, off)) {
+		t.Error("expected no trigger when queer content filter disabled")
 	}
 }
 
-func TestLGBTQTagIndividuallyDisabled(t *testing.T) {
+func TestQueerContentTagIndividuallyDisabled(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true, Disabled: []string{"lgbtq"}}
-	if itchio.IsAdvisoryTriggered([]string{"lgbtq"}, cfg(false, on, offAll, offAll, offAll)) {
+	if itchio.IsAdvisoryTriggered([]string{"lgbtq"}, cfg(off, on, off, off)) {
 		t.Error("expected no trigger when lgbtq tag individually disabled")
 	}
 }
 
-func TestLGBTQOtherTagStillActive(t *testing.T) {
+func TestQueerContentOtherTagStillActive(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true, Disabled: []string{"lgbtq"}}
-	if !itchio.IsAdvisoryTriggered([]string{"gay"}, cfg(false, on, offAll, offAll, offAll)) {
+	if !itchio.IsAdvisoryTriggered([]string{"gay"}, cfg(off, on, off, off)) {
 		t.Error("expected trigger for 'gay' even when 'lgbtq' individually disabled")
 	}
 }
 
-func TestLGBTQExpandedTags(t *testing.T) {
+func TestQueerContentExpandedTags(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true}
-	for _, tag := range []string{"queer", "bisexual", "trans", "non-binary", "pansexual"} {
-		if !itchio.IsAdvisoryTriggered([]string{tag}, cfg(false, on, offAll, offAll, offAll)) {
-			t.Errorf("expected trigger for expanded lgbtq tag %q", tag)
+	for _, tag := range []string{"bisexual", "trans", "non-binary", "pansexual", "sapphic"} {
+		if !itchio.IsAdvisoryTriggered([]string{tag}, cfg(off, on, off, off)) {
+			t.Errorf("expected trigger for queer content tag %q", tag)
 		}
 	}
 }
@@ -86,20 +109,20 @@ func TestLGBTQExpandedTags(t *testing.T) {
 
 func TestHeavyThemesMatch(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true}
-	if !itchio.IsAdvisoryTriggered([]string{"suicide"}, cfg(false, offAll, on, offAll, offAll)) {
+	if !itchio.IsAdvisoryTriggered([]string{"suicide"}, cfg(off, off, on, off)) {
 		t.Error("expected trigger for heavy theme tag 'suicide'")
 	}
 }
 
 func TestHeavyThemesDisabled(t *testing.T) {
-	if itchio.IsAdvisoryTriggered([]string{"suicide"}, cfg(false, offAll, offAll, offAll, offAll)) {
+	if itchio.IsAdvisoryTriggered([]string{"suicide"}, cfg(off, off, off, off)) {
 		t.Error("expected no trigger when heavy themes filter disabled")
 	}
 }
 
 func TestHeavyThemesTagIndividuallyDisabled(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true, Disabled: []string{"grief"}}
-	if itchio.IsAdvisoryTriggered([]string{"grief"}, cfg(false, offAll, on, offAll, offAll)) {
+	if itchio.IsAdvisoryTriggered([]string{"grief"}, cfg(off, off, on, off)) {
 		t.Error("expected no trigger when grief individually disabled")
 	}
 }
@@ -108,37 +131,22 @@ func TestHeavyThemesTagIndividuallyDisabled(t *testing.T) {
 
 func TestSubstanceUseMatch(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true}
-	if !itchio.IsAdvisoryTriggered([]string{"drugs"}, cfg(false, offAll, offAll, on, offAll)) {
+	if !itchio.IsAdvisoryTriggered([]string{"drugs"}, cfg(off, off, off, on)) {
 		t.Error("expected trigger for substance use tag 'drugs'")
 	}
 }
 
 func TestSubstanceUseDisabled(t *testing.T) {
-	if itchio.IsAdvisoryTriggered([]string{"drugs"}, cfg(false, offAll, offAll, offAll, offAll)) {
+	if itchio.IsAdvisoryTriggered([]string{"drugs"}, cfg(off, off, off, off)) {
 		t.Error("expected no trigger when substance use filter disabled")
-	}
-}
-
-// ── Sexual Content ────────────────────────────────────────────────────────────
-
-func TestSexualContentMatch(t *testing.T) {
-	on := itchio.CategoryFilter{Enabled: true}
-	if !itchio.IsAdvisoryTriggered([]string{"suggestive"}, cfg(false, offAll, offAll, offAll, on)) {
-		t.Error("expected trigger for sexual content tag 'suggestive'")
-	}
-}
-
-func TestSexualContentDisabled(t *testing.T) {
-	if itchio.IsAdvisoryTriggered([]string{"suggestive"}, cfg(false, offAll, offAll, offAll, offAll)) {
-		t.Error("expected no trigger when sexual content filter disabled")
 	}
 }
 
 // ── Cross-category ────────────────────────────────────────────────────────────
 
 func TestAllFiltersOff(t *testing.T) {
-	if itchio.IsAdvisoryTriggered([]string{"nsfw", "lgbtq", "suicide", "drugs", "suggestive"},
-		cfg(false, offAll, offAll, offAll, offAll)) {
+	if itchio.IsAdvisoryTriggered([]string{"nsfw", "gay", "suicide", "drugs"},
+		cfg(off, off, off, off)) {
 		t.Error("expected no trigger when all filters disabled")
 	}
 }
@@ -146,17 +154,17 @@ func TestAllFiltersOff(t *testing.T) {
 func TestNonFlaggedTag(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true}
 	if itchio.IsAdvisoryTriggered([]string{"platformer", "adventure"},
-		cfg(true, on, on, on, on)) {
+		cfg(on, on, on, on)) {
 		t.Error("expected no trigger for non-flagged tags")
 	}
 }
 
 func TestEmptyTags(t *testing.T) {
 	on := itchio.CategoryFilter{Enabled: true}
-	if itchio.IsAdvisoryTriggered(nil, cfg(true, on, on, on, on)) {
+	if itchio.IsAdvisoryTriggered(nil, cfg(on, on, on, on)) {
 		t.Error("expected no trigger for nil tags")
 	}
-	if itchio.IsAdvisoryTriggered([]string{}, cfg(true, on, on, on, on)) {
+	if itchio.IsAdvisoryTriggered([]string{}, cfg(on, on, on, on)) {
 		t.Error("expected no trigger for empty tags")
 	}
 }

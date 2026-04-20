@@ -61,26 +61,22 @@ func TestLoadCorruptedFileReturnsDefaults(t *testing.T) {
 	}
 }
 
-// Mature content is the only filter that defaults to ON.
-func TestDefaultsMatureEnabled(t *testing.T) {
+func TestDefaultFilters(t *testing.T) {
 	cfg, err := settings.Load("/nonexistent/path/config.json")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !cfg.Filter.MatureEnabled {
-		t.Error("expected MatureEnabled=true by default")
+	if !cfg.Filter.AdultContent.Enabled {
+		t.Error("expected AdultContent.Enabled=true by default")
 	}
-	if cfg.Filter.LGBTQ.Enabled {
-		t.Error("expected LGBTQ.Enabled=false by default")
+	if !cfg.Filter.HeavyThemes.Enabled {
+		t.Error("expected HeavyThemes.Enabled=true by default")
 	}
-	if cfg.Filter.HeavyThemes.Enabled {
-		t.Error("expected HeavyThemes.Enabled=false by default")
+	if !cfg.Filter.SubstanceUse.Enabled {
+		t.Error("expected SubstanceUse.Enabled=true by default")
 	}
-	if cfg.Filter.SubstanceUse.Enabled {
-		t.Error("expected SubstanceUse.Enabled=false by default")
-	}
-	if cfg.Filter.SexualContent.Enabled {
-		t.Error("expected SexualContent.Enabled=false by default")
+	if cfg.Filter.QueerContent.Enabled {
+		t.Error("expected QueerContent.Enabled=false by default")
 	}
 }
 
@@ -92,11 +88,10 @@ func TestContentFilterRoundTrip(t *testing.T) {
 		APIKey:       "",
 		ROMSelection: "auto",
 		Filter: settings.ContentFilter{
-			MatureEnabled: false,
-			LGBTQ:         settings.CategoryFilter{Enabled: true, Disabled: []string{"lgbtq", "gay"}},
-			HeavyThemes:   settings.CategoryFilter{Enabled: true, Disabled: []string{"grief"}},
-			SubstanceUse:  settings.CategoryFilter{Enabled: true},
-			SexualContent: settings.CategoryFilter{},
+			AdultContent: settings.CategoryFilter{Enabled: true, Disabled: []string{"ecchi", "suggestive"}},
+			QueerContent: settings.CategoryFilter{Enabled: true, Disabled: []string{"lgbtq"}},
+			HeavyThemes:  settings.CategoryFilter{Enabled: true, Disabled: []string{"grief"}},
+			SubstanceUse: settings.CategoryFilter{Enabled: false},
 		},
 	}
 	if err := cfg.Save(path); err != nil {
@@ -107,20 +102,17 @@ func TestContentFilterRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.Filter.MatureEnabled {
-		t.Error("MatureEnabled not preserved")
+	if !loaded.Filter.AdultContent.Enabled {
+		t.Error("AdultContent.Enabled not preserved")
 	}
-	if !loaded.Filter.LGBTQ.Enabled {
-		t.Error("LGBTQ.Enabled not preserved")
+	if len(loaded.Filter.AdultContent.Disabled) != 2 {
+		t.Errorf("AdultContent.Disabled: expected 2 entries, got %v", loaded.Filter.AdultContent.Disabled)
 	}
-	if len(loaded.Filter.LGBTQ.Disabled) != 2 {
-		t.Errorf("LGBTQ.Disabled: expected 2 entries, got %v", loaded.Filter.LGBTQ.Disabled)
+	if !loaded.Filter.QueerContent.Enabled {
+		t.Error("QueerContent.Enabled not preserved")
 	}
-	if len(loaded.Filter.HeavyThemes.Disabled) != 1 {
-		t.Errorf("HeavyThemes.Disabled: expected 1 entry, got %v", loaded.Filter.HeavyThemes.Disabled)
-	}
-	if !loaded.Filter.SubstanceUse.Enabled {
-		t.Error("SubstanceUse.Enabled not preserved")
+	if loaded.Filter.SubstanceUse.Enabled {
+		t.Error("SubstanceUse.Enabled not preserved (expected false)")
 	}
 }
 
@@ -149,5 +141,11 @@ func TestHasActiveTag(t *testing.T) {
 	cf = settings.CategoryFilter{Enabled: true, Disabled: []string{"grief", "suicide"}}
 	if !cf.HasActiveTag(tags) {
 		t.Error("expected HasActiveTag=true when one tag still active")
+	}
+
+	// Empty tagList → false
+	cf = settings.CategoryFilter{Enabled: true}
+	if cf.HasActiveTag([]string{}) {
+		t.Error("expected HasActiveTag=false for empty tagList")
 	}
 }

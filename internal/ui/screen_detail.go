@@ -64,10 +64,13 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 			s.advisoryTriggered = itchio.IsAdvisoryTriggered(
 				d.PageTags,
 				itchio.FilterConfig{
-					Mature: cfg.Filter.MatureEnabled,
-					LGBTQ: itchio.CategoryFilter{
-						Enabled:  cfg.Filter.LGBTQ.Enabled,
-						Disabled: cfg.Filter.LGBTQ.Disabled,
+					AdultContent: itchio.CategoryFilter{
+						Enabled:  cfg.Filter.AdultContent.Enabled,
+						Disabled: cfg.Filter.AdultContent.Disabled,
+					},
+					QueerContent: itchio.CategoryFilter{
+						Enabled:  cfg.Filter.QueerContent.Enabled,
+						Disabled: cfg.Filter.QueerContent.Disabled,
 					},
 					HeavyThemes: itchio.CategoryFilter{
 						Enabled:  cfg.Filter.HeavyThemes.Enabled,
@@ -76,10 +79,6 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 					SubstanceUse: itchio.CategoryFilter{
 						Enabled:  cfg.Filter.SubstanceUse.Enabled,
 						Disabled: cfg.Filter.SubstanceUse.Disabled,
-					},
-					SexualContent: itchio.CategoryFilter{
-						Enabled:  cfg.Filter.SexualContent.Enabled,
-						Disabled: cfg.Filter.SexualContent.Disabled,
 					},
 				},
 			)

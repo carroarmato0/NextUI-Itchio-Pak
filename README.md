@@ -13,9 +13,9 @@ required.
 > or endorsed by itch.io.
 
 > **Content filters:** Built-in filters let you block or flag game detail pages
-> by theme — mature content, LGBTQ+ content, heavy themes, substance use, and
-> suggestive content. Mature Content is on by default; others are opt-in. See
-> [Content Filters](#content-filters) for details and limitations.
+> by theme — adult content, queer content, heavy themes, and substance use.
+> Adult Content, Heavy Themes, and Substance Use are on by default; Queer Content
+> is opt-in. See [Content Filters](#content-filters) for details and limitations.
 
 ---
 
@@ -54,13 +54,14 @@ required.
 - On download failure, a QR code is shown so you can try from a browser
 
 ### Content filters
-- **Mature Content** is **on by default**; all other filters are opt-in.
-- **Mature Content** — blocks explicit adult content. Single on/off toggle.
-- **LGBTQ+ Content** — per-tag filter for LGBTQ+ themes and representation.
+- **Adult Content**, **Heavy Themes**, and **Substance Use** are **on by default**.
+  **Queer Content** is opt-in (off by default).
+- **Adult Content** — per-tag filter covering explicit and suggestive content
+  (nudity, gore, innuendo, and similar).
+- **Queer Content** — per-tag filter for LGBTQ+ themes and representation.
 - **Heavy Themes** — per-tag filter for potentially distressing narrative topics
   (grief, loss, suicide, trauma, abuse, and similar).
 - **Substance Use** — single toggle for drug and alcohol themes.
-- **Sexual Content** — single toggle for suggestive but non-explicit content.
 - When a filter triggers, a full-screen **Content Warning** cover replaces the
   detail view. Press **B** to go back or **Start** to open Settings and adjust
   your filters.
@@ -70,11 +71,10 @@ required.
 - **API Key** — store your itch.io API key for paid game access (masked in the UI)
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **Clear Image Cache** — removes cached cover art from `/tmp`
-- **Mature Content** — block explicit adult content (default: on)
-- **LGBTQ+ Content** — filter LGBTQ+ tags with per-tag control (default: off)
-- **Heavy Themes** — filter distressing narrative themes with per-tag control (default: off)
-- **Substance Use** — filter drug and alcohol themes (default: off)
-- **Sexual Content** — filter suggestive non-explicit content (default: off)
+- **Adult Content** — filter explicit and suggestive content with per-tag control (default: on)
+- **Queer Content** — filter LGBTQ+ tags with per-tag control (default: off)
+- **Heavy Themes** — filter distressing narrative themes with per-tag control (default: on)
+- **Substance Use** — filter drug and alcohol themes (default: on)
 
 ### Controls
 
@@ -152,16 +152,16 @@ your filters.
 Press **Start** from any screen to open **Settings**, then scroll to the content
 filter section. Each category can be toggled independently:
 
-- **Mature Content** — covers explicit adult content. Defaults to **on**.
-- **LGBTQ+ Content** — covers LGBTQ+ themes and representation. Supports
+- **Adult Content** — covers explicit adult content and suggestive material
+  (nudity, gore, innuendo, and similar). Supports per-tag control.
+  Defaults to **on**.
+- **Queer Content** — covers LGBTQ+ themes and representation. Supports
   per-tag control so you can allow some topics while filtering others.
   Defaults to **off**.
 - **Heavy Themes** — covers potentially distressing narrative content: grief,
   loss, suicide, trauma, abuse, and similar. Supports per-tag control.
-  Defaults to **off**.
-- **Substance Use** — covers drug and alcohol themes. Defaults to **off**.
-- **Sexual Content** — covers suggestive but non-explicit content. Defaults
-  to **off**.
+  Defaults to **on**.
+- **Substance Use** — covers drug and alcohol themes. Defaults to **on**.
 
 The specific tags covered by each category are listed and togglable directly
 in the Settings screen on the device.
