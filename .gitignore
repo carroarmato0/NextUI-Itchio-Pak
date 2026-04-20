@@ -2,6 +2,7 @@
 dist/
 
 # SDL2 shared libraries extracted at build time
+# (tg5050 shares lib/tg5040/ — there is no lib/tg5050/ directory)
 lib/tg5040/*.so*
 lib/my355/*.so*
 

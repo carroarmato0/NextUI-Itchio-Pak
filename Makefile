@@ -44,3 +44,4 @@ debug-run:
 
 clean:
 	rm -rf bin/ dist/ coverage.out coverage.html debug-cache/
+	$(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker) rmi itchio-pak-dev 2>/dev/null || true
