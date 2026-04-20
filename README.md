@@ -12,9 +12,10 @@ required.
 > **Disclaimer:** This is an unofficial community project, not affiliated with
 > or endorsed by itch.io.
 
-> **Parental advisory:** A built-in content filter blocks game detail pages that
-> contain known mature or sensitive tags. It is enabled by default. See
-> [Parental Controls](#parental-controls) for details and limitations.
+> **Content filters:** Built-in filters let you block or flag game detail pages
+> by theme — mature content, LGBTQ+ content, heavy themes, substance use, and
+> suggestive content. Mature Content is on by default; others are opt-in. See
+> [Content Filters](#content-filters) for details and limitations.
 
 ---
 
@@ -52,21 +53,28 @@ required.
   - `.gbc` → `Roms/Game Boy Color (GBC)/`
 - On download failure, a QR code is shown so you can try from a browser
 
-### Parental advisory
-- Both filters are **enabled by default** — no setup required out of the box.
-- **Mature Content filter** — blocks detail pages tagged with explicit adult content. ON/OFF toggle.
-- **Sensitive Topics filter** — blocks detail pages tagged with potentially sensitive topics.
-  Individual tags can be enabled or disabled independently for fine-grained control.
-- When a filter triggers, a full-screen "Grown-Ups Only" cover replaces the detail view. Only
-  **B** (go back) is available — there is no in-game bypass.
-- A parent or guardian can adjust the filters in **Settings** (press Start from any screen).
+### Content filters
+- **Mature Content** is **on by default**; all other filters are opt-in.
+- **Mature Content** — blocks explicit adult content. Single on/off toggle.
+- **LGBTQ+ Content** — per-tag filter for LGBTQ+ themes and representation.
+- **Heavy Themes** — per-tag filter for potentially distressing narrative topics
+  (grief, loss, suicide, trauma, abuse, and similar).
+- **Substance Use** — single toggle for drug and alcohol themes.
+- **Sexual Content** — single toggle for suggestive but non-explicit content.
+- When a filter triggers, a full-screen **Content Warning** cover replaces the
+  detail view. Press **B** to go back or **Start** to open Settings and adjust
+  your filters.
+- Filters are configured in **Settings** (press Start from any screen).
 
 ### Settings
 - **API Key** — store your itch.io API key for paid game access (masked in the UI)
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **Clear Image Cache** — removes cached cover art from `/tmp`
-- **Mature Content** — enable or disable the mature content filter
-- **Sensitive Topics** — enable or disable the sensitive topics filter (with per-tag control)
+- **Mature Content** — block explicit adult content (default: on)
+- **LGBTQ+ Content** — filter LGBTQ+ tags with per-tag control (default: off)
+- **Heavy Themes** — filter distressing narrative themes with per-tag control (default: off)
+- **Substance Use** — filter drug and alcohol themes (default: off)
+- **Sexual Content** — filter suggestive non-explicit content (default: off)
 
 ### Controls
 
@@ -128,50 +136,52 @@ To download paid games you already own, enter your itch.io API key in the
 
 ---
 
-## Parental Controls
+## Content Filters
 
-The pak includes a built-in parental advisory system. Both filters are **enabled by default** —
-no configuration is needed for basic protection. When a game's detail page contains tags from
-a configured filter category, a full-screen warning replaces the detail view. The child can only
-press **B** to go back; there is no in-game bypass.
+The pak includes a built-in content filter system. Filters are useful for anyone
+who wants to be aware of — or avoid — specific themes before opening a game,
+whether that is a parent managing what their child encounters, or an adult who
+prefers not to encounter certain content unexpectedly.
 
-### How it works
+When a game's tags match an active filter, a **Content Warning** screen replaces
+the detail view. Press **B** to go back, or **Start** to open Settings and adjust
+your filters.
 
-itch.io's RSS feed contains no content rating information. Tags are scraped directly from each
-game's detail page at the moment it is opened. This means filtering applies when a game is
-viewed, not before — the game list itself is always shown unfiltered.
+### Configuring filters
 
-### Configuring the filters
+Press **Start** from any screen to open **Settings**, then scroll to the content
+filter section. Each category can be toggled independently:
 
-Press **Start** from any screen to open **Settings**, then scroll to the parental advisory
-section:
+- **Mature Content** — covers explicit adult content. Defaults to **on**.
+- **LGBTQ+ Content** — covers LGBTQ+ themes and representation. Supports
+  per-tag control so you can allow some topics while filtering others.
+  Defaults to **off**.
+- **Heavy Themes** — covers potentially distressing narrative content: grief,
+  loss, suicide, trauma, abuse, and similar. Supports per-tag control.
+  Defaults to **off**.
+- **Substance Use** — covers drug and alcohol themes. Defaults to **off**.
+- **Sexual Content** — covers suggestive but non-explicit content. Defaults
+  to **off**.
 
-- **Mature Content** — a single toggle covering explicit adult content. Most families will want
-  to leave this on.
-- **Sensitive Topics** — a toggle with per-tag control. This category covers topics that are
-  not inherently inappropriate — games with these tags are often entirely wholesome — but where
-  a parent may want to be the one to introduce the subject to their child, in their own time and
-  context, rather than having it come up unexpectedly in a game. Individual tags can be enabled
-  or disabled independently, so a parent can make that choice on a topic-by-topic basis.
-
-The specific tags covered by each category are listed and togglable directly in the Settings
-screen on the device.
+The specific tags covered by each category are listed and togglable directly
+in the Settings screen on the device.
 
 ### Limitations
 
-> **This is not a bulletproof solution.** Parents should be aware of the following:
+> **Filtering is best-effort, not comprehensive.** Be aware of the following:
 
-- **Tag-based, not rating-based** — itch.io has no machine-readable content rating system.
-  Filtering relies entirely on tags that game creators choose to apply. A creator can omit tags
-  or use non-standard wording, causing content to slip through undetected.
-- **Scrape-time only** — tags are fetched when a game detail page is opened. The game list
-  is always shown in full; cover art alone may hint at content.
-- **Curated tag list** — the filter covers known tags but the list is not exhaustive. New or
-  unusual tags will not be caught until a future app update adds them.
-- **No PIN protection** — the Settings screen is accessible to anyone who presses Start. A
-  determined older child may discover that the filter can be toggled off. The advisory screen
-  deliberately gives no hint of this to minimise curiosity.
-- **No substitute for supervision** — parental involvement remains the most effective safeguard.
+- **Tag-based only** — itch.io has no machine-readable content rating system.
+  Filtering relies entirely on tags that game creators choose to apply. A
+  creator can omit tags or use non-standard wording, and content will not be
+  caught.
+- **Scrape-time only** — tags are fetched when a game's detail page is opened.
+  The game list is always unfiltered; cover art alone may hint at content.
+- **Curated tag list** — the filter covers known tags but the list is not
+  exhaustive. New or community-specific tags may not be included until a
+  future update.
+- **No substitute for awareness** — filters reduce unexpected encounters but
+  cannot guarantee coverage. When in doubt, check the game's itch.io page
+  directly.
 
 ---
 
