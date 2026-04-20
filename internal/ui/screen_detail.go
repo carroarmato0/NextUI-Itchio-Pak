@@ -5,6 +5,7 @@ package ui
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -26,6 +27,7 @@ type DetailScreen struct {
 	scrollY       int32 // vertical scroll offset for content area
 	contentHeight int32 // total content height (computed during Draw)
 	viewportH     int32 // visible content area height (set during Draw)
+	advisoryTriggered bool // true when a filter match is found after loading
 
 	// Held-button auto-repeat state for scrolling
 	heldDir    int       // -1 = up, +1 = down, 0 = none
@@ -59,6 +61,14 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 		s.detail = d
 		s.err = err
 		s.loading = false
+		if d != nil && err == nil {
+			s.advisoryTriggered = itchio.IsAdvisoryTriggered(
+				d.PageTags,
+				cfg.Parental.MatureEnabled,
+				cfg.Parental.SensitiveEnabled,
+				cfg.Parental.SensitiveDisabled,
+			)
+		}
 	}()
 	return s
 }
@@ -81,6 +91,14 @@ func (s *DetailScreen) processAutoScroll() {
 
 func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	s.processAutoScroll()
+
+	// ── Parental advisory overlay ────────────────────────────
+	if !s.loading && s.err == nil && s.advisoryTriggered {
+		s.drawAdvisoryOverlay(r)
+		r.Present()
+		return
+	}
+
 	r.Clear(colorBG, colorBG, colorBG)
 
 	// ── Header ──────────────────────────────────────────────
@@ -196,6 +214,17 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	y += 30
 
+	// ── Tags ────────────────────────────────────────────────
+	if s.detail != nil && len(s.detail.PageTags) > 0 {
+		tagLine := "Tags: " + strings.Join(s.detail.PageTags, ", ")
+		_, lineH := r.TextSize("Ag")
+		if lineH < 20 {
+			lineH = 20
+		}
+		tagsH := r.DrawWrappedText(tagLine, margin, y, usableW, lineH+2, 120, 180, 220)
+		y += tagsH + 8
+	}
+
 	// ── Description (full width) ────────────────────────────
 	if s.detail != nil && s.detail.Description != "" {
 		y += 10
@@ -222,6 +251,35 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	r.DrawText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, r.H-24, 140, 140, 140)
 	r.Present()
+}
+
+// drawAdvisoryOverlay renders the full-screen parental advisory cover.
+// Only B (go back) is available — Start is suppressed.
+func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
+	r.Clear(colorBG, colorBG, colorBG)
+
+	cy := r.H / 2
+
+	r.DrawTextCentered("[!]", 0, cy-90, r.W, 240, 180, 60)
+	r.DrawTextCentered("Grown-Ups Only", 0, cy-54, r.W, 240, 180, 60)
+
+	r.DrawRect(r.W/4, cy-28, r.W/2, 1, 60, 60, 60)
+
+	_, lh := r.TextSize("Ag")
+	if lh < 20 {
+		lh = 20
+	}
+	r.DrawWrappedText(
+		"This game may have content that is not suitable for all ages.",
+		r.W/8, cy-16, r.W*3/4, lh+2, 180, 180, 180,
+	)
+	r.DrawWrappedText(
+		"Please ask a parent or guardian before continuing.",
+		r.W/8, cy-16+lh+6, r.W*3/4, lh+2, 180, 180, 180,
+	)
+
+	r.DrawRect(r.W/4, cy+60, r.W/2, 1, 60, 60, 60)
+	r.DrawTextCentered("B  Go back", 0, cy+72, r.W, 180, 80, 80)
 }
 
 // drawQR renders the QR code centered within the given box.
@@ -314,7 +372,9 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_RETURN:
 			return s.startDownload()
 		case sdl.K_s:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			if !s.advisoryTriggered {
+				return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			}
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -350,7 +410,9 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_B:
 			return s.startDownload()
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			if !s.advisoryTriggered {
+				return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			}
 		}
 	case *sdl.QuitEvent:
 		return nil
