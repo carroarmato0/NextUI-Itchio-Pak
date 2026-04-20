@@ -5,6 +5,7 @@ package ui
 import (
 	"os"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
@@ -37,13 +38,13 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 	r.DrawText("Settings", 20, 20, colorText, colorText, colorText)
 
-	matureLabel := "Mature Content: OFF"
+	matureLabel := "Mature Content: Allowed"
 	if s.cfg.Parental.MatureEnabled {
-		matureLabel = "Mature Content: ON"
+		matureLabel = "Mature Content: Blocked"
 	}
-	sensitiveLabel := "Sensitive Topics: OFF >"
-	if s.cfg.Parental.SensitiveEnabled {
-		sensitiveLabel = "Sensitive Topics: ON  >"
+	sensitiveLabel := "Sensitive Topics: Allowed >"
+	if s.cfg.Parental.SensitiveEnabled && sensitiveHasActiveTag(s.cfg) {
+		sensitiveLabel = "Sensitive Topics: Filtered >"
 	}
 
 	items := []string{
@@ -129,6 +130,28 @@ func (s *SettingsScreen) activate() Screen {
 		return NewSensitiveTagsScreen(s.cfg, s.cfgPath, s)
 	}
 	return s
+}
+
+// sensitiveHasActiveTag reports whether at least one sensitive tag is currently
+// being filtered (i.e. SensitiveEnabled is true and at least one tag is not
+// individually disabled).
+func sensitiveHasActiveTag(cfg *settings.Config) bool {
+	if !cfg.Parental.SensitiveEnabled {
+		return false
+	}
+	for _, tag := range itchio.SensitiveTags {
+		found := false
+		for _, d := range cfg.Parental.SensitiveDisabled {
+			if d == tag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true
+		}
+	}
+	return false
 }
 
 func maskKey(key string) string {

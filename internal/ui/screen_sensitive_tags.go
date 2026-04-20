@@ -37,18 +37,30 @@ func (s *SensitiveTagsScreen) isTagEnabled(tag string) bool {
 	return true
 }
 
+// anyTagEnabled reports whether at least one sensitive tag is not individually
+// disabled — i.e. whether the filter would actually block anything.
+func (s *SensitiveTagsScreen) anyTagEnabled() bool {
+	for _, tag := range itchio.SensitiveTags {
+		if s.isTagEnabled(tag) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *SensitiveTagsScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 	r.DrawText("Sensitive Topics", 20, 20, colorText, colorText, colorText)
 
 	// Row 0 — master toggle
+	// "All: Filtered" only when the master is on AND at least one tag is active.
 	y := int32(80)
 	if s.cursor == 0 {
 		r.DrawRect(0, y-4, r.W, 36, colorHighlight, colorHighlight, colorHighlight+20)
 	}
-	allLabel := "All: OFF"
-	if s.cfg.Parental.SensitiveEnabled {
-		allLabel = "All: ON"
+	allLabel := "All: Allowed"
+	if s.cfg.Parental.SensitiveEnabled && s.anyTagEnabled() {
+		allLabel = "All: Filtered"
 	}
 	r.DrawText(allLabel, 20, y, colorText, colorText, colorText)
 
@@ -58,9 +70,9 @@ func (s *SensitiveTagsScreen) Draw(r *renderer.Renderer) {
 		if s.cursor == i+1 {
 			r.DrawRect(0, y-4, r.W, 36, colorHighlight, colorHighlight, colorHighlight+20)
 		}
-		state := "OFF"
+		state := "Allowed"
 		if s.cfg.Parental.SensitiveEnabled && s.isTagEnabled(tag) {
-			state = "ON"
+			state = "Blocked"
 		}
 		r.DrawText("  "+tag+": "+state, 20, y, colorText, colorText, colorText)
 	}
