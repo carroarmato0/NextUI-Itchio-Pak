@@ -18,10 +18,27 @@ func runSDL() {
 	cfg, _ := settings.Load(cfgPath)
 
 	// Pre-init SDL2 to detect display resolution before creating the window.
-	// renderer.New will call sdl.Init again, which is idempotent.
-	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
+	// Include JOYSTICK + GAMECONTROLLER so the device's physical buttons are
+	// delivered as ControllerButtonEvents (the device SDL2 has built-in
+	// mappings for TrimUI/Miyoo hardware). renderer.New will call sdl.Init
+	// again — that is idempotent.
+	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_JOYSTICK | sdl.INIT_GAMECONTROLLER); err != nil {
 		log.Fatalf("sdl pre-init: %v", err)
 	}
+
+	// Open all connected game controllers so button events are delivered.
+	for i := 0; i < sdl.NumJoysticks(); i++ {
+		if sdl.IsGameController(i) {
+			if gc := sdl.GameControllerOpen(i); gc != nil {
+				defer gc.Close()
+			}
+		} else {
+			if js := sdl.JoystickOpen(i); js != nil {
+				defer js.Close()
+			}
+		}
+	}
+
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
 		w, h = dm.W, dm.H
@@ -42,6 +59,9 @@ func runSDL() {
 	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache)
 
 	for current != nil {
+		// Upload any images that background goroutines finished fetching.
+		cache.ProcessPending(r)
+
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
 			current = current.HandleEvent(e)
 			if current == nil {

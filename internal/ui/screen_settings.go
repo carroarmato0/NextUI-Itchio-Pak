@@ -87,9 +87,9 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_A:
-			return s.activate()
 		case sdl.CONTROLLER_BUTTON_B:
+			return s.activate()
+		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
 		}
 	case *sdl.QuitEvent:

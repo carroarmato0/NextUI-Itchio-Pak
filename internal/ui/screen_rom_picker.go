@@ -80,11 +80,11 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_A:
+		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.uploads) {
 				return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.uploads[s.cursor], s.prev)
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
 		}
 	case *sdl.QuitEvent:
