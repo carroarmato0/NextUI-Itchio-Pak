@@ -6,8 +6,10 @@ import (
 )
 
 type Upload struct {
-	Filename string
-	URL      string
+	Filename      string
+	URL           string
+	UploadID      string // itch.io upload ID (API-based paid download)
+	DownloadKeyID string // itch.io download key ID (API-based paid download)
 }
 
 func ScoreUpload(filename string) int {

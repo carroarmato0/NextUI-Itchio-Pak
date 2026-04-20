@@ -52,17 +52,14 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			atomic.StoreInt64(&s.total, total)
 		}
 
-		itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
 		var err error
 
-		if cfg.APIKey != "" && detail != nil && detail.GameID != "" {
-			owns, oErr := client.CheckOwnership(cfg.APIKey, detail.GameID)
-			if oErr == nil && owns {
-				err = client.DownloadAuth(cfg.APIKey, itchUpload, dest, progress)
-			} else {
-				err = client.DownloadFree(game.URL, itchUpload, dest, progress)
-			}
+		if upload.DownloadKeyID != "" {
+			// Paid game: use the API-based auth download path.
+			err = client.DownloadAuthUpload(cfg.APIKey, upload.UploadID, upload.DownloadKeyID, dest, progress)
 		} else {
+			// Free game: use the CSRF scraping download path.
+			itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
 			err = client.DownloadFree(game.URL, itchUpload, dest, progress)
 		}
 

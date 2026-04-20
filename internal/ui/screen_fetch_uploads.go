@@ -49,19 +49,49 @@ func NewFetchUploadsScreen(
 		state: fetchLoading,
 	}
 	go func() {
-		itchUploads, err := client.FetchUploads(game.URL)
-		if err != nil {
-			s.err = err
-			s.state = fetchError
-		} else {
-			for _, u := range itchUploads {
-				s.uploads = append(s.uploads, roms.Upload{Filename: u.Filename, URL: u.URL})
-			}
-			if len(s.uploads) == 0 {
-				s.err = fmt.Errorf("no .gb or .gbc files found for this game")
+		var err error
+
+		useAuthPath := !game.IsFree && cfg.APIKey != "" &&
+			detail != nil && detail.GameID != ""
+
+		if useAuthPath {
+			// Paid game owned by the user — use the itch.io API.
+			authUploads, downloadKeyID, authErr := client.FetchAuthUploads(cfg.APIKey, detail.GameID)
+			if authErr != nil {
+				s.err = authErr
 				s.state = fetchError
 			} else {
-				s.state = fetchDone
+				for _, u := range authUploads {
+					s.uploads = append(s.uploads, roms.Upload{
+						Filename:      u.Filename,
+						UploadID:      u.UploadID,
+						DownloadKeyID: downloadKeyID,
+					})
+				}
+				if len(s.uploads) == 0 {
+					s.err = fmt.Errorf("no .gb or .gbc files found for this game")
+					s.state = fetchError
+				} else {
+					s.state = fetchDone
+				}
+			}
+		} else {
+			// Free game — use the CSRF scraping path.
+			itchUploads, freeErr := client.FetchUploads(game.URL)
+			err = freeErr
+			if err != nil {
+				s.err = err
+				s.state = fetchError
+			} else {
+				for _, u := range itchUploads {
+					s.uploads = append(s.uploads, roms.Upload{Filename: u.Filename, URL: u.URL})
+				}
+				if len(s.uploads) == 0 {
+					s.err = fmt.Errorf("no .gb or .gbc files found for this game")
+					s.state = fetchError
+				} else {
+					s.state = fetchDone
+				}
 			}
 		}
 		// Wake up the SDL event loop so HandleEvent fires immediately.
