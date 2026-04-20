@@ -60,7 +60,6 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 		}
 		s.detail = d
 		s.err = err
-		s.loading = false
 		if d != nil && err == nil {
 			s.advisoryTriggered = itchio.IsAdvisoryTriggered(
 				d.PageTags,
@@ -69,6 +68,7 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 				cfg.Parental.SensitiveDisabled,
 			)
 		}
+		s.loading = false  // publish last — renderer sees consistent state
 	}()
 	return s
 }
