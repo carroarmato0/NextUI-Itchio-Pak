@@ -68,7 +68,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	_, fontH := r.TextSize("Ag")
 	rowH := fontH + 14
 	items := []string{
-		"API Key: " + maskKey(s.cfg.APIKey),
+		"API Key: ",
 		"ROM Selection: " + s.cfg.ROMSelection,
 		"Clear Image Cache",
 		"Content Moderation >",
@@ -81,6 +81,16 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 		r.DrawText(label, 20, y, colorText, colorText, colorText)
+
+		// API Key row: append status in a distinct colour.
+		if settingsItem(i) == sItemAPIKey {
+			labelW, _ := r.TextSize(label)
+			if s.cfg.APIKey != "" {
+				r.DrawText("FOUND", 20+labelW, y, 80, 200, 80)
+			} else {
+				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
+			}
+		}
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
@@ -192,12 +202,3 @@ func (s *SettingsScreen) activate() Screen {
 	return s
 }
 
-func maskKey(key string) string {
-	if key == "" {
-		return "(not set)"
-	}
-	if len(key) <= 4 {
-		return "****"
-	}
-	return key[:4] + "****"
-}
