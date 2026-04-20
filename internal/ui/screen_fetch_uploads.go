@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -53,6 +54,11 @@ func NewFetchUploadsScreen(
 
 		useAuthPath := !game.IsFree && cfg.APIKey != "" &&
 			detail != nil && detail.GameID != ""
+		log.Printf("FetchUploads: isFree=%v apiKey=%v detailNil=%v gameID=%q useAuthPath=%v",
+			game.IsFree, cfg.APIKey != "", detail == nil, func() string {
+				if detail != nil { return detail.GameID }
+				return "<nil>"
+			}(), useAuthPath)
 
 		if useAuthPath {
 			// Paid game owned by the user — use the itch.io API.
@@ -103,36 +109,41 @@ func NewFetchUploadsScreen(
 func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
-	headerH := int32(56)
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	title := s.game.Title
-	if len(title) > 50 {
-		title = title[:47] + "..."
-	}
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawText("by "+s.game.Author, 12, 32, 140, 140, 140)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	footerH := int32(40)
+	_, mainFH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	headerH := mainFH + smallFH + 16
 
-	mid := r.H / 2
+	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
+	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	title := truncateToWidth(r, s.game.Title, r.W-24)
+	r.DrawText(title, 12, 8, colorText, colorText, colorText)
+	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, 140, 140, 140)
+
+	contentTop := headerH + 6
+	contentH := r.H - headerH - footerH
+	mid := contentTop + contentH/2
 
 	switch s.state {
 	case fetchLoading:
-		r.DrawText("Finding available files...", 20, mid-10, colorText, colorText, colorText)
-		r.DrawText("B: cancel", 10, r.H-24, 140, 140, 140)
+		r.DrawTextCentered("Finding available files...", 0, mid-mainFH/2, r.W, colorText, colorText, colorText)
 
 	case fetchError:
-		r.DrawText("Could not fetch files:", 20, mid-30, 200, 60, 60)
+		r.DrawText("Could not fetch files:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
 		msg := s.err.Error()
-		if len(msg) > 70 {
-			msg = msg[:67] + "..."
-		}
-		r.DrawText(msg, 20, mid, 200, 100, 100)
-		r.DrawText("B: back", 10, r.H-24, 140, 140, 140)
+		r.DrawWrappedText(msg, 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
 
 	case fetchDone:
 		// Handled by transitioning in HandleEvent / next Draw cycle below
 	}
 
+	ftrY := r.DrawFooterBar(footerH)
+	switch s.state {
+	case fetchLoading:
+		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
+	default:
+		r.DrawSmallText("A / B: back", 10, ftrY, 140, 140, 140)
+	}
 	r.Present()
 }
 

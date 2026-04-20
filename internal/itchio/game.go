@@ -29,8 +29,11 @@ type Upload struct {
 }
 
 var (
-	// itch:path meta tag: <meta name="itch:path" content="games/850892" />
-	gameIDRegex = regexp.MustCompile(`name="itch:path"\s+content="games/(\d+)"`)
+	// itch:path meta tag — attribute order varies across pages, so we match
+	// the whole <meta> element containing "itch:path" and extract the game ID
+	// from its content attribute in a second pass.
+	gameIDTagRegex   = regexp.MustCompile(`<meta[^>]+itch:path[^>]+>`)
+	gameIDValueRegex = regexp.MustCompile(`content="games/(\d+)"`)
 	csrfRegex   = regexp.MustCompile(`name="csrf_token"\s+(?:content|value)="([^"]+)"`)
 	// tag links: <a href="https://itch.io/games/tag-horror">Horror</a>
 	// Capture the slug from the URL (e.g. "horror", "lgbtq") for reliable filter matching.
@@ -52,9 +55,12 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 
 	detail := &GameDetail{}
 
-	if m := gameIDRegex.FindStringSubmatch(s); len(m) > 1 {
-		detail.GameID = m[1]
+	if tag := gameIDTagRegex.FindString(s); tag != "" {
+		if m := gameIDValueRegex.FindStringSubmatch(tag); len(m) > 1 {
+			detail.GameID = m[1]
+		}
 	}
+	log.Printf("FetchGameDetail: gameID=%q", detail.GameID)
 	if m := csrfRegex.FindStringSubmatch(s); len(m) > 1 {
 		detail.CSRFToken = m[1]
 	}

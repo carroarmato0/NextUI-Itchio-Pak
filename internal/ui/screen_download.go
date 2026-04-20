@@ -76,44 +76,79 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 
 func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
-	r.DrawText("Downloading: "+s.game.Title, 20, 30, colorText, colorText, colorText)
-	r.DrawText(s.upload.Filename, 20, 65, 160, 160, 160)
+
+	footerH := int32(40)
+	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	headerH := fontH + smallFH + 16
+	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
+	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	title := truncateToWidth(r, s.game.Title, r.W-24)
+	r.DrawText(title, 12, 8, colorText, colorText, colorText)
+	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, 140, 140, 140)
+
+	contentTop := headerH + 10
+	contentH := r.H - headerH - footerH
 
 	switch s.state {
 	case dlDownloading:
 		dl := atomic.LoadInt64(&s.downloaded)
 		tot := atomic.LoadInt64(&s.total)
+		mid := headerH + contentH/2
+		r.DrawSmallText(s.upload.Filename, 20, contentTop+4, 160, 160, 160)
 		barW := r.W - 80
-		r.DrawRect(40, r.H/2-10, barW, 20, 60, 60, 60)
+		r.DrawRect(40, mid-10, barW, 20, 60, 60, 60)
 		if tot > 0 {
 			filled := int32(float64(barW) * float64(dl) / float64(tot))
-			r.DrawRect(40, r.H/2-10, filled, 20, 80, 200, 80)
+			r.DrawRect(40, mid-10, filled, 20, 80, 200, 80)
 			r.DrawText(fmt.Sprintf("%d%%  (%s / %s)", dl*100/tot, humanBytes(dl), humanBytes(tot)),
-				40, r.H/2+20, colorText, colorText, colorText)
+				40, mid+18, colorText, colorText, colorText)
 		} else {
-			r.DrawRect(40, r.H/2-10, barW/3, 20, 80, 200, 80)
-			r.DrawText(humanBytes(dl)+" downloaded", 40, r.H/2+20, colorText, colorText, colorText)
+			r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
+			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, colorText, colorText, colorText)
 		}
 
 	case dlDone:
-		r.DrawText("Download complete!", 20, r.H/2-20, 80, 200, 80)
-		r.DrawText("Saved to: "+s.dest, 20, r.H/2+10, 160, 160, 160)
-		r.DrawText("A or B: return to game list", 20, r.H/2+50, 140, 140, 140)
+		mid := headerH + contentH/2
+		r.DrawTextCentered("Download complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
+		r.DrawSmallTextCentered(s.upload.Filename, 0, mid+4, r.W, 160, 160, 160)
+		r.DrawSmallTextCentered("Saved to: "+s.dest, 0, mid+4+smallFH+4, r.W, 120, 120, 120)
 
 	case dlError:
-		r.DrawText("Download failed:", 20, r.H/2-40, 200, 60, 60)
+		// Layout from top of content area: error title, message, then QR centered
+		// in the remaining space with label below it.
+		y := contentTop + 8
+		r.DrawText("Download failed:", 20, y, 200, 60, 60)
+		y += fontH + 6
 		msg := s.err.Error()
-		if len(msg) > 80 {
-			msg = msg[:77] + "..."
+		msgH := r.DrawWrappedText(msg, 20, y, r.W-40, fontH+4, 200, 100, 100)
+		y += msgH + 16
+
+		// QR code: fill the remaining content area generously.
+		qrAreaBottom := r.H - footerH - 4
+		qrAreaH := qrAreaBottom - y
+		qrSize := qrAreaH - smallFH - 10 // leave room for label below
+		if qrSize > r.W*2/3 {
+			qrSize = r.W * 2 / 3
 		}
-		r.DrawText(msg, 20, r.H/2-10, 200, 100, 100)
-		r.DrawText("Scan QR to visit game page:", 20, r.H/2+30, 160, 160, 160)
-		tex, err := r.QRTexture(s.game.URL, 128)
+		if qrSize < 128 {
+			qrSize = 128
+		}
+		tex, err := r.QRTexture(s.game.URL, int(qrSize))
 		if err == nil && tex != nil {
-			r.DrawTextureAt(tex, r.W/2-64, r.H/2+60, 128, 128)
+			qrX := (r.W - qrSize) / 2
+			r.DrawTextureAt(tex, qrX, y, qrSize, qrSize)
 			tex.Destroy()
+			r.DrawSmallTextCentered("Scan to visit game page", 0, y+qrSize+4, r.W, 160, 160, 160)
 		}
-		r.DrawText("B: back", 20, r.H-24, 140, 140, 140)
+	}
+
+	ftrY := r.DrawFooterBar(footerH)
+	switch s.state {
+	case dlDownloading:
+		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
+	default:
+		r.DrawSmallText("A / B: back", 10, ftrY, 140, 140, 140)
 	}
 	r.Present()
 }

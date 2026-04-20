@@ -31,17 +31,34 @@ func NewROMPickerScreen(client *itchio.Client, cfg *settings.Config, cfgPath str
 
 func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
-	r.DrawText("Select ROM file to download:", 20, 20, colorText, colorText, colorText)
 
+	footerH := int32(40)
+	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	headerH := fontH + smallFH + 16
+
+	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
+	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	title := truncateToWidth(r, s.game.Title, r.W-24)
+	r.DrawText(title, 12, 8, colorText, colorText, colorText)
+	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, 140, 140, 140)
+
+	// Subheader label
+	contentTop := headerH + 10
+	r.DrawSmallText("Select file to download:", 20, contentTop, 180, 180, 180)
+	contentTop += smallFH + 10
+
+	rowH := fontH + 14
 	for i, u := range s.uploads {
-		y := int32(70 + i*40)
+		y := contentTop + int32(i)*rowH
 		if i == s.cursor {
-			r.DrawRect(0, y-4, r.W, 36, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 		r.DrawText(u.Filename, 20, y, colorText, colorText, colorText)
 	}
 
-	r.DrawText("A: select · B: back", 10, r.H-24, 140, 140, 140)
+	ftrY := r.DrawFooterBar(footerH)
+	r.DrawSmallText("B: select  |  A: back", 10, ftrY, 140, 140, 140)
 	r.Present()
 }
 

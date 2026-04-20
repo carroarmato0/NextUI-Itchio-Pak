@@ -3,46 +3,59 @@ package itchio
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 )
 
-// FetchAuthUploads lists .gb/.gbc uploads for a paid game the user owns,
-// using the itch.io REST API. Returns the uploads and the numeric download
-// key ID required to resolve CDN URLs.
+const apiItchIO = "https://api.itch.io"
+
+// FetchAuthUploads lists .gb/.gbc uploads for a paid game the user owns.
+//
+// Flow:
+//  1. GET api.itch.io/profile/owned-keys?game_id=GAME_ID  → buyer's download key ID
+//  2. GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=KEY_ID → upload list
 func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, error) {
-	// Step 1: get download key ID — proves ownership and is required for CDN resolution.
-	keysURL := fmt.Sprintf("%s/api/1/%s/game/%s/download_keys", c.base, apiKey, gameID)
-	resp, err := c.http.Get(keysURL)
+	// Step 1: get buyer's download key ID from the butler-style API.
+	// This endpoint requires Authorization: Bearer and returns the purchase key
+	// associated with the authenticated user's ownership of the game.
+	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
+	req, err := http.NewRequest("GET", keysURL, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("fetch download keys: %w", err)
+		return nil, "", fmt.Errorf("build owned-keys request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch owned keys: %w", err)
 	}
 	defer resp.Body.Close()
+
 	var keysResult struct {
-		DownloadKeys []struct {
+		OwnedKeys []struct {
 			ID int64 `json:"id"`
-		} `json:"download_keys"`
+		} `json:"owned_keys"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&keysResult); err != nil {
-		return nil, "", fmt.Errorf("decode download keys: %w", err)
+		return nil, "", fmt.Errorf("decode owned keys: %w", err)
 	}
-	if len(keysResult.DownloadKeys) == 0 {
+	if len(keysResult.OwnedKeys) == 0 {
 		return nil, "", fmt.Errorf("game not owned or API key invalid (no download key found)")
 	}
-	downloadKeyID := fmt.Sprintf("%d", keysResult.DownloadKeys[0].ID)
+	downloadKeyID := fmt.Sprintf("%d", keysResult.OwnedKeys[0].ID)
 	log.Printf("FetchAuthUploads: download_key_id=%s", downloadKeyID)
 
-	// Step 2: list uploads via the API.
-	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads", c.base, apiKey, gameID)
+	// Step 2: list uploads, passing the download key so itch.io grants access.
+	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
+		c.base, apiKey, gameID, downloadKeyID)
 	resp2, err := c.http.Get(uploadsURL)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch uploads: %w", err)
 	}
 	defer resp2.Body.Close()
+
 	var uploadsResult struct {
 		Uploads []struct {
 			ID       int64  `json:"id"`
@@ -67,12 +80,11 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	return uploads, downloadKeyID, nil
 }
 
-// DownloadAuthUpload resolves the CDN URL for an owned upload via the itch.io
-// API and streams it to dest.
+// DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
 func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string, progress func(int64, int64)) error {
 	dlURL := fmt.Sprintf("%s/api/1/%s/upload/%s/download?download_key_id=%s",
 		c.base, apiKey, uploadID, downloadKeyID)
-	log.Printf("DownloadAuthUpload: resolving CDN URL from %s", dlURL)
+	log.Printf("DownloadAuthUpload: resolving CDN URL from upload %s key %s", uploadID, downloadKeyID)
 
 	resp, err := c.http.Get(dlURL)
 	if err != nil {
@@ -98,86 +110,6 @@ func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string
 		return fmt.Errorf("empty CDN URL from auth resolver")
 	}
 
-	log.Printf("DownloadAuthUpload: streaming %s → %s", result.URL, dest)
+	log.Printf("DownloadAuthUpload: streaming to %s", dest)
 	return c.streamToFile(result.URL, dest, progress)
-}
-
-func (c *Client) CheckOwnership(apiKey, gameID string) (bool, error) {
-	url := fmt.Sprintf("%s/api/1/%s/game/%s/download_keys", c.base, apiKey, gameID)
-	resp, err := c.http.Get(url)
-	if err != nil {
-		return false, fmt.Errorf("check ownership: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return false, nil
-	}
-
-	var result struct {
-		DownloadKeys []struct {
-			ID int `json:"id"`
-		} `json:"download_keys"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, fmt.Errorf("decode ownership response: %w", err)
-	}
-	return len(result.DownloadKeys) > 0, nil
-}
-
-func (c *Client) DownloadAuth(apiKey string, upload Upload, dest string, progress func(int64, int64)) error {
-	req, err := http.NewRequest("GET", upload.URL, nil)
-	if err != nil {
-		return fmt.Errorf("build auth request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("auth download: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("not authorized (status %d) — check API key and game ownership", resp.StatusCode)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("auth download status %d", resp.StatusCode)
-	}
-
-	// Stream directly from the authenticated response body — do NOT call
-	// streamToFile(upload.URL, ...) which would issue a second unauthenticated GET.
-	dir := filepath.Dir(dest)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
-	}
-
-	f, err := os.Create(dest)
-	if err != nil {
-		return fmt.Errorf("create dest: %w", err)
-	}
-	defer f.Close()
-
-	total := resp.ContentLength
-	var downloaded int64
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				return fmt.Errorf("write: %w", werr)
-			}
-			downloaded += int64(n)
-			if progress != nil {
-				progress(downloaded, total)
-			}
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read stream: %w", err)
-		}
-	}
-	return nil
 }

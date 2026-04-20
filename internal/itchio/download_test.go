@@ -111,22 +111,48 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
-func TestCheckOwnership(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/1/mykey/game/12345/download_keys" {
-			w.Write([]byte(`{"download_keys":[{"id":1}]}`))
+func TestFetchAuthUploads(t *testing.T) {
+	// Intercept both api.itch.io (owned-keys) and itch.io (uploads).
+	// We override the client's base and also serve the owned-keys path on the
+	// same test server to avoid network calls.
+	mux := http.NewServeMux()
+
+	// Butler-style owned-keys endpoint (normally on api.itch.io).
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer mykey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		http.NotFound(w, r)
-	}))
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"owned_keys":[{"id":999}]}`))
+	})
+
+	// v1 uploads endpoint with download_key_id.
+	mux.HandleFunc("/api/1/mykey/game/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("download_key_id") != "999" {
+			http.Error(w, "bad key", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"uploads":[{"id":777,"filename":"game.gbc"},{"id":888,"filename":"manual.pdf"}]}`))
+	})
+
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := itchio.NewClientWithBase(srv.URL)
-	owns, err := c.CheckOwnership("mykey", "12345")
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	uploads, keyID, err := c.FetchAuthUploads("mykey", "12345")
 	if err != nil {
-		t.Fatalf("CheckOwnership: %v", err)
+		t.Fatalf("FetchAuthUploads: %v", err)
 	}
-	if !owns {
-		t.Error("expected owns=true")
+	if keyID != "999" {
+		t.Errorf("expected keyID=999, got %q", keyID)
+	}
+	// Only .gbc should be returned — .pdf must be filtered out.
+	if len(uploads) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(uploads))
+	}
+	if uploads[0].Filename != "game.gbc" || uploads[0].UploadID != "777" {
+		t.Errorf("unexpected upload: %+v", uploads[0])
 	}
 }

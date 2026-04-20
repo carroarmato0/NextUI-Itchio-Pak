@@ -42,12 +42,17 @@ The HTML page is scraped with regexes for:
 
 | Field | Source in HTML |
 |---|---|
-| Game ID | `<meta name="itch:path" content="games/NNNN">` |
+| Game ID | `<meta content="games/NNNN" name="itch:path">` |
 | CSRF token | `<meta name="csrf_token" value="...">` or `<input name="csrf_token" value="...">` |
 | Screenshots | `<img class="screenshot..." src="...">` |
 | Description | `<div class="formatted_description">...</div>` (converted to plain text) |
 
-The CSRF token extracted here is used in the download flow (Step 2 below).
+The CSRF token extracted here is used in the free download flow (Step 2 below).
+
+**Game ID extraction note:** itch.io places `content=` before `name=` in the
+`itch:path` meta element. The code uses a two-step approach — match the whole
+`<meta>` element containing `itch:path`, then extract the numeric ID from its
+`content` attribute — to be resilient to attribute ordering.
 
 ---
 
@@ -174,35 +179,80 @@ header is used to track progress.
 
 ## Paid game download (API key path)
 
-**Source:** `download_auth.go` — `DownloadAuth` / `CheckOwnership`
+**Source:** `download_auth.go` — `FetchAuthUploads` + `DownloadAuthUpload`
 
-**Status: incomplete.** The infrastructure exists but paid downloads are not
-yet functional end-to-end (see Known Limitations below).
+For paid games the user already owns, the pak uses a combination of the
+butler-style `api.itch.io` endpoint (to retrieve the buyer's download key)
+and the public v1 API (to list uploads and resolve CDN URLs). This path is
+taken automatically when all three conditions are true:
 
-For paid games, the user supplies an itch.io API key via the Settings screen.
+- `game.IsFree == false`
+- `cfg.APIKey != ""`
+- `detail.GameID != ""`
 
-**Ownership check** (`CheckOwnership`):
-
-```
-GET https://itch.io/api/1/{API_KEY}/game/{GAME_ID}/download_keys
-```
-
-Returns `{"download_keys": [...]}`. Non-empty list means the user owns the game.
-
-**Authenticated download** (`DownloadAuth`):
+### Step 1 — GET buyer's download key ID
 
 ```
-GET {UPLOAD_URL}
+GET https://api.itch.io/profile/owned-keys?game_id={GAME_ID}
 Authorization: Bearer {API_KEY}
 ```
 
-The `DownloadScreen` (`internal/ui/screen_download.go`) calls `CheckOwnership`
-and, if the user owns the game, dispatches to `DownloadAuth` instead of
-`DownloadFree`. However, this path is currently unreachable for paid games:
-`FetchUploads` (Step 2) fails before `DownloadScreen` is ever reached, because
-itch.io returns an empty URL in the `download_url` POST for games that require
-purchase. A complete paid path would need to use itch.io's authenticated upload
-API to obtain valid upload URLs independently of the free download flow.
+Response (JSON):
+
+```json
+{
+  "owned_keys": [
+    { "id": 153412711, "game_id": 4228927, "purchase_id": 35928998, ... }
+  ]
+}
+```
+
+The `id` field is the buyer's **download key ID** — a numeric identifier tied
+to their purchase. This is distinct from the API key. It is required to
+authenticate upload listing and CDN URL resolution in subsequent steps.
+
+If `owned_keys` is empty, the game is not owned by this user and an error
+is surfaced.
+
+**Why `api.itch.io` and not `itch.io/api/1/KEY/game/GAME_ID/download_keys`?**
+The v1 `download_keys` endpoint is a **creator** endpoint — it lists keys a
+game developer has issued to others. It returns `{"errors":["invalid game_id"]}`
+for any game the API key owner did not create. The butler-style
+`api.itch.io/profile/owned-keys` is the buyer-side equivalent.
+
+### Step 2 — List uploads
+
+```
+GET https://itch.io/api/1/{API_KEY}/game/{GAME_ID}/uploads?download_key_id={KEY_ID}
+```
+
+Returns all uploads for the game, authenticated by the download key. Only
+`.gb` and `.gbc` uploads are kept. The upload ID (`id` field) is stored
+on each `Upload` struct alongside the download key ID.
+
+### Step 3 — Resolve CDN URL
+
+```
+GET https://itch.io/api/1/{API_KEY}/upload/{UPLOAD_ID}/download?download_key_id={KEY_ID}
+```
+
+Response (JSON):
+
+```json
+{ "url": "https://itchio-mirror.{hash}.r2.cloudflarestorage.com/upload2/..." }
+```
+
+The signed CDN URL expires quickly (60 seconds). It is resolved immediately
+before streaming, not cached.
+
+### Step 4 — Stream file
+
+```
+GET {CDN_URL}
+```
+
+The file is streamed directly to the destination path on disk, identical to
+the free download flow. The `Content-Length` header drives the progress bar.
 
 ---
 
@@ -222,16 +272,26 @@ signed download page each issue their own token.
 ## Known limitations and fragility
 
 - **HTML scraping is brittle.** itch.io can change its page structure without
-  notice. The download button detection relies on `<div class="upload">`,
+  notice. The free download button detection relies on `<div class="upload">`,
   `<strong class="name">`, and `data-upload_id` — any of these changing would
-  break file listing.
+  break file listing for free games.
 
-- **No official API.** Everything in the free download path uses itch.io's
-  internal web API. It is undocumented and unsupported.
+- **No official free-download API.** Everything in the free download path uses
+  itch.io's internal web API. It is undocumented and unsupported.
 
 - **CSRF tokens expire.** If the user leaves the ROM picker open for a long
   time before selecting a file, the CSRF token from Step 4 may expire, causing
   the resolver to return `{"errors":["invalid key"]}`.
 
 - **`suggested_amount=0`** only works for truly free or PWYW games. A game
-  with a mandatory minimum price will return an empty URL in Step 2.
+  with a mandatory minimum price will return an empty URL in Step 2 of the free
+  flow — this is expected; those games use the paid API path instead.
+
+- **CDN URLs are short-lived.** The signed URL returned by Step 3 of the paid
+  path expires in ~60 seconds. The URL is resolved immediately before streaming
+  so this is not normally an issue, but a very slow or stalled connection could
+  cause it to expire mid-transfer.
+
+- **API key entry is not available in-app.** The Settings screen shows whether
+  an API key is configured but does not provide a keyboard for entering one.
+  The key must be set by editing `config.json` directly (see README).

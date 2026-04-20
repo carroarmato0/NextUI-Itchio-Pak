@@ -44,10 +44,11 @@ required.
 - QR code for every game — scan to open the itch.io page in a browser
 - Download button (A) — disabled for paid games when no API key is set
 
-### Downloading (free games)
-- Full free download flow without requiring an itch.io account
-- When a game has multiple `.gb`/`.gbc` files, a file picker is shown so you can choose
-- Progress bar with percentage and downloaded/total size
+### Downloading
+- Download free games without an itch.io account
+- Download paid games you already own using your itch.io API key
+- When a game has multiple `.gb`/`.gbc` files, a file picker is shown
+- Progress bar with live percentage and downloaded/total size
 - Files saved directly to the correct ROM folder:
   - `.gb` → `Roms/Game Boy (GB)/`
   - `.gbc` → `Roms/Game Boy Color (GBC)/`
@@ -68,13 +69,11 @@ required.
 - Filters are configured in **Settings** (press Start from any screen).
 
 ### Settings
-- **API Key** — store your itch.io API key for paid game access (masked in the UI)
+- **API Key** — shows `FOUND` (green) when an itch.io API key is configured, enabling paid game downloads
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **Clear Image Cache** — removes cached cover art from `/tmp`
-- **Adult Content** — filter explicit and suggestive content with per-tag control (default: on)
-- **Queer Content** — filter LGBTQ+ tags with per-tag control (default: off)
-- **Heavy Themes** — filter distressing narrative themes with per-tag control (default: on)
-- **Substance Use** — filter drug and alcohol themes (default: on)
+- **Content Moderation** — configure per-category content filters
+- **About** — app description, version, and QR code linking to the project page
 
 ### Controls
 
@@ -126,13 +125,41 @@ required.
 
 ---
 
-## Optional: itch.io API Key
+## itch.io API Key (paid games)
 
 Free games can be downloaded without any account or API key.
 
-To download paid games you already own, enter your itch.io API key in the
-**Settings** screen (press Start from any screen). Generate an API key at
-<https://itch.io/user/settings/api-keys>.
+To download paid games you already own, you need to configure your itch.io
+API key. The Settings screen shows **FOUND** (green) when a key is active.
+
+### Generating your API key
+
+1. Log in to itch.io in a browser.
+2. Go to <https://itch.io/user/settings/api-keys>.
+3. Click **Generate new API key** and copy the key.
+
+### Adding the key to the Pak
+
+The Pak does not include an on-screen keyboard, so the key is set by editing
+the config file directly. The easiest way is via ADB while your device is
+connected over USB:
+
+```sh
+# TrimUI Brick / Smart Pro (tg5040 / tg5050)
+adb shell 'cat > /mnt/SDCARD/.userdata/shared/Itch-io/config.json' << 'EOF'
+{
+  "api_key": "YOUR_API_KEY_HERE",
+  "rom_selection": "auto"
+}
+EOF
+```
+
+You can also copy the file to your SD card directly if you prefer not to use
+ADB. The config file is at `.userdata/shared/Itch-io/config.json` relative to
+the SD card root.
+
+Restart the Pak after saving — the Settings screen will show **API Key: FOUND**
+once the key is loaded.
 
 ---
 
@@ -187,11 +214,8 @@ in the Settings screen on the device.
 
 ## Known Limitations / To-Do
 
-- **Paid game download is not yet implemented.** The API key field and
-  ownership check exist, but the paid download path (which requires using
-  itch.io's authenticated upload API rather than the free web flow) is not
-  complete. Currently a paid game falls back to the free flow, which will fail
-  if the game has no free download available. Paid download support is planned.
+- **No in-app keyboard for API key entry.** The API key must be set by editing
+  `config.json` directly (see [itch.io API Key](#itch-io-api-key-paid-games)).
 
 - **`.pocket` and other non-ROM files** are filtered out — only `.gb` and
   `.gbc` files are shown.
@@ -200,8 +224,12 @@ in the Settings screen on the device.
   itch.io's default sort order.
 
 - **CSRF token expiry** — if the ROM picker is left open for a long time before
-  selecting a file, the resolver may reject the request. Simply back out and
+  selecting a file, the resolver may reject the request. Back out and
   re-initiate the download.
+
+- **Free download scraping is brittle** — itch.io can change its page structure
+  without notice, which would break the free download flow. The paid API path
+  is more stable.
 
 ---
 
