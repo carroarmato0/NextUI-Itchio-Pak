@@ -53,11 +53,10 @@ required.
 - On download failure, a QR code is shown so you can try from a browser
 
 ### Parental advisory
-- **Mature Content filter** — ON/OFF toggle. Blocks detail pages tagged with explicit adult content
-  (`adult`, `gore`, `hentai`, `nsfw`, `nudity`, `porn`, and similar). Default: ON.
-- **Sensitive Topics filter** — ON/OFF toggle with per-tag control. Blocks detail pages tagged
-  with potentially sensitive topics (`gay`, `gender`, `lesbian`, `lgbtq`, `sexy`, `transgender`).
-  Individual tags can be enabled or disabled independently. Default: all ON.
+- Both filters are **enabled by default** — no setup required out of the box.
+- **Mature Content filter** — blocks detail pages tagged with explicit adult content. ON/OFF toggle.
+- **Sensitive Topics filter** — blocks detail pages tagged with potentially sensitive topics.
+  Individual tags can be enabled or disabled independently for fine-grained control.
 - When a filter triggers, a full-screen "Grown-Ups Only" cover replaces the detail view. Only
   **B** (go back) is available — there is no in-game bypass.
 - A parent or guardian can adjust the filters in **Settings** (press Start from any screen).
@@ -131,16 +130,31 @@ To download paid games you already own, enter your itch.io API key in the
 
 ## Parental Controls
 
-The pak includes a built-in parental advisory system. When a game's detail page contains tags
-from the configured filter lists, a full-screen warning replaces the detail view. The child can
-only press **B** to go back — there is no way to continue without a parent disabling the filter
-in Settings.
+The pak includes a built-in parental advisory system. Both filters are **enabled by default** —
+no configuration is needed for basic protection. When a game's detail page contains tags from
+a configured filter category, a full-screen warning replaces the detail view. The child can only
+press **B** to go back; there is no in-game bypass.
 
 ### How it works
 
-Tags are **not available in itch.io's RSS feed**. They are scraped from each game's detail page
-when that game is opened. This means filtering only applies at the moment a game is viewed, not
-before. The game list itself is always unfiltered.
+itch.io's RSS feed contains no content rating information. Tags are scraped directly from each
+game's detail page at the moment it is opened. This means filtering applies when a game is
+viewed, not before — the game list itself is always shown unfiltered.
+
+### Configuring the filters
+
+Press **Start** from any screen to open **Settings**, then scroll to the parental advisory
+section:
+
+- **Mature Content** — a single toggle covering explicit adult content. Most families will want
+  to leave this on.
+- **Sensitive Topics** — a toggle with per-tag control. This category covers topics that may be
+  sensitive depending on family values but can appear in otherwise wholesome games (for example,
+  games with LGBTQ representation). A parent can enable or disable individual tags to match their
+  household's preferences, rather than blocking or allowing the entire category at once.
+
+The specific tags covered by each category are listed and togglable directly in the Settings
+screen on the device.
 
 ### Limitations
 
@@ -157,15 +171,6 @@ before. The game list itself is always unfiltered.
   determined older child may discover that the filter can be toggled off. The advisory screen
   deliberately gives no hint of this to minimise curiosity.
 - **No substitute for supervision** — parental involvement remains the most effective safeguard.
-
-### Filter categories
-
-| Category | Default | Tags covered |
-|---|---|---|
-| **Mature Content** | ON | `adult`, `boobs`, `eroge`, `erotic`, `femdom`, `gore`, `hentai`, `lewd`, `nsfw`, `nudity`, `porn`, `softcore`, `tits`, `titties`, `xxx`, `yaoi`, `yuri` |
-| **Sensitive Topics** | ON (all tags) | `gay`, `gender`, `lesbian`, `lgbtq`, `sexy`, `transgender` |
-
-Sensitive Topics supports per-tag control — a parent can allow some topics while blocking others.
 
 ---
 
