@@ -179,16 +179,15 @@ your filters.
 Press **Start** from any screen to open **Settings**, then scroll to the content
 filter section. Each category can be toggled independently:
 
-- **Adult Content** — covers explicit adult content and suggestive material
-  (nudity, gore, innuendo, and similar). Supports per-tag control.
-  Defaults to **on**.
-- **Queer Content** — covers LGBTQ+ themes and representation. Supports
-  per-tag control so you can allow some topics while filtering others.
-  Defaults to **off**.
+- **Adult Content** — covers explicit and suggestive material (nudity, gore,
+  innuendo, and similar). Supports per-tag control. Defaults to **on**.
 - **Heavy Themes** — covers potentially distressing narrative content: grief,
   loss, suicide, trauma, abuse, and similar. Supports per-tag control.
   Defaults to **on**.
 - **Substance Use** — covers drug and alcohol themes. Defaults to **on**.
+- **Queer Content** — covers LGBTQ+ themes and representation. Supports
+  per-tag control so you can allow some topics while filtering others.
+  Defaults to **off** (opt-in).
 
 The specific tags covered by each category are listed and togglable directly
 in the Settings screen on the device.
