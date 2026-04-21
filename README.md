@@ -93,10 +93,45 @@ required.
 
 ## Installation
 
-1. Download the latest `.pakz` file from the [Releases](../../releases) page.
-2. Extract the contents to the `Tools/` folder on your SD card.
-3. Boot into NextUI — the **Itch.io** tool will appear in the Tools menu.
-4. Connect to WiFi before launching (the pak fetches data from itch.io at runtime).
+There are two release files on the [Releases](../../releases) page. Both support
+all devices — the difference is the directory structure inside:
+
+| File | What's inside | Use when |
+|---|---|---|
+| `Itch-io.pak.zip` | Pak files only (no folder wrapper) | Pak Store install, or manual install where you place it in the right platform folder yourself |
+| `Itch-io.pakz` | Full `Tools/<platform>/Itch-io.pak/` tree | Manual install — extract to SD card root and all platforms are set up at once |
+
+### Via the Pak Store (recommended)
+
+Open the Pak Store on your device, find **Itch-io**, and press **A** to install.
+The Pak Store downloads and installs `Itch-io.pak.zip` automatically.
+
+### Manual install — `Itch-io.pak.zip`
+
+Use this if you want to install without the Pak Store and prefer to place files
+yourself.
+
+1. Download `Itch-io.pak.zip` from the [Releases](../../releases) page.
+2. Create the destination folder on your SD card for your device:
+   - TrimUI Brick / Smart Pro: `Tools/tg5040/Itch-io.pak/`
+   - TrimUI Smart Pro S: `Tools/tg5050/Itch-io.pak/`
+   - Miyoo Flip: `Tools/my355/Itch-io.pak/`
+3. Extract the contents of the zip **into** that folder (the folder should contain
+   `launch.sh`, `itchio-pak`, `pak.json`, etc. directly — not a nested subfolder).
+4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
+5. Connect to WiFi before launching.
+
+### Manual install — `Itch-io.pakz` (all platforms at once)
+
+Use this if you want to set up all supported platforms in one step, or if you
+are preparing an SD card that will be used across multiple device types.
+
+1. Download `Itch-io.pakz` from the [Releases](../../releases) page.
+2. Rename it to `Itch-io.pakz.zip` (most tools require a `.zip` extension to extract).
+3. Extract the contents directly to the **root** of your SD card. The archive
+   already contains the correct `Tools/<platform>/Itch-io.pak/` structure.
+4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
+5. Connect to WiFi before launching.
 
 ---
 

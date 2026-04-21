@@ -38,37 +38,36 @@ echo "==> Building all platforms..."
 
 echo "==> Assembling release artifacts..."
 rm -rf dist
+
+# All platforms share the same ARM64 binary; only the bundled SDL2 libs differ.
+# Ship one zip with platform libs in subdirectories; launch.sh detects the device.
+PAK_DIR="dist/Itch-io.pak"
+mkdir -p "$PAK_DIR/lib/tg5040" "$PAK_DIR/lib/my355" "$PAK_DIR/assets"
+
+cp bin/tg5040/itchio-pak "$PAK_DIR/itchio-pak"
+cp launch.sh             "$PAK_DIR/launch.sh"
+cp pak.json              "$PAK_DIR/pak.json"
+cp -r assets/.           "$PAK_DIR/assets/"
+
+# Copy platform SDL2 libs, dereferencing symlinks (-L) so FAT32 gets real files.
+# tg5040 libs also cover tg5050 (same hardware family).
+cp -L lib/tg5040/* "$PAK_DIR/lib/tg5040/" 2>/dev/null || true
+cp -L lib/my355/*  "$PAK_DIR/lib/my355/"  2>/dev/null || true
+
+# Single zip for the Pak Store — no top-level folder inside the zip because the
+# Pak Store creates the destination folder itself before extracting.
+cd "$PAK_DIR"
+zip -r ../Itch-io.pak.zip .
+cd - >/dev/null
+
+# .pakz for manual SD card installation (extract to SD root).
 mkdir -p dist/all/Tools
-
 for PLATFORM in tg5040 tg5050 my355; do
-    PAK_DIR="dist/$PLATFORM/Itch-io.pak"
-    mkdir -p "$PAK_DIR/lib" "$PAK_DIR/assets"
-
-    cp bin/"$PLATFORM"/itchio-pak "$PAK_DIR/itchio-pak"
-    cp launch.sh "$PAK_DIR/launch.sh"
-    cp pak.json "$PAK_DIR/pak.json"
-    cp -r assets/. "$PAK_DIR/assets/"
-
-    # Copy platform SDL2 libs, dereferencing symlinks (-L) so the SD card
-    # (FAT32) gets real files — FAT32 cannot store symlinks and adb push
-    # would otherwise copy them as tiny text files, causing "file too short".
-    case "$PLATFORM" in
-        tg5040|tg5050) cp -L lib/tg5040/* "$PAK_DIR/lib/" 2>/dev/null || true ;;
-        my355)          cp -L lib/my355/*  "$PAK_DIR/lib/" 2>/dev/null || true ;;
-    esac
-
-    cd dist/"$PLATFORM"
-    zip -r ../Itch-io.pak.zip Itch-io.pak
-    cd - >/dev/null
-
-    # Also copy into .pakz structure
     mkdir -p "dist/all/Tools/$PLATFORM"
     cp -r "$PAK_DIR" "dist/all/Tools/$PLATFORM/Itch-io.pak"
 done
-
-mkdir -p dist/all
 cd dist/all
-zip -r ../all/Itch-io.pakz Tools
+zip -r ../Itch-io.pakz Tools
 cd - >/dev/null
 
 echo "==> Release artifacts:"
