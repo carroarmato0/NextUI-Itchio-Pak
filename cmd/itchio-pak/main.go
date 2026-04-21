@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"syscall"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 // version is set at build time via -ldflags:
@@ -32,20 +35,18 @@ func main() {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("PANIC: %v\n%s", r, debug.Stack())
+			logger.Error("PANIC: %v\n%s", r, debug.Stack())
 		}
 	}()
 
-	log.Printf("itchio-pak %s starting", version)
+	logger.Info("itchio-pak %s starting", version)
 
 	if *headless {
-		log.Println("headless mode: exiting cleanly")
+		logger.Info("headless mode: exiting cleanly")
 		os.Exit(0)
 	}
 
-	log.Println("starting SDL run")
 	runSDL()
-	log.Println("SDL run finished")
 }
 
 // logFilePath returns the path for the log file.
@@ -60,4 +61,29 @@ func logFilePath() string {
 		return filepath.Join("/mnt/SDCARD/.userdata", platform, "logs", "itchio-pak.log")
 	}
 	return filepath.Join(os.Getenv("HOME"), "itchio-pak.log")
+}
+
+// readPlatform returns the PLATFORM env var, or "unknown" if unset.
+func readPlatform() string {
+	if p := os.Getenv("PLATFORM"); p != "" {
+		return p
+	}
+	return "unknown"
+}
+
+// readNextUIVersion reads the first non-empty line of the NextUI version file.
+// Returns "unknown" if the file is absent, empty, or unreadable — absence is
+// expected when running outside NextUI (dev machine, other launchers).
+func readNextUIVersion() string {
+	data, err := os.ReadFile("/mnt/SDCARD/.system/version.txt")
+	if err != nil {
+		return "unknown"
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return "unknown"
 }

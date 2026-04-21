@@ -3,10 +3,10 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/ui"
@@ -17,13 +17,27 @@ func runSDL() {
 	cfgPath := os.Getenv("HOME") + "/config.json"
 	cfg, _ := settings.Load(cfgPath)
 
+	// Apply log level and register the API key for redaction before anything
+	// else is logged.
+	logger.SetLevel(logger.LevelFromString(cfg.LogLevel))
+	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
+
+	// Log the environment header so the log file is self-describing.
+	level := cfg.LogLevel
+	if level == "" {
+		level = "info"
+	}
+	logger.Info("platform=%s nextui=%s log_level=%s",
+		readPlatform(), readNextUIVersion(), level)
+
 	// Pre-init SDL2 to detect display resolution before creating the window.
 	// Include JOYSTICK + GAMECONTROLLER so the device's physical buttons are
 	// delivered as ControllerButtonEvents (the device SDL2 has built-in
 	// mappings for TrimUI/Miyoo hardware). renderer.New will call sdl.Init
 	// again — that is idempotent.
 	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_JOYSTICK | sdl.INIT_GAMECONTROLLER); err != nil {
-		log.Fatalf("sdl pre-init: %v", err)
+		logger.Error("sdl pre-init: %v", err)
+		os.Exit(1)
 	}
 
 	// Open all connected game controllers so button events are delivered.
@@ -43,11 +57,12 @@ func runSDL() {
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
 		w, h = dm.W, dm.H
 	}
-	log.Printf("display: %dx%d", w, h)
+	logger.Info("display: %dx%d", w, h)
 
 	r, err := renderer.New("Itch.io", int(w), int(h))
 	if err != nil {
-		log.Fatalf("renderer init: %v", err)
+		logger.Error("renderer init: %v", err)
+		os.Exit(1)
 	}
 	defer r.Close()
 
