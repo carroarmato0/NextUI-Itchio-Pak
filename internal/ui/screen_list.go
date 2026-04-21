@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -47,25 +48,68 @@ type ListScreen struct {
 	// Horizontal title scroll for selected row
 	titleScrollX   int32     // current pixel offset (increases over time)
 	titleScrollAt  time.Time // when the cursor last moved (scroll starts after a delay)
+
+	// Cache fields — populated once the on-disk game cache is loaded.
+	// cachedGames is nil until the cache is available.
+	cachedGames []itchio.Game
+	cacheReady  bool
+	cachePath   string
 }
 
-func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache) *ListScreen {
-	s := &ListScreen{client: client, cfg: cfg, cache: cache, page: 1, cfgPath: cfgPath}
-	go s.loadPage(1, "")
-	go func() {
-		total, err := client.FetchTotalGames()
+func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string) *ListScreen {
+	s := &ListScreen{
+		client:    client,
+		cfg:       cfg,
+		cache:     cache,
+		page:      1,
+		cfgPath:   cfgPath,
+		cachePath: cachePath,
+	}
+
+	gameCache, err := itchio.LoadGamesCache(cachePath)
+	if err == nil && len(gameCache.Games) > 0 {
+		// Cache hit: populate list instantly from disk.
+		logger.Info("cache: loaded %d games from %s (age=%v)",
+			len(gameCache.Games), cachePath, time.Since(gameCache.Meta.FetchedAt).Round(time.Second))
+		s.cachedGames = gameCache.Games
+		s.cacheReady = true
+		s.totalGames = len(gameCache.Games)
+		s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
+		s.games = pageSlice(gameCache.Games, 1)
+		// Refresh in background if stale.
+		go s.refreshCacheIfStale(gameCache.Meta.FetchedAt)
+	} else {
+		// No cache: live fetch page 1 (existing behaviour) + build cache in background.
 		if err != nil {
-			logger.Error("feed: total games: %v", err)
-			return
+			logger.Debug("cache: no cache found (%v), using live feed", err)
 		}
-		logger.Info("feed: total games=%d", total)
-		s.totalGames = total
-		s.totalPages = (total + itchio.PerPage - 1) / itchio.PerPage
-	}()
+		go s.loadPage(1, "")
+		go func() {
+			total, err := client.FetchTotalGames()
+			if err != nil {
+				logger.Error("feed: total games: %v", err)
+				return
+			}
+			logger.Info("feed: total games=%d", total)
+			s.totalGames = total
+			s.totalPages = (total + itchio.PerPage - 1) / itchio.PerPage
+		}()
+		go s.buildCache()
+	}
 	return s
 }
 
 func (s *ListScreen) loadPage(page int, query string) {
+	if s.cacheReady && query == "" {
+		// Serve from local cache — no network, instant.
+		logger.Debug("cache: serving page %d from cache (%d games)", page, len(s.cachedGames))
+		s.games = pageSlice(s.cachedGames, page)
+		s.cursor = 0
+		s.titleScrollX = 0
+		s.titleScrollAt = time.Now()
+		return
+	}
+	// Live network fetch (existing behaviour).
 	s.loading = true
 	s.err = nil
 	logger.Debug("feed: loading page %d query=%q", page, query)
@@ -431,4 +475,62 @@ func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
 		runes = runes[:len(runes)-1]
 	}
 	return strings.TrimRight(string(runes), " ") + "…"
+}
+
+// pageSlice returns the sub-slice of games for the given 1-based page number,
+// using the global PerPage constant.
+func pageSlice(games []itchio.Game, page int) []itchio.Game {
+	start := (page - 1) * itchio.PerPage
+	if start >= len(games) {
+		return nil
+	}
+	end := start + itchio.PerPage
+	if end > len(games) {
+		end = len(games)
+	}
+	return games[start:end]
+}
+
+const cacheTTL = 24 * time.Hour
+
+// buildCache fetches the complete game list and writes it to disk.
+// Called as a goroutine. On success, future page turns use the local cache.
+func (s *ListScreen) buildCache() {
+	logger.Info("cache: starting background full fetch")
+	games, err := s.client.FetchAllGames(context.Background(), func(fetched int) {
+		logger.Debug("cache: fetched %d games so far", fetched)
+	})
+	if err != nil {
+		logger.Error("cache: full fetch failed: %v", err)
+		return
+	}
+	if err := itchio.SaveGamesCache(s.cachePath, games); err != nil {
+		logger.Error("cache: save failed: %v", err)
+		return
+	}
+	logger.Info("cache: saved %d games to %s", len(games), s.cachePath)
+	// Flip to cache mode. The current page view is left untouched;
+	// the next page navigation will source from the cache.
+	s.cachedGames = games
+	s.cacheReady = true
+	s.totalGames = len(games)
+	s.totalPages = (len(games) + itchio.PerPage - 1) / itchio.PerPage
+}
+
+// refreshCacheIfStale triggers a full re-fetch if the cache is older than cacheTTL.
+func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
+	age := time.Since(fetchedAt)
+	if age < cacheTTL {
+		logger.Debug("cache: fresh (age=%v), skipping background refresh", age.Round(time.Second))
+		return
+	}
+	logger.Info("cache: stale (age=%v), refreshing in background", age.Round(time.Second))
+	s.buildCache()
+}
+
+// triggerCacheRefresh is the callback handed to SettingsScreen for the
+// "Refresh Game List" menu item.
+func (s *ListScreen) triggerCacheRefresh() {
+	logger.Info("cache: manual refresh triggered from settings")
+	go s.buildCache()
 }
