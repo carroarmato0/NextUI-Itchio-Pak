@@ -54,6 +54,7 @@ required.
 - Files saved directly to the correct ROM folder:
   - `.gb` → `Roms/Game Boy (GB)/`
   - `.gbc` → `Roms/Game Boy Color (GBC)/`
+- When **ROM Location** is set to `ask`, a directory browser lets you choose the destination folder before each download; the last chosen path is remembered per file type
 - On download failure, a QR code is shown so you can try from a browser
 
 ### Content filters
@@ -73,6 +74,7 @@ required.
 ### Settings
 - **API Key** — shows `FOUND` (green) when an itch.io API key is configured, enabling paid game downloads
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
+- **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Content Moderation** — configure per-category content filters
 - **About** — app description, version, and QR code linking to the project page
