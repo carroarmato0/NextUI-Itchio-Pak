@@ -13,13 +13,13 @@ import (
 )
 
 type Game struct {
-	Title    string
-	Author   string
-	URL      string
-	CoverURL string
-	Price    float64
-	IsFree   bool
-	Tags     []string // extracted from [Tag] brackets in the RSS title
+	Title    string   `json:"title"`
+	Author   string   `json:"author"`
+	URL      string   `json:"url"`
+	CoverURL string   `json:"cover_url"`
+	Price    float64  `json:"price"`
+	IsFree   bool     `json:"is_free"`
+	Tags     []string `json:"tags,omitempty"` // extracted from [Tag] brackets in the RSS title
 }
 
 var (
