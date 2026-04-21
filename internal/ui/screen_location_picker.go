@@ -43,10 +43,11 @@ type LocationPickerScreen struct {
 	upload  roms.Upload
 	prev    Screen
 
-	ext        string      // lowercase extension e.g. ".gbc"
-	currentDir string      // always ends with "/"
-	rows       []pickerRow // [rowSaveHere, optional rowUp, zero or more rowEntry]
-	cursor     int         // index into rows
+	ext          string      // lowercase extension e.g. ".gbc"
+	currentDir   string      // always ends with "/"
+	rows         []pickerRow // [rowSaveHere, optional rowUp, zero or more rowEntry]
+	cursor       int         // index into rows
+	scrollOffset int         // index into rows[] of the first displayed row (for rows[1:])
 }
 
 // NewLocationPickerScreen creates a directory browser that opens at the
@@ -101,6 +102,7 @@ func (s *LocationPickerScreen) loadDir(dir string) {
 	s.currentDir = dir
 	s.rows = buildRows(dir)
 	s.cursor = 0
+	s.scrollOffset = 0
 }
 
 // buildRows constructs the navigable row list for dir:
@@ -139,6 +141,24 @@ func (s *LocationPickerScreen) atRoot() bool {
 	return strings.TrimRight(s.currentDir, "/") == locationRoot
 }
 
+// clampScroll adjusts scrollOffset so that cursor is always visible.
+// visibleCount is the number of non-header rows that fit on screen.
+func (s *LocationPickerScreen) clampScroll(visibleCount int) {
+	// rows[0] is always the confirm row (drawn separately), so we work in
+	// terms of the sub-list rows[1:]. cursor==0 is always visible.
+	if s.cursor == 0 {
+		return
+	}
+	// sub-list index: cursor-1 (since rows[0] is drawn outside the list)
+	idx := s.cursor - 1
+	if idx < s.scrollOffset {
+		s.scrollOffset = idx
+	}
+	if idx >= s.scrollOffset+visibleCount {
+		s.scrollOffset = idx - visibleCount + 1
+	}
+}
+
 func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
@@ -175,10 +195,23 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	// ── Directory list (rows[1:]) ────────────────────────────────────────────
 	listTop := confirmY + confirmH + 2
 	rowH := mainFH + 14
-	entryCount := 0
-	listRowsDrawn := int32(0)
 
-	for i := 1; i < len(s.rows); i++ {
+	visibleCount := int((r.H - footerH - listTop) / rowH)
+	if visibleCount < 1 {
+		visibleCount = 1
+	}
+	s.clampScroll(visibleCount)
+
+	hasEntries := false
+	for _, row := range s.rows {
+		if row.kind == rowEntry {
+			hasEntries = true
+			break
+		}
+	}
+
+	listRowsDrawn := int32(0)
+	for i := 1 + s.scrollOffset; i < len(s.rows); i++ {
 		row := s.rows[i]
 		y := listTop + listRowsDrawn*rowH
 		if y+rowH > r.H-footerH {
@@ -192,7 +225,6 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 			}
 			r.DrawSmallText("\u2191  .. (go up)", 20, y+(rowH-smallFH)/2, 100, 140, 180)
 		case rowEntry:
-			entryCount++
 			if selected {
 				r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 			}
@@ -202,7 +234,7 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	}
 
 	// Show placeholder when no subdirectories exist in this folder.
-	if entryCount == 0 {
+	if !hasEntries {
 		y := listTop + listRowsDrawn*rowH
 		r.DrawSmallText("  (no subfolders)", 20, y, 80, 80, 80)
 	}
@@ -322,11 +354,12 @@ func leftTruncatePath(r *renderer.Renderer, text string, maxW int32) string {
 		return text
 	}
 	const ellipsis = "\u2026"
-	for len(text) > 1 {
-		text = text[1:]
-		w, _ = r.SmallTextSize(ellipsis + text)
+	runes := []rune(text)
+	for len(runes) > 1 {
+		runes = runes[1:]
+		w, _ = r.SmallTextSize(ellipsis + string(runes))
 		if int32(w) <= maxW {
-			return ellipsis + text
+			return ellipsis + string(runes)
 		}
 	}
 	return ellipsis
