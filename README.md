@@ -25,8 +25,9 @@ required.
 | Device | Platform code | Status |
 |---|---|---|
 | TrimUI Brick | `tg5040` | Tested |
-| TrimUI Smart Pro | `tg5050` | |
-| MagicX 355M | `my355` | |
+| TrimUI Smart Pro | `tg5040` | Untested |
+| TrimUI Smart Pro S | `tg5050` | Untested |
+| MagicX 355M | `my355` | Untested |
 
 ---
 
