@@ -3,10 +3,11 @@ package itchio
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 const apiItchIO = "https://api.itch.io"
@@ -18,9 +19,8 @@ const apiItchIO = "https://api.itch.io"
 //  2. GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=KEY_ID → upload list
 func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, error) {
 	// Step 1: get buyer's download key ID from the butler-style API.
-	// This endpoint requires Authorization: Bearer and returns the purchase key
-	// associated with the authenticated user's ownership of the game.
 	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
+	logger.Debug("auth: fetching owned keys for game_id=%s", gameID)
 	req, err := http.NewRequest("GET", keysURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("build owned-keys request: %w", err)
@@ -32,6 +32,11 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		return nil, "", fmt.Errorf("fetch owned keys: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("auth: owned-keys HTTP %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("fetch owned keys: HTTP %d", resp.StatusCode)
+	}
 
 	var keysResult struct {
 		OwnedKeys []struct {
@@ -45,16 +50,24 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		return nil, "", fmt.Errorf("game not owned or API key invalid (no download key found)")
 	}
 	downloadKeyID := fmt.Sprintf("%d", keysResult.OwnedKeys[0].ID)
-	log.Printf("FetchAuthUploads: download_key_id=%s", downloadKeyID)
+	// downloadKeyID not logged — it ties the request to the user's account.
 
 	// Step 2: list uploads, passing the download key so itch.io grants access.
 	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
 		c.base, apiKey, gameID, downloadKeyID)
+	logger.Debug("auth: fetching upload list for game_id=%s", gameID)
+	// The URL contains the API key; the logger's secret registry will redact it.
+
 	resp2, err := c.http.Get(uploadsURL)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch uploads: %w", err)
 	}
 	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		logger.Error("auth: upload list HTTP %d", resp2.StatusCode)
+		return nil, "", fmt.Errorf("fetch uploads: HTTP %d", resp2.StatusCode)
+	}
 
 	var uploadsResult struct {
 		Uploads []struct {
@@ -74,8 +87,11 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 				Filename: u.Filename,
 				UploadID: fmt.Sprintf("%d", u.ID),
 			})
-			log.Printf("FetchAuthUploads: upload %q id=%d", u.Filename, u.ID)
+			logger.Debug("auth: found %s id=%d", u.Filename, u.ID)
 		}
+	}
+	if len(uploads) == 0 {
+		logger.Warn("auth: no .gb/.gbc uploads found (game has %d total uploads)", len(uploadsResult.Uploads))
 	}
 	return uploads, downloadKeyID, nil
 }
@@ -84,7 +100,8 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string, progress func(int64, int64)) error {
 	dlURL := fmt.Sprintf("%s/api/1/%s/upload/%s/download?download_key_id=%s",
 		c.base, apiKey, uploadID, downloadKeyID)
-	log.Printf("DownloadAuthUpload: resolving CDN URL from upload %s key %s", uploadID, downloadKeyID)
+	logger.Debug("auth: resolving CDN for upload id=%s", uploadID)
+	// dlURL contains the API key — the logger's secret registry will redact it if logged.
 
 	resp, err := c.http.Get(dlURL)
 	if err != nil {
@@ -93,6 +110,7 @@ func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Error("auth: CDN resolve HTTP %d", resp.StatusCode)
 		return fmt.Errorf("auth CDN resolve status %d", resp.StatusCode)
 	}
 
@@ -104,12 +122,14 @@ func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string
 		return fmt.Errorf("decode auth CDN response: %w", err)
 	}
 	if len(result.Errors) > 0 {
+		logger.Error("auth: CDN error: %s", strings.Join(result.Errors, "; "))
 		return fmt.Errorf("auth CDN error: %s", strings.Join(result.Errors, "; "))
 	}
 	if result.URL == "" {
+		logger.Error("auth: empty CDN URL from resolver")
 		return fmt.Errorf("empty CDN URL from auth resolver")
 	}
 
-	log.Printf("DownloadAuthUpload: streaming to %s", dest)
+	logger.Info("auth: streaming to %s", dest)
 	return c.streamToFile(result.URL, dest, progress)
 }
