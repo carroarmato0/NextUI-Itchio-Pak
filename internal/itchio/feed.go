@@ -110,6 +110,7 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	var feed rssFeed
 	if err := xml.Unmarshal(body, &feed); err != nil {
 		logger.Error("feed: parse XML: %v", err)
+		logger.Debug("feed: response body (first 512 bytes): %.512s", body)
 		return nil, fmt.Errorf("parse feed xml: %w", err)
 	}
 	logger.Debug("feed: parsed %d items from XML", len(feed.Items))
