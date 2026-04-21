@@ -6,7 +6,7 @@ cd "$SCRIPT_DIR/.."
 
 PLATFORM="${DEPLOY_PLATFORM:-tg5040}"
 PAK_DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch-io.pak"
-LOG_PATH="/mnt/SDCARD/.userdata/$PLATFORM/Itchio/itchio-pak.log"
+LOG_PATH="/mnt/SDCARD/.userdata/$PLATFORM/logs/itchio-pak.log"
 
 check_adb() {
     if ! command -v adb >/dev/null 2>&1; then

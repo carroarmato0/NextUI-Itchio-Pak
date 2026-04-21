@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
 PLATFORM="${DEPLOY_PLATFORM:-tg5040}"
-PAK_SRC="dist/$PLATFORM/Itch-io.pak"
+PAK_SRC="dist/Itch-io.pak"
 
 if [ ! -d "$PAK_SRC" ]; then
     echo "ERROR: $PAK_SRC not found. Run scripts/release.sh first." >&2

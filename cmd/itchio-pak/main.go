@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
 )
@@ -12,7 +13,9 @@ func main() {
 	headless := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
 	flag.Parse()
 
-	logFile, err := os.OpenFile(os.Getenv("HOME")+"/itchio-pak.log",
+	logPath := logFilePath()
+	_ = os.MkdirAll(filepath.Dir(logPath), 0755)
+	logFile, err := os.OpenFile(logPath,
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
 		log.SetOutput(logFile)
@@ -36,4 +39,18 @@ func main() {
 	log.Println("starting SDL run")
 	runSDL()
 	log.Println("SDL run finished")
+}
+
+// logFilePath returns the path for the log file.
+// On device, NextUI sets PLATFORM (e.g. "tg5040") and logs are written to the
+// conventional location used by other Paks:
+//
+//	/mnt/SDCARD/.userdata/<PLATFORM>/logs/itchio-pak.log
+//
+// When PLATFORM is unset (development / CI), it falls back to $HOME/itchio-pak.log.
+func logFilePath() string {
+	if platform := os.Getenv("PLATFORM"); platform != "" {
+		return filepath.Join("/mnt/SDCARD/.userdata", platform, "logs", "itchio-pak.log")
+	}
+	return filepath.Join(os.Getenv("HOME"), "itchio-pak.log")
 }

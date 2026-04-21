@@ -44,6 +44,10 @@ ensure_image() {
         $RUNTIME build -t "$IMAGE" -f docker/Dockerfile.dev .
 }
 
+pak_version() {
+    grep '"version"' pak.json | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+}
+
 build_native() {
     if [ -z "${IN_CONTAINER:-}" ]; then
         ensure_image
@@ -53,9 +57,11 @@ build_native() {
             -e IN_CONTAINER=1 \
             "$IMAGE" "$0" native
     fi
+    VERSION="$(pak_version)"
     mkdir -p bin/native
-    go build -o bin/native/itchio-pak ./cmd/itchio-pak/
-    echo "Built: bin/native/itchio-pak"
+    go build -ldflags "-X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
+        -o bin/native/itchio-pak ./cmd/itchio-pak/
+    echo "Built: bin/native/itchio-pak ($VERSION)"
 }
 
 build_platform() {
@@ -75,10 +81,13 @@ build_platform() {
     #   is unavailable on TrimUI/Miyoo devices that ship glibc 2.33.
     # -a: force recompile of all packages; without this, cached .a files from
     #   a previous toolchain/image can embed GLIBC_2.34 symbol version tags.
+    VERSION="$(pak_version)"
     PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
     CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
-        go build -a -tags netgo -buildvcs=false -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
-    echo "Built: bin/$PLATFORM/itchio-pak"
+        go build -a -tags netgo -buildvcs=false \
+        -ldflags "-X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
+        -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
+    echo "Built: bin/$PLATFORM/itchio-pak ($VERSION)"
 
     # Extract SDL2 shared libs for bundling inside the pak.
     ARM64_LIB=/usr/lib/aarch64-linux-gnu

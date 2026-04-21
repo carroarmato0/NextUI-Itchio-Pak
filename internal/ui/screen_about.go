@@ -7,9 +7,13 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+// appVersion is set at build time via -ldflags:
+//
+//	-X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=vX.Y.Z
+var appVersion = "dev"
+
 const (
-	appVersion  = "v1.0.0"
-	appRepoURL  = "https://github.com/carroarmato0/NextUI-Itchio-Pak"
+	appRepoURL   = "https://github.com/carroarmato0/NextUI-Itchio-Pak"
 	appDescLine1 = "Browse and download GB/GBC games"
 	appDescLine2 = "from Itch.io's GB Studio collection."
 	appNote      = "Unofficial community Pak — not affiliated with Itch.io."
