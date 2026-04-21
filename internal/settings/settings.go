@@ -3,6 +3,8 @@ package settings
 import (
 	"encoding/json"
 	"os"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 // CategoryFilter holds the enabled state and individually-disabled tags for
@@ -50,6 +52,7 @@ type Config struct {
 	ROMLocation  string            `json:"rom_location"`
 	LastROMDirs  map[string]string `json:"last_rom_dirs,omitempty"`
 	Filter       ContentFilter     `json:"content_filter"`
+	LogLevel     string            `json:"log_level,omitempty"` // "debug" | "" (resolves to "info")
 }
 
 func defaults() *Config {
@@ -71,10 +74,12 @@ func defaults() *Config {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		logger.Debug("settings: config not found at %s, using defaults", path)
 		return defaults(), nil
 	}
 	cfg := defaults()
 	if err := json.Unmarshal(data, cfg); err != nil {
+		logger.Warn("settings: config at %s is invalid, using defaults: %v", path, err)
 		return defaults(), nil
 	}
 	return cfg, nil
@@ -85,5 +90,9 @@ func (c *Config) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		logger.Error("settings: failed to save config to %s: %v", path, err)
+		return err
+	}
+	return nil
 }

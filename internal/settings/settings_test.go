@@ -211,3 +211,50 @@ func TestLastROMDirsOmittedWhenNil(t *testing.T) {
 		t.Errorf("last_rom_dirs should be omitted when nil, found in JSON:\n%s", data)
 	}
 }
+
+func TestLogLevelDefault(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path/config.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Default is "" which LevelFromString maps to INFO at runtime.
+	if cfg.LogLevel != "" {
+		t.Errorf("default LogLevel = %q, want %q", cfg.LogLevel, "")
+	}
+}
+
+func TestLogLevelRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{LogLevel: "debug"}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q, want %q", loaded.LogLevel, "debug")
+	}
+}
+
+func TestLogLevelOmittedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{} // LogLevel is ""
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if bytes.Contains(data, []byte("log_level")) {
+		t.Errorf("log_level should be omitted when empty, found in JSON:\n%s", data)
+	}
+}
