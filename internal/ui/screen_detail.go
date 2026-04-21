@@ -400,7 +400,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				return s.startDownload()
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			return NewSettingsScreen(s.cfg, s.cfgPath, s, nil)
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -438,7 +438,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				return s.startDownload()
 			}
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			return NewSettingsScreen(s.cfg, s.cfgPath, s, nil)
 		}
 	case *sdl.QuitEvent:
 		return nil
