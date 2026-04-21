@@ -81,6 +81,8 @@ body:
         | Miyoo Flip | `.userdata/my355/logs/itchio-pak.log` |
 
         You can drag the file into this text box or paste its contents directly.
+
+        > If the bug involves a network or download failure, set **Log Level → Debug** in Settings (press **Start** from any screen, scroll to **Log Level**, press **B** to toggle), reproduce the issue, then attach the log. Debug logs capture the full HTTP flow and are much more useful for diagnosing scraping or download problems.
       placeholder: "Paste log contents here, or drag-and-drop the file above..."
     validations:
       required: false

@@ -75,6 +75,7 @@ required.
 - **API Key** — shows `FOUND` (green) when an itch.io API key is configured, enabling paid game downloads
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
+- **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Content Moderation** — configure per-category content filters
 - **About** — app description, version, and QR code linking to the project page
