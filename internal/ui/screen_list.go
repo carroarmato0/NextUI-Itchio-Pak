@@ -414,7 +414,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			return NewSettingsScreen(s.cfg, s.cfgPath, s, s.triggerCacheRefresh)
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -452,7 +452,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s)
+			return NewSettingsScreen(s.cfg, s.cfgPath, s, s.triggerCacheRefresh)
 		}
 	case *sdl.QuitEvent:
 		return nil

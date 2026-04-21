@@ -20,24 +20,26 @@ const (
 	sItemROMLocation
 	sItemLogLevel
 	sItemClearCache
+	sItemRefreshCache
 	sItemContentModeration
 	sItemAbout
 	sItemCount
 )
 
 type SettingsScreen struct {
-	cfg     *settings.Config
-	cfgPath string
-	cursor  settingsItem
-	prev    Screen
+	cfg            *settings.Config
+	cfgPath        string
+	cursor         settingsItem
+	prev           Screen
+	onRefreshGames func() // nil if not available
 
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
 }
 
-func NewSettingsScreen(cfg *settings.Config, cfgPath string, prev Screen) *SettingsScreen {
-	return &SettingsScreen{cfg: cfg, cfgPath: cfgPath, prev: prev}
+func NewSettingsScreen(cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func()) *SettingsScreen {
+	return &SettingsScreen{cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
 }
 
 func (s *SettingsScreen) processAutoRepeat() {
@@ -82,6 +84,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		"ROM Location: " + s.cfg.ROMLocation,
 		"Log Level: " + logLevelLabel,
 		"Clear Image Cache",
+		"Refresh Game List",
 		"Content Moderation >",
 		"About",
 	}
@@ -221,6 +224,10 @@ func (s *SettingsScreen) activate() Screen {
 		logger.SetLevel(logger.LevelFromString(s.cfg.LogLevel))
 	case sItemClearCache:
 		os.RemoveAll("/tmp/itchio-pak/cache/")
+	case sItemRefreshCache:
+		if s.onRefreshGames != nil {
+			s.onRefreshGames()
+		}
 	case sItemContentModeration:
 		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
 	case sItemAbout:
