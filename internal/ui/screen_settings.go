@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
@@ -17,6 +18,7 @@ const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
 	sItemROMLocation
+	sItemLogLevel
 	sItemClearCache
 	sItemContentModeration
 	sItemAbout
@@ -68,10 +70,17 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 
 	_, fontH := r.TextSize("Ag")
 	rowH := fontH + 14
+
+	logLevelLabel := "Info"
+	if s.cfg.LogLevel == "debug" {
+		logLevelLabel = "Debug"
+	}
+
 	items := []string{
 		"API Key: ",
 		"ROM Selection: " + s.cfg.ROMSelection,
 		"ROM Location: " + s.cfg.ROMLocation,
+		"Log Level: " + logLevelLabel,
 		"Clear Image Cache",
 		"Content Moderation >",
 		"About",
@@ -201,6 +210,15 @@ func (s *SettingsScreen) activate() Screen {
 			s.cfg.ROMLocation = "auto"
 		}
 		s.cfg.Save(s.cfgPath)
+	case sItemLogLevel:
+		if s.cfg.LogLevel == "debug" {
+			s.cfg.LogLevel = ""
+		} else {
+			s.cfg.LogLevel = "debug"
+		}
+		s.cfg.Save(s.cfgPath)
+		// Apply immediately — no restart required.
+		logger.SetLevel(logger.LevelFromString(s.cfg.LogLevel))
 	case sItemClearCache:
 		os.RemoveAll("/tmp/itchio-pak/cache/")
 	case sItemContentModeration:
@@ -210,4 +228,3 @@ func (s *SettingsScreen) activate() Screen {
 	}
 	return s
 }
-
