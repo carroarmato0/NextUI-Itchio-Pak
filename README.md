@@ -1,6 +1,7 @@
 # Itch.io Pak for NextUI
 
 ![CI](../../actions/workflows/ci.yml/badge.svg)
+[![Ko-Fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/carroarmato0)
 
 <img src="docs/screenshots/main.png" alt="Game list" width="800"/>
 
