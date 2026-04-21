@@ -26,6 +26,8 @@ wrong.
   NextUI version, app version, and active log level.
 - Well-structured output that is human-readable in a plain text viewer and
   grep-friendly for automated analysis.
+- No sensitive user data (API key, account-linked tokens) written to the log
+  under any level or circumstance.
 
 ## Non-Goals
 
@@ -145,6 +147,82 @@ the first non-empty trimmed line. If the file is missing, empty, or unreadable,
 returns `"unknown"` silently (no log entry — absence is expected outside
 NextUI).
 
+## Secret Redaction
+
+### Problem
+
+The itch.io API key appears directly in URL path segments:
+
+```
+https://itch.io/api/1/<API_KEY>/game/<GAME_ID>/uploads?download_key_id=<KEY_ID>
+https://itch.io/api/1/<API_KEY>/upload/<UPLOAD_ID>/download?download_key_id=<KEY_ID>
+```
+
+At DEBUG level these URLs would be logged, exposing the key in the log file.
+Download key JWTs (which tie a request to a specific purchase) and CSRF tokens
+are also sensitive. A log file is often shared publicly in a bug report, so
+none of these values must appear in any form.
+
+### Design
+
+**Logger-level secret registry** is the primary defence. The `internal/logger`
+package exposes:
+
+```go
+// RegisterSecret registers a plaintext value to be fully replaced in all
+// future log output. label is the replacement string written instead
+// (e.g. "[API-KEY]"). Calling with an empty value is a no-op.
+// Safe to call from any goroutine.
+func RegisterSecret(value, label string)
+```
+
+Every string that passes through `Debug`, `Info`, `Warn`, or `Error` is run
+through an internal `redact(s string) string` function before being written.
+`redact` performs `strings.ReplaceAll` for each registered secret in order.
+
+Secrets are stored in a `sync.RWMutex`-protected slice of `{plain, label}`
+pairs. The slice is expected to be very short (one entry for the API key in
+normal use), so linear scan is fine.
+
+**Registration points:**
+
+| Secret | Label | When registered |
+|--------|-------|-----------------|
+| `cfg.APIKey` | `[API-KEY]` | `main.go` after config is loaded; Settings screen after a new key is saved |
+
+**Empty-value guard:** `RegisterSecret("", label)` is a no-op. This means the
+call is unconditional at startup — no need for an `if cfg.APIKey != ""` guard
+at the call site.
+
+**CSRF tokens and signed download URLs** are *never logged as raw values*.
+Call sites log only metadata:
+- `csrf=present` / `csrf=absent` rather than the token value
+- `key=present` / `key=absent` rather than the JWT string
+- Signed download page URLs are logged as `<redacted>` unconditionally
+
+**Download key IDs** (numeric, from `owned-keys`) are not account-unique on
+their own but are still omitted from logs — logging the filename and upload ID
+is sufficient for debugging.
+
+### What the log looks like with redaction active
+
+```
+2026/04/21 14:32:09 [DEBUG] auth: resolving upload id=12345678 via [API-KEY]
+2026/04/21 14:32:09 [DEBUG] auth: GET https://itch.io/api/1/[API-KEY]/game/99999/uploads
+2026/04/21 14:32:09 [DEBUG] uploads: POST csrf=present key=present
+```
+
+### What this does NOT protect against
+
+- Log lines written before `RegisterSecret` is called (the startup header and
+  SDL init lines). The API key is not available at that point, so there is
+  nothing to redact.
+- Secrets embedded in error messages returned by the itch.io API (e.g. an
+  error body that echoes back a URL). These are truncated to 200 characters in
+  error log lines, which limits exposure but does not eliminate it. This is an
+  acceptable residual risk given that API errors echoing credentials back would
+  be an itch.io bug.
+
 ## Per-File Logging Changes
 
 ### `internal/itchio/feed.go`
@@ -186,15 +264,15 @@ NextUI).
 |------|-------|---------|
 | Game page HTTP non-2xx | ERROR | `uploads: game page HTTP <status>` |
 | CSRF missing | ERROR (already returned as err) | — |
-| Signed URL | DEBUG | existing log reclassified |
-| Extracted key | DEBUG | existing log reclassified |
-| Each upload | DEBUG | existing log reclassified |
+| Signed URL received | DEBUG | `uploads: signed download URL received` (URL itself not logged) |
+| Extracted key | DEBUG | `uploads: download key extracted` (value not logged) |
+| Each upload | DEBUG | `uploads: found <filename> id=<upload_id>` |
 
 ### `internal/itchio/download.go` — `streamToFile`
 
 | Site | Level | Message |
 |------|-------|---------|
-| Start | INFO | `stream: <url> → <dest> (<content-length> bytes)` |
+| Start | INFO | `stream: → <dest> (<content-length> bytes)` (CDN URL not logged — may contain signed tokens) |
 | Complete | INFO | `stream: done, wrote <n> bytes` |
 | Write error | ERROR | `stream: write error after <n> bytes: <err>` |
 | Read error | ERROR | `stream: read error after <n> bytes: <err>` |
@@ -203,12 +281,14 @@ NextUI).
 
 | Site | Level | Message |
 |------|-------|---------|
+| Owned-keys request | DEBUG | `auth: fetching owned keys for game_id=<id>` (API key redacted by registry) |
 | Owned-keys HTTP non-2xx | ERROR | `auth: owned-keys HTTP <status>` |
+| Upload list request | DEBUG | `auth: fetching upload list for game_id=<id>` (API key redacted by registry) |
 | Zero `.gb`/`.gbc` after filter | WARN | `auth: no .gb/.gbc uploads found (game has <n> total uploads)` |
-| Download key ID | DEBUG | existing reclassified |
-| Each upload | DEBUG | existing reclassified |
-| CDN resolve start | DEBUG | existing reclassified |
-| Streaming start | INFO | existing reclassified |
+| Download key ID | — | not logged (ties request to user account) |
+| Each upload | DEBUG | `auth: found <filename> id=<upload_id>` |
+| CDN resolve start | DEBUG | `auth: resolving CDN for upload id=<upload_id>` (API key redacted by registry) |
+| Streaming start | INFO | `auth: streaming to <dest>` |
 
 ### `internal/settings/settings.go`
 
