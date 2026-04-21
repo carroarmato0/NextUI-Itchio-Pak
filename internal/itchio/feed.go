@@ -4,9 +4,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 type Game struct {
@@ -87,11 +90,17 @@ func parsePrice(raw string) float64 {
 }
 
 func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
+	logger.Debug("feed: fetching %s", url)
 	resp, err := c.http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("fetch feed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("feed: HTTP %d from %s", resp.StatusCode, url)
+		return nil, fmt.Errorf("fetch feed: HTTP %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -100,8 +109,10 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 
 	var feed rssFeed
 	if err := xml.Unmarshal(body, &feed); err != nil {
+		logger.Error("feed: parse XML: %v", err)
 		return nil, fmt.Errorf("parse feed xml: %w", err)
 	}
+	logger.Debug("feed: parsed %d items from XML", len(feed.Items))
 
 	games := make([]Game, 0, len(feed.Items))
 	for _, item := range feed.Items {
@@ -133,17 +144,25 @@ var resultCountRegex = regexp.MustCompile(`(?i)(\d[\d,]*)\s+result`)
 
 // FetchTotalGames scrapes the HTML browse page to find the total result count.
 func (c *Client) FetchTotalGames() (int, error) {
+	logger.Debug("feed: fetching total games count")
 	resp, err := c.http.Get("https://itch.io/games/made-with-gb-studio")
 	if err != nil {
 		return 0, fmt.Errorf("fetch browse page: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("feed: total-games HTTP %d", resp.StatusCode)
+		return 0, fmt.Errorf("fetch total games: HTTP %d", resp.StatusCode)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, fmt.Errorf("read browse page: %w", err)
 	}
 	m := resultCountRegex.FindStringSubmatch(string(body))
 	if len(m) < 2 {
+		logger.Warn("feed: result count not found on browse page")
 		return 0, fmt.Errorf("result count not found on browse page")
 	}
 	countStr := strings.ReplaceAll(m[1], ",", "")

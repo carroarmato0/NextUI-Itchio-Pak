@@ -27,7 +27,7 @@ required.
 | TrimUI Brick | `tg5040` | Tested |
 | TrimUI Smart Pro | `tg5040` | Untested |
 | TrimUI Smart Pro S | `tg5050` | Untested |
-| MagicX 355M | `my355` | Untested |
+| Miyoo Flip | `my355` | Untested |
 
 ---
 
