@@ -118,8 +118,10 @@ func TestFetchAllGames(t *testing.T) {
 
 	c := itchio.NewClientWithBase(srv.URL)
 	var progressCalls int
+	var lastFetched int
 	games, err := c.FetchAllGames(context.Background(), func(fetched int) {
 		progressCalls++
+		lastFetched = fetched
 	})
 	if err != nil {
 		t.Fatalf("FetchAllGames: %v", err)
@@ -128,8 +130,11 @@ func TestFetchAllGames(t *testing.T) {
 	if len(games) != 38 {
 		t.Errorf("got %d games, want 38", len(games))
 	}
-	if progressCalls == 0 {
-		t.Error("progress callback was never called")
+	if progressCalls != 2 {
+		t.Errorf("progress calls = %d, want 2", progressCalls)
+	}
+	if lastFetched != 38 {
+		t.Errorf("last fetched = %d, want 38", lastFetched)
 	}
 }
 
@@ -147,5 +152,39 @@ func TestFetchAllGames_ContextCancellation(t *testing.T) {
 	_, err := c.FetchAllGames(ctx, nil)
 	if err == nil {
 		t.Error("expected error from cancelled context, got nil")
+	}
+}
+
+func TestFetchAllGames_MidFetchCancellation(t *testing.T) {
+	page1, err := os.ReadFile("../../testdata/rss_page1.xml")
+	if err != nil {
+		t.Fatalf("read rss_page1.xml: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		if page == "1" {
+			// Cancel context after serving page 1, before page 2 can be requested.
+			cancel()
+			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Write(page1)
+		} else {
+			// Should not be reached.
+			t.Errorf("unexpected request for page %s after cancellation", page)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	games, err := c.FetchAllGames(ctx, nil)
+	if err == nil {
+		t.Error("expected error from mid-fetch cancellation, got nil")
+	}
+	// Partial results (page 1) should still be returned.
+	if len(games) != 36 {
+		t.Errorf("got %d games from partial fetch, want 36", len(games))
 	}
 }

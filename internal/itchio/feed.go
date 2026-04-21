@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
@@ -144,8 +143,9 @@ func (c *Client) FetchGames(page int, query string) ([]Game, error) {
 }
 
 // FetchAllGames fetches every page of the GB Studio feed until an empty page
-// is returned or ctx is cancelled. progress is called with the running total
-// of games fetched after each page (may be nil).
+// is returned or ctx is cancelled. If a page fetch fails, it returns the
+// games collected so far together with the error. progress is called with the
+// running total of games fetched after each successful page (may be nil).
 func (c *Client) FetchAllGames(ctx context.Context, progress func(fetched int)) ([]Game, error) {
 	select {
 	case <-ctx.Done():
@@ -153,18 +153,10 @@ func (c *Client) FetchAllGames(ctx context.Context, progress func(fetched int)) 
 	default:
 	}
 
-	var (
-		all []Game
-		mu  sync.Mutex
-	)
-
-	fetchPage := func(page int) ([]Game, error) {
-		url := fmt.Sprintf("%s/games/made-with-gb-studio.xml?page=%d", c.base, page)
-		return c.FetchGamesFromURL(url)
-	}
+	var all []Game
 
 	// Page 1 — always first so we know whether there's anything to fetch.
-	games, err := fetchPage(1)
+	games, err := c.FetchGames(1, "")
 	if err != nil {
 		return nil, fmt.Errorf("fetch all games page 1: %w", err)
 	}
@@ -185,15 +177,13 @@ func (c *Client) FetchAllGames(ctx context.Context, progress func(fetched int)) 
 		default:
 		}
 
-		games, err := fetchPage(page)
+		games, err := c.FetchGames(page, "")
 		if err != nil {
-			logger.Warn("cache: page %d error: %v (stopping early)", page, err)
-			break
+			logger.Warn("cache: page %d error: %v (returning partial results)", page, err)
+			return all, fmt.Errorf("fetch all games page %d: %w", page, err)
 		}
-		mu.Lock()
 		all = append(all, games...)
 		total := len(all)
-		mu.Unlock()
 		if progress != nil {
 			progress(total)
 		}
