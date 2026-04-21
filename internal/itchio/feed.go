@@ -144,8 +144,9 @@ func (c *Client) FetchGames(page int, query string) ([]Game, error) {
 
 // FetchAllGames fetches every page of the GB Studio feed until an empty page
 // is returned or ctx is cancelled. If a page fetch fails, it returns the
-// games collected so far together with the error. progress is called with the
-// running total of games fetched after each successful page (may be nil).
+// games collected so far together with the error; callers may choose to discard
+// partial results on error. progress is called with the running total of games
+// fetched after each successful page (may be nil).
 func (c *Client) FetchAllGames(ctx context.Context, progress func(fetched int)) ([]Game, error) {
 	select {
 	case <-ctx.Done():

@@ -481,7 +481,8 @@ func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
 }
 
 // pageSlice returns the sub-slice of games for the given 1-based page number,
-// using the global PerPage constant.
+// using the global PerPage constant. The returned slice shares backing memory
+// with games — callers must not mutate it.
 func pageSlice(games []itchio.Game, page int) []itchio.Game {
 	start := (page - 1) * itchio.PerPage
 	if start >= len(games) {
@@ -504,7 +505,7 @@ func (s *ListScreen) buildCache() {
 		logger.Debug("cache: fetched %d games so far", fetched)
 	})
 	if err != nil {
-		logger.Error("cache: full fetch failed: %v", err)
+		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
 		return
 	}
 	if err := itchio.SaveGamesCache(s.cachePath, games); err != nil {
