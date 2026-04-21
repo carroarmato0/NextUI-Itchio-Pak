@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
+	"net/http"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"golang.org/x/net/html"
 )
 
@@ -34,18 +35,24 @@ var (
 	// from its content attribute in a second pass.
 	gameIDTagRegex   = regexp.MustCompile(`<meta[^>]+itch:path[^>]+>`)
 	gameIDValueRegex = regexp.MustCompile(`content="games/(\d+)"`)
-	csrfRegex   = regexp.MustCompile(`name="csrf_token"\s+(?:content|value)="([^"]+)"`)
+	csrfRegex        = regexp.MustCompile(`name="csrf_token"\s+(?:content|value)="([^"]+)"`)
 	// tag links: <a href="https://itch.io/games/tag-horror">Horror</a>
 	// Capture the slug from the URL (e.g. "horror", "lgbtq") for reliable filter matching.
 	pageTagRegex = regexp.MustCompile(`href="https://itch\.io/games/tag-([^"]+)"`)
 )
 
 func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
+	logger.Debug("game: fetching detail %s", gameURL)
 	resp, err := c.http.Get(gameURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch game page: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("game: detail page HTTP %d for %s", resp.StatusCode, gameURL)
+		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -60,9 +67,16 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 			detail.GameID = m[1]
 		}
 	}
-	log.Printf("FetchGameDetail: gameID=%q", detail.GameID)
+	if detail.GameID == "" {
+		logger.Warn("game: gameID not found on page (paid download will not work)")
+	} else {
+		logger.Debug("game: gameID=%q", detail.GameID)
+	}
+
 	if m := csrfRegex.FindStringSubmatch(s); len(m) > 1 {
 		detail.CSRFToken = m[1]
+	} else {
+		logger.Warn("game: CSRF token not found on page")
 	}
 
 	// Extract itch.io page tags from tag links
@@ -71,13 +85,14 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 			detail.PageTags = append(detail.PageTags, strings.TrimSpace(m[1]))
 		}
 	}
-	log.Printf("FetchGameDetail: %d page tags: %v", len(detail.PageTags), detail.PageTags)
+	logger.Debug("game: %d page tags: %v", len(detail.PageTags), detail.PageTags)
 
 	// Extract screenshot URLs from screenshot img elements
 	screenshotReg := regexp.MustCompile(`class="[^"]*screenshot[^"]*"[^>]+src="([^"]+)"`)
 	for _, m := range screenshotReg.FindAllStringSubmatch(s, -1) {
 		detail.ScreenshotURLs = append(detail.ScreenshotURLs, m[1])
 	}
+	logger.Debug("game: %d screenshots found", len(detail.ScreenshotURLs))
 
 	// Extract game description from formatted_description div
 	detail.Description = extractDescription(s)
@@ -157,11 +172,18 @@ type DownloadPageResult struct {
 // .gb/.gbc uploads found (with UploadID set) plus the page's CSRF token.
 // The CSRF token must be included in the body of the subsequent file resolver POST.
 func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) {
+	// The signed URL contains a download key — do not log it.
+	logger.Debug("download-page: fetching signed download page")
 	resp, err := c.http.Get(pageURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch download page: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("download-page: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch download page: HTTP %d", resp.StatusCode)
+	}
 
 	rawHTML, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -171,9 +193,12 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 	pageStr := string(rawHTML)
 	result := &DownloadPageResult{}
 
-	// Extract CSRF token from the signed page — it is required in the resolver POST body.
+	// Extract CSRF token — log presence only, never the value.
 	if m := csrfRegex.FindStringSubmatch(pageStr); len(m) > 1 {
 		result.CSRFToken = m[1]
+		logger.Debug("download-page: CSRF token present")
+	} else {
+		logger.Warn("download-page: CSRF token not found (resolver POST may fail)")
 	}
 
 	doc, err := html.Parse(bytes.NewReader(rawHTML))
@@ -188,7 +213,10 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 			if u, ok := extractUploadEntry(n); ok {
 				ext := strings.ToLower(filepath.Ext(u.Filename))
 				if ext == ".gb" || ext == ".gbc" {
+					logger.Debug("download-page: found upload %s id=%s", u.Filename, u.UploadID)
 					result.Uploads = append(result.Uploads, u)
+				} else {
+					logger.Debug("download-page: skipping %s (not .gb/.gbc)", u.Filename)
 				}
 			}
 			return // don't recurse into upload divs
@@ -198,6 +226,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 		}
 	}
 	walkDoc(doc)
+	logger.Info("download-page: %d uploads available", len(result.Uploads))
 	return result, nil
 }
 
