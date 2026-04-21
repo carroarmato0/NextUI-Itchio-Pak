@@ -4,11 +4,11 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"path/filepath"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -56,9 +56,11 @@ func NewFetchUploadsScreen(
 
 		useAuthPath := !game.IsFree && cfg.APIKey != "" &&
 			detail != nil && detail.GameID != ""
-		log.Printf("FetchUploads: isFree=%v apiKey=%v detailNil=%v gameID=%q useAuthPath=%v",
+		logger.Debug("fetch: isFree=%v apiKey=%v detailNil=%v gameID=%q useAuthPath=%v",
 			game.IsFree, cfg.APIKey != "", detail == nil, func() string {
-				if detail != nil { return detail.GameID }
+				if detail != nil {
+					return detail.GameID
+				}
 				return "<nil>"
 			}(), useAuthPath)
 
@@ -77,6 +79,7 @@ func NewFetchUploadsScreen(
 					})
 				}
 				if len(s.uploads) == 0 {
+					logger.Warn("fetch: no .gb/.gbc uploads found for game (auth path)")
 					s.err = fmt.Errorf("no .gb or .gbc files found for this game")
 					s.state = fetchError
 				} else {
@@ -95,6 +98,7 @@ func NewFetchUploadsScreen(
 					s.uploads = append(s.uploads, roms.Upload{Filename: u.Filename, URL: u.URL})
 				}
 				if len(s.uploads) == 0 {
+					logger.Warn("fetch: no .gb/.gbc uploads found for game (free path)")
 					s.err = fmt.Errorf("no .gb or .gbc files found for this game")
 					s.state = fetchError
 				} else {

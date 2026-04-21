@@ -4,11 +4,11 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
@@ -55,10 +55,10 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 	go func() {
 		total, err := client.FetchTotalGames()
 		if err != nil {
-			log.Printf("FetchTotalGames: %v", err)
+			logger.Error("feed: total games: %v", err)
 			return
 		}
-		log.Printf("total games: %d", total)
+		logger.Info("feed: total games=%d", total)
 		s.totalGames = total
 		s.totalPages = (total + itchio.PerPage - 1) / itchio.PerPage
 	}()
@@ -68,12 +68,12 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 func (s *ListScreen) loadPage(page int, query string) {
 	s.loading = true
 	s.err = nil
-	log.Printf("loadPage: fetching page %d query=%q", page, query)
+	logger.Debug("feed: loading page %d query=%q", page, query)
 	games, err := s.client.FetchGames(page, query)
 	if err != nil {
-		log.Printf("loadPage: page %d error: %v", page, err)
+		logger.Error("feed: page %d error: %v", page, err)
 	} else {
-		log.Printf("loadPage: page %d returned %d games", page, len(games))
+		logger.Info("feed: page %d returned %d games", page, len(games))
 	}
 	s.games = games
 	s.err = err

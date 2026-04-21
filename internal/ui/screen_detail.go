@@ -4,11 +4,11 @@ package ui
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
@@ -42,17 +42,17 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("PANIC in FetchGameDetail goroutine: %v", r)
+				logger.Error("detail: PANIC in FetchGameDetail goroutine: %v", r)
 				s.err = fmt.Errorf("internal error: %v", r)
 				s.loading = false
 			}
 		}()
-		log.Printf("fetching detail for: %s", game.URL)
+		logger.Debug("detail: fetching %s", game.URL)
 		d, err := client.FetchGameDetail(game.URL)
 		if err != nil {
-			log.Printf("FetchGameDetail error: %v", err)
+			logger.Error("detail: FetchGameDetail: %v", err)
 		} else {
-			log.Printf("FetchGameDetail ok: %d screenshots", len(d.ScreenshotURLs))
+			logger.Debug("detail: %d screenshots", len(d.ScreenshotURLs))
 			// Prepend cover art as the first image so it's shown by default
 			if game.CoverURL != "" {
 				d.ScreenshotURLs = append([]string{game.CoverURL}, d.ScreenshotURLs...)

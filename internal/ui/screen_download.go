@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -47,21 +48,24 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			atomic.StoreInt64(&s.total, total)
 		}
 
-		var err error
+		isAuth := upload.DownloadKeyID != ""
+		logger.Info("download: starting %q file=%s dest=%s auth=%v",
+			game.Title, upload.Filename, dest, isAuth)
 
-		if upload.DownloadKeyID != "" {
-			// Paid game: use the API-based auth download path.
+		var err error
+		if isAuth {
 			err = client.DownloadAuthUpload(cfg.APIKey, upload.UploadID, upload.DownloadKeyID, dest, progress)
 		} else {
-			// Free game: use the CSRF scraping download path.
 			itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
 			err = client.DownloadFree(game.URL, itchUpload, dest, progress)
 		}
 
 		if err != nil {
+			logger.Error("download: failed file=%s: %v", upload.Filename, err)
 			s.err = err
 			s.state = dlError
 		} else {
+			logger.Info("download: complete file=%s", upload.Filename)
 			s.state = dlDone
 		}
 	}()
