@@ -114,6 +114,9 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 }
 
 func (s *ROMPickerScreen) chooseUpload(upload roms.Upload) Screen {
+	if s.cfg.ROMLocation == "ask" {
+		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+	}
 	ext := strings.ToLower(filepath.Ext(upload.Filename))
 	dest := roms.DestinationDir(ext) + upload.Filename
 	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)

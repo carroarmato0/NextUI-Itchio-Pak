@@ -188,6 +188,9 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 func (s *FetchUploadsScreen) nextScreen() Screen {
 	if len(s.uploads) == 1 {
 		upload := s.uploads[0]
+		if s.cfg.ROMLocation == "ask" {
+			return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+		}
 		ext := strings.ToLower(filepath.Ext(upload.Filename))
 		dest := roms.DestinationDir(ext) + upload.Filename
 		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
