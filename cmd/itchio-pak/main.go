@@ -9,6 +9,11 @@ import (
 	"syscall"
 )
 
+// version is set at build time via -ldflags:
+//
+//	-X main.version=vX.Y.Z
+var version = "dev"
+
 func main() {
 	headless := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
 	flag.Parse()
@@ -30,6 +35,8 @@ func main() {
 			log.Printf("PANIC: %v\n%s", r, debug.Stack())
 		}
 	}()
+
+	log.Printf("itchio-pak %s starting", version)
 
 	if *headless {
 		log.Println("headless mode: exiting cleanly")

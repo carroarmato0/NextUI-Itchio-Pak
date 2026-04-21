@@ -59,7 +59,7 @@ build_native() {
     fi
     VERSION="$(pak_version)"
     mkdir -p bin/native
-    go build -ldflags "-X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
+    go build -ldflags "-X main.version=$VERSION -X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
         -o bin/native/itchio-pak ./cmd/itchio-pak/
     echo "Built: bin/native/itchio-pak ($VERSION)"
 }
@@ -85,7 +85,7 @@ build_platform() {
     PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
     CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
         go build -a -tags netgo -buildvcs=false \
-        -ldflags "-X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
+        -ldflags "-X main.version=$VERSION -X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
         -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
     echo "Built: bin/$PLATFORM/itchio-pak ($VERSION)"
 
