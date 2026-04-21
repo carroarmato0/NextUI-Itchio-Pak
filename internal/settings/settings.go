@@ -45,15 +45,18 @@ type ContentFilter struct {
 
 // Config is the top-level application configuration.
 type Config struct {
-	APIKey       string        `json:"api_key"`
-	ROMSelection string        `json:"rom_selection"`
-	Filter       ContentFilter `json:"content_filter"`
+	APIKey       string            `json:"api_key"`
+	ROMSelection string            `json:"rom_selection"`
+	ROMLocation  string            `json:"rom_location"`
+	LastROMDirs  map[string]string `json:"last_rom_dirs,omitempty"`
+	Filter       ContentFilter     `json:"content_filter"`
 }
 
 func defaults() *Config {
 	return &Config{
 		APIKey:       "",
 		ROMSelection: "auto",
+		ROMLocation:  "auto",
 		Filter: ContentFilter{
 			AdultContent: CategoryFilter{Enabled: true},
 			HeavyThemes:  CategoryFilter{Enabled: true},

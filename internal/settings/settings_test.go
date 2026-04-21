@@ -1,6 +1,7 @@
 package settings_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -147,5 +148,66 @@ func TestHasActiveTag(t *testing.T) {
 	cf = settings.CategoryFilter{Enabled: true}
 	if cf.HasActiveTag([]string{}) {
 		t.Error("expected HasActiveTag=false for empty tagList")
+	}
+}
+
+func TestROMLocationDefault(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path/config.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ROMLocation != "auto" {
+		t.Errorf("default ROMLocation = %q, want %q", cfg.ROMLocation, "auto")
+	}
+	if cfg.LastROMDirs != nil {
+		t.Errorf("default LastROMDirs should be nil, got %v", cfg.LastROMDirs)
+	}
+}
+
+func TestLastROMDirsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{
+		ROMLocation: "ask",
+		LastROMDirs: map[string]string{
+			".gbc": "/mnt/SDCARD/Roms/RPG/GBC/",
+			".gb":  "/mnt/SDCARD/Roms/RPG/GB/",
+		},
+	}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.ROMLocation != "ask" {
+		t.Errorf("ROMLocation = %q, want %q", loaded.ROMLocation, "ask")
+	}
+	if loaded.LastROMDirs[".gbc"] != "/mnt/SDCARD/Roms/RPG/GBC/" {
+		t.Errorf(".gbc dir = %q, want %q", loaded.LastROMDirs[".gbc"], "/mnt/SDCARD/Roms/RPG/GBC/")
+	}
+	if loaded.LastROMDirs[".gb"] != "/mnt/SDCARD/Roms/RPG/GB/" {
+		t.Errorf(".gb dir = %q, want %q", loaded.LastROMDirs[".gb"], "/mnt/SDCARD/Roms/RPG/GB/")
+	}
+}
+
+func TestLastROMDirsOmittedWhenNil(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{ROMLocation: "ask"} // LastROMDirs is nil
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if bytes.Contains(data, []byte("last_rom_dirs")) {
+		t.Errorf("last_rom_dirs should be omitted when nil, found in JSON:\n%s", data)
 	}
 }
