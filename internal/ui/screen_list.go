@@ -25,6 +25,7 @@ const (
 const (
 	repeatDelay    = 400 * time.Millisecond // initial delay before repeating
 	repeatInterval = 80 * time.Millisecond  // interval between repeats
+	cacheTTL       = 24 * time.Hour
 )
 
 type ListScreen struct {
@@ -82,6 +83,8 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 		// No cache: live fetch page 1 (existing behaviour) + build cache in background.
 		if err != nil {
 			logger.Debug("cache: no cache found (%v), using live feed", err)
+		} else {
+			logger.Debug("cache: file exists but contains no games, using live feed")
 		}
 		go s.loadPage(1, "")
 		go func() {
@@ -491,12 +494,12 @@ func pageSlice(games []itchio.Game, page int) []itchio.Game {
 	return games[start:end]
 }
 
-const cacheTTL = 24 * time.Hour
-
 // buildCache fetches the complete game list and writes it to disk.
 // Called as a goroutine. On success, future page turns use the local cache.
 func (s *ListScreen) buildCache() {
 	logger.Info("cache: starting background full fetch")
+	// context.Background() is intentional: this goroutine is not cancellable on
+	// app exit. A future improvement could thread an app-level context here.
 	games, err := s.client.FetchAllGames(context.Background(), func(fetched int) {
 		logger.Debug("cache: fetched %d games so far", fetched)
 	})
