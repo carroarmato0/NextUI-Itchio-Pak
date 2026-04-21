@@ -5,13 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
+
+// presentAbsent returns "present" when s is non-empty, "absent" otherwise.
+// Used to log whether a token exists without logging its value.
+func presentAbsent(s string) string {
+	if s != "" {
+		return "present"
+	}
+	return "absent"
+}
 
 // FetchUploads returns the list of .gb/.gbc files available for free download.
 //
@@ -33,6 +43,10 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 	resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("read game page: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("uploads: game page HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
 	}
 
 	csrfM := csrfRegex.FindStringSubmatch(string(body))
@@ -59,15 +73,17 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 	if dlResult.URL == "" {
 		return nil, fmt.Errorf("download_url returned empty url (game may be paid or require login)")
 	}
-	log.Printf("FetchUploads: signed download URL: %s", dlResult.URL)
+	// The signed URL contains a download key — do not log it.
+	logger.Debug("uploads: signed download URL received")
 
 	// Step 3: extract the download key from the signed URL path
 	// Format: https://author.itch.io/game/download/KEY
 	key := extractDownloadKey(dlResult.URL)
 	if key == "" {
-		return nil, fmt.Errorf("could not extract download key from: %s", dlResult.URL)
+		return nil, fmt.Errorf("could not extract download key from signed URL")
 	}
-	log.Printf("FetchUploads: extracted key: %q", key)
+	// The key value is sensitive — do not log it.
+	logger.Debug("uploads: download key extracted")
 
 	// Step 4: parse the signed download page for upload IDs + filenames + CSRF token
 	dlPage, err := c.ParseDownloadPage(dlResult.URL)
@@ -84,7 +100,7 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 		resolverURL := base + "/file/" + u.UploadID +
 			"?key=" + url.QueryEscape(key) +
 			"&csrf=" + url.QueryEscape(dlPage.CSRFToken)
-		log.Printf("FetchUploads: upload %q id=%s", u.Filename, u.UploadID)
+		logger.Debug("uploads: found %s id=%s", u.Filename, u.UploadID)
 		uploads = append(uploads, Upload{
 			Filename: u.Filename,
 			UploadID: u.UploadID,
@@ -104,14 +120,11 @@ func extractDownloadKey(signedURL string) string {
 	if err != nil {
 		return ""
 	}
-	// EscapedPath preserves %-encoding in the raw path, preventing %2F inside
-	// the key from being treated as a path separator during the Split below.
 	rawPath := parsed.EscapedPath()
 	parts := strings.Split(strings.Trim(rawPath, "/"), "/")
 	if len(parts) == 0 {
 		return ""
 	}
-	// URL-decode just the final segment to recover the actual key string.
 	key, err := url.PathUnescape(parts[len(parts)-1])
 	if err != nil {
 		return parts[len(parts)-1]
@@ -121,17 +134,12 @@ func extractDownloadKey(signedURL string) string {
 
 // extractKeyID parses the itch.io download key JWT and returns the numeric
 // download key ID embedded in its payload.
-//
-// JWT format: base64({"id":NNNN,"expires":...}).base64(signature)
-// itch.io's file resolver endpoint requires this numeric ID as
-// "download_key_id", not the full JWT string.
 func extractKeyID(jwtKey string) string {
 	dotIdx := strings.Index(jwtKey, ".")
 	if dotIdx < 0 {
 		return ""
 	}
 	payload := jwtKey[:dotIdx]
-	// The payload may or may not have base64 padding.
 	data, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
 		data, err = base64.RawStdEncoding.DecodeString(payload)
@@ -152,12 +160,9 @@ func extractKeyID(jwtKey string) string {
 //
 // upload.URL must be a resolver endpoint of the form:
 //
-//	gameURL/file/UPLOAD_ID?key=KEY
-//
-// A POST with key in the form body returns {"url":"CDN_URL"}, which is then
-// streamed directly to dest.
+//	gameURL/file/UPLOAD_ID?key=KEY&csrf=CSRF
 func (c *Client) DownloadFree(_ string, upload Upload, dest string, progress func(int64, int64)) error {
-	// Parse the resolver URL to extract base path and key
+	// Parse the resolver URL to extract base path, key, and csrf.
 	parsed, err := url.Parse(upload.URL)
 	if err != nil {
 		return fmt.Errorf("parse resolver URL: %w", err)
@@ -165,11 +170,10 @@ func (c *Client) DownloadFree(_ string, upload Upload, dest string, progress fun
 	key := parsed.Query().Get("key")
 	csrf := parsed.Query().Get("csrf")
 
-	// itch.io's file resolver requires the numeric download key ID (extracted
-	// from the JWT payload) as "download_key_id", not the raw JWT string.
 	keyID := extractKeyID(key)
 	baseURL := parsed.Scheme + "://" + parsed.Host + parsed.Path
-	log.Printf("DownloadFree: POST %s (download_key_id=%s csrf=%q)", baseURL, keyID, csrf)
+	// Log token presence only — never log CSRF or key values.
+	logger.Debug("uploads: POST resolver csrf=%s key=%s", presentAbsent(csrf), presentAbsent(key))
 
 	form := url.Values{"csrf_token": {csrf}, "download_key_id": {keyID}}
 	resp, err := c.http.Post(baseURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
@@ -184,6 +188,7 @@ func (c *Client) DownloadFree(_ string, upload Upload, dest string, progress fun
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Error("uploads: resolver HTTP %d: %.200s", resp.StatusCode, rawBody)
 		return fmt.Errorf("resolve CDN URL: HTTP %d: %.200s", resp.StatusCode, rawBody)
 	}
 
@@ -192,16 +197,19 @@ func (c *Client) DownloadFree(_ string, upload Upload, dest string, progress fun
 		Errors []string `json:"errors"`
 	}
 	if err := json.Unmarshal(rawBody, &result); err != nil {
+		logger.Error("uploads: parse resolver response: %v (body: %.200s)", err, rawBody)
 		return fmt.Errorf("parse CDN URL response: %w (body: %.200s)", err, rawBody)
 	}
 	if len(result.Errors) > 0 {
+		logger.Error("uploads: resolver error: %s", strings.Join(result.Errors, "; "))
 		return fmt.Errorf("resolver error: %s", strings.Join(result.Errors, "; "))
 	}
 	if result.URL == "" {
+		logger.Error("uploads: empty CDN URL from resolver (file may require purchase)")
 		return fmt.Errorf("empty CDN URL from resolver (file may require purchase)")
 	}
 
-	log.Printf("DownloadFree: streaming %s → %s", result.URL, dest)
+	// CDN URL may contain signed tokens — do not log it.
 	return c.streamToFile(result.URL, dest, progress)
 }
 
@@ -213,7 +221,15 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Error("stream: HTTP %d fetching file", resp.StatusCode)
 		return fmt.Errorf("file download status %d", resp.StatusCode)
+	}
+
+	// Log the destination and size but not the CDN source URL (may contain tokens).
+	if resp.ContentLength >= 0 {
+		logger.Info("stream: → %s (%d bytes)", dest, resp.ContentLength)
+	} else {
+		logger.Info("stream: → %s (unknown size)", dest)
 	}
 
 	dir := filepath.Dir(dest)
@@ -234,6 +250,7 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
+				logger.Error("stream: write error after %d bytes: %v", downloaded, werr)
 				return fmt.Errorf("write: %w", werr)
 			}
 			downloaded += int64(n)
@@ -245,8 +262,10 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 			break
 		}
 		if err != nil {
+			logger.Error("stream: read error after %d bytes: %v", downloaded, err)
 			return fmt.Errorf("read stream: %w", err)
 		}
 	}
+	logger.Info("stream: done, wrote %d bytes", downloaded)
 	return nil
 }
