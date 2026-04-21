@@ -1,6 +1,7 @@
 package itchio_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -74,5 +75,77 @@ func TestFetchGamesFreePriceParsing(t *testing.T) {
 	}
 	if games[0].Author != "testdev" {
 		t.Errorf("Author = %q, want %q", games[0].Author, "testdev")
+	}
+}
+
+func TestFetchAllGames(t *testing.T) {
+	page1, err := os.ReadFile("../../testdata/rss_page1.xml")
+	if err != nil {
+		t.Fatalf("read rss_page1.xml: %v", err)
+	}
+
+	page2XML := `<?xml version="1.0"?><rss version="2.0"><channel>
+<item>
+  <title>Extra Game One</title>
+  <link>https://extradev.itch.io/extra-one</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+<item>
+  <title>Extra Game Two</title>
+  <link>https://extradev.itch.io/extra-two</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+</channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		switch page {
+		case "1":
+			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Write(page1)
+		case "2":
+			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Write([]byte(page2XML))
+		default:
+			// Page 3+ returns empty feed → signals end of results.
+			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
+		}
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	var progressCalls int
+	games, err := c.FetchAllGames(context.Background(), func(fetched int) {
+		progressCalls++
+	})
+	if err != nil {
+		t.Fatalf("FetchAllGames: %v", err)
+	}
+	// rss_page1.xml has 36 items; page2 has 2 → total 38.
+	if len(games) != 38 {
+		t.Errorf("got %d games, want 38", len(games))
+	}
+	if progressCalls == 0 {
+		t.Error("progress callback was never called")
+	}
+}
+
+func TestFetchAllGames_ContextCancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	c := itchio.NewClientWithBase(srv.URL)
+	_, err := c.FetchAllGames(ctx, nil)
+	if err == nil {
+		t.Error("expected error from cancelled context, got nil")
 	}
 }

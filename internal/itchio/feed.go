@@ -1,6 +1,7 @@
 package itchio
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
@@ -134,11 +136,72 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 const PerPage = 36 // itch.io XML feeds return 36 items per page
 
 func (c *Client) FetchGames(page int, query string) ([]Game, error) {
-	url := fmt.Sprintf("https://itch.io/games/made-with-gb-studio.xml?page=%d", page)
+	url := fmt.Sprintf("%s/games/made-with-gb-studio.xml?page=%d", c.base, page)
 	if query != "" {
 		url += "&q=" + query
 	}
 	return c.FetchGamesFromURL(url)
+}
+
+// FetchAllGames fetches every page of the GB Studio feed until an empty page
+// is returned or ctx is cancelled. progress is called with the running total
+// of games fetched after each page (may be nil).
+func (c *Client) FetchAllGames(ctx context.Context, progress func(fetched int)) ([]Game, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	var (
+		all []Game
+		mu  sync.Mutex
+	)
+
+	fetchPage := func(page int) ([]Game, error) {
+		url := fmt.Sprintf("%s/games/made-with-gb-studio.xml?page=%d", c.base, page)
+		return c.FetchGamesFromURL(url)
+	}
+
+	// Page 1 — always first so we know whether there's anything to fetch.
+	games, err := fetchPage(1)
+	if err != nil {
+		return nil, fmt.Errorf("fetch all games page 1: %w", err)
+	}
+	all = append(all, games...)
+	if progress != nil {
+		progress(len(all))
+	}
+	if len(games) < PerPage {
+		return all, nil // single page, done
+	}
+
+	// Fetch remaining pages sequentially. The user sees the live feed during
+	// this background pass, so total time is acceptable.
+	for page := 2; ; page++ {
+		select {
+		case <-ctx.Done():
+			return all, ctx.Err()
+		default:
+		}
+
+		games, err := fetchPage(page)
+		if err != nil {
+			logger.Warn("cache: page %d error: %v (stopping early)", page, err)
+			break
+		}
+		mu.Lock()
+		all = append(all, games...)
+		total := len(all)
+		mu.Unlock()
+		if progress != nil {
+			progress(total)
+		}
+		if len(games) < PerPage {
+			break // last page
+		}
+	}
+	return all, nil
 }
 
 var resultCountRegex = regexp.MustCompile(`(?i)(\d[\d,]*)\s+result`)
