@@ -4,8 +4,6 @@ package ui
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
 	"sync/atomic"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -37,10 +35,7 @@ type DownloadScreen struct {
 	err        error
 }
 
-func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.Game, detail *itchio.GameDetail, upload roms.Upload, prev Screen) *DownloadScreen {
-	ext := strings.ToLower(filepath.Ext(upload.Filename))
-	dest := roms.DestinationDir(ext) + upload.Filename
-
+func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.Game, detail *itchio.GameDetail, upload roms.Upload, dest string, prev Screen) *DownloadScreen {
 	s := &DownloadScreen{
 		client: client, cfg: cfg, game: game, detail: detail,
 		upload: upload, prev: prev, dest: dest, state: dlDownloading,

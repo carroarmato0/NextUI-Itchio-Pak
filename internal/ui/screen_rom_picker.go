@@ -3,6 +3,9 @@
 package ui
 
 import (
+	"path/filepath"
+	"strings"
+
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
@@ -79,7 +82,7 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_RETURN:
 			if s.cursor < len(s.uploads) {
-				return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.uploads[s.cursor], s.prev)
+				return s.chooseUpload(s.uploads[s.cursor])
 			}
 		case sdl.K_ESCAPE:
 			return s.prev
@@ -99,7 +102,7 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.uploads) {
-				return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.uploads[s.cursor], s.prev)
+				return s.chooseUpload(s.uploads[s.cursor])
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
@@ -108,4 +111,10 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 		return nil
 	}
 	return s
+}
+
+func (s *ROMPickerScreen) chooseUpload(upload roms.Upload) Screen {
+	ext := strings.ToLower(filepath.Ext(upload.Filename))
+	dest := roms.DestinationDir(ext) + upload.Filename
+	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
 }

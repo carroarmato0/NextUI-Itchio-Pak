@@ -5,6 +5,8 @@ package ui
 import (
 	"fmt"
 	"log"
+	"path/filepath"
+	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -185,8 +187,10 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 
 func (s *FetchUploadsScreen) nextScreen() Screen {
 	if len(s.uploads) == 1 {
-		// Single file — go straight to download
-		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.uploads[0], s.prev)
+		upload := s.uploads[0]
+		ext := strings.ToLower(filepath.Ext(upload.Filename))
+		dest := roms.DestinationDir(ext) + upload.Filename
+		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
 	}
 	// Multiple files — always show picker so the user can choose
 	return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.uploads, s.prev)
