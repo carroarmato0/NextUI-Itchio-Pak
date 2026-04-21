@@ -16,6 +16,7 @@ type settingsItem int
 const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
+	sItemROMLocation
 	sItemClearCache
 	sItemContentModeration
 	sItemAbout
@@ -70,6 +71,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	items := []string{
 		"API Key: ",
 		"ROM Selection: " + s.cfg.ROMSelection,
+		"ROM Location: " + s.cfg.ROMLocation,
 		"Clear Image Cache",
 		"Content Moderation >",
 		"About",
@@ -190,6 +192,13 @@ func (s *SettingsScreen) activate() Screen {
 			s.cfg.ROMSelection = "ask"
 		} else {
 			s.cfg.ROMSelection = "auto"
+		}
+		s.cfg.Save(s.cfgPath)
+	case sItemROMLocation:
+		if s.cfg.ROMLocation == "auto" {
+			s.cfg.ROMLocation = "ask"
+		} else {
+			s.cfg.ROMLocation = "auto"
 		}
 		s.cfg.Save(s.cfgPath)
 	case sItemClearCache:
