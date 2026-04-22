@@ -55,6 +55,10 @@ type ListScreen struct {
 	cachedGames []itchio.Game
 	cacheReady  bool
 	cachePath   string
+
+	// jumpToEnd signals that the next loadPage call should place the cursor on
+	// the last item rather than the first. Set when navigating to a previous page.
+	jumpToEnd bool
 }
 
 func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string) *ListScreen {
@@ -107,7 +111,7 @@ func (s *ListScreen) loadPage(page int, query string) {
 		// Serve from local cache — no network, instant.
 		logger.Debug("cache: serving page %d from cache (%d games)", page, len(s.cachedGames))
 		s.games = pageSlice(s.cachedGames, page)
-		s.cursor = 0
+		s.placeCursor()
 		s.titleScrollX = 0
 		s.titleScrollAt = time.Now()
 		return
@@ -124,10 +128,22 @@ func (s *ListScreen) loadPage(page int, query string) {
 	}
 	s.games = games
 	s.err = err
-	s.cursor = 0
+	s.placeCursor()
 	s.titleScrollX = 0
 	s.titleScrollAt = time.Now()
 	s.loading = false
+}
+
+// placeCursor sets the cursor position after a page load.
+// If jumpToEnd is set the cursor lands on the last item (used when navigating
+// to a previous page); otherwise it lands on the first item.
+func (s *ListScreen) placeCursor() {
+	if s.jumpToEnd && len(s.games) > 0 {
+		s.cursor = len(s.games) - 1
+	} else {
+		s.cursor = 0
+	}
+	s.jumpToEnd = false
 }
 
 func (s *ListScreen) processAutoRepeat() {
@@ -147,17 +163,28 @@ func (s *ListScreen) processAutoRepeat() {
 }
 
 func (s *ListScreen) moveCursor(dir int) {
-	moved := false
-	if dir > 0 && s.cursor < len(s.games)-1 {
-		s.cursor++
-		moved = true
-	} else if dir < 0 && s.cursor > 0 {
-		s.cursor--
-		moved = true
-	}
-	if moved {
-		s.titleScrollX = 0
-		s.titleScrollAt = time.Now()
+	if dir > 0 {
+		if s.cursor < len(s.games)-1 {
+			s.cursor++
+			s.titleScrollX = 0
+			s.titleScrollAt = time.Now()
+		} else if s.totalPages == 0 || s.page < s.totalPages {
+			// At the last item on the page — advance to the next page.
+			s.page++
+			go s.loadPage(s.page, "")
+		}
+	} else if dir < 0 {
+		if s.cursor > 0 {
+			s.cursor--
+			s.titleScrollX = 0
+			s.titleScrollAt = time.Now()
+		} else if s.page > 1 {
+			// At the first item on the page — go back to the previous page,
+			// landing on its last item.
+			s.page--
+			s.jumpToEnd = true
+			go s.loadPage(s.page, "")
+		}
 	}
 }
 
