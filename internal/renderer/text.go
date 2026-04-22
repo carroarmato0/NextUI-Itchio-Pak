@@ -20,9 +20,12 @@ func sanitizeText(s string) string {
 	return string(out)
 }
 
+// isEmoji reports whether r falls within a Unicode block reserved for emoji or
+// symbol characters that the bundled font is known not to support.
 func isEmoji(r rune) bool {
 	return (r >= 0x2600 && r <= 0x26FF) || // Miscellaneous Symbols
 		(r >= 0x2700 && r <= 0x27BF) || // Dingbats
+		(r >= 0x2B00 && r <= 0x2BFF) || // Miscellaneous Symbols and Arrows
 		(r >= 0x1F300 && r <= 0x1F5FF) || // Misc Symbols and Pictographs
 		(r >= 0x1F600 && r <= 0x1F64F) || // Emoticons
 		(r >= 0x1F650 && r <= 0x1F67F) || // Ornamental Dingbats

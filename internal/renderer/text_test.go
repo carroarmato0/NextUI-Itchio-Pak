@@ -18,9 +18,11 @@ func TestSanitizeText(t *testing.T) {
 		{"emoji in description stripped", "Great game 🦾", "Great game "},
 		{"misc symbol stripped", "★ cool", " cool"},
 		{"dingbat stripped", "✂ cut", " cut"},
+		{"misc symbols arrows stripped", "⭐ star", " star"},
 		{"transport emoji stripped", "🚀 launch", " launch"},
 		{"emoticon stripped", "😀 fun", " fun"},
 		{"mixed cjk and emoji", "かぞくロボット 🎮", "かぞくロボット "},
+		{"invalid utf-8 preserved", "\xff\xfe", "\xff\xfe"},
 		{"empty string", "", ""},
 	}
 	for _, tc := range cases {
