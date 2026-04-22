@@ -414,7 +414,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s, s.triggerCacheRefresh)
+			return NewSettingsScreen(s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -452,7 +452,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.cfg, s.cfgPath, s, s.triggerCacheRefresh)
+			return NewSettingsScreen(s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
 		}
 	case *sdl.QuitEvent:
 		return nil
@@ -532,9 +532,14 @@ func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
 	s.buildCache()
 }
 
-// triggerCacheRefresh is the callback handed to SettingsScreen for the
-// "Refresh Game List" menu item.
-func (s *ListScreen) triggerCacheRefresh() {
-	logger.Info("cache: manual refresh triggered from settings")
-	go s.buildCache()
+// newCacheRefreshScreen returns a CacheRefreshScreen that runs a full cache
+// rebuild and notifies this ListScreen on completion via onCacheUpdated.
+// It is passed to SettingsScreen as the onRefreshGames callback.
+func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
+	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
+		s.cachedGames = games
+		s.cacheReady = true
+		s.totalGames = len(games)
+		s.totalPages = (len(games) + itchio.PerPage - 1) / itchio.PerPage
+	})
 }
