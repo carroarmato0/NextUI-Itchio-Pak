@@ -333,7 +333,7 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	}
 }
 
-const scrollStep = 30
+const scrollStep = 15
 
 func (s *DetailScreen) clampScroll(contentH int32) {
 	maxScroll := s.contentHeight - contentH

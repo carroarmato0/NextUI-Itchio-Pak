@@ -23,8 +23,8 @@ const (
 
 // Auto-repeat timing for held D-pad buttons
 const (
-	repeatDelay    = 400 * time.Millisecond // initial delay before repeating
-	repeatInterval = 80 * time.Millisecond  // interval between repeats
+	repeatDelay    = 300 * time.Millisecond // initial delay before repeating
+	repeatInterval = 40 * time.Millisecond  // interval between repeats
 	cacheTTL       = 24 * time.Hour
 )
 
