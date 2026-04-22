@@ -13,7 +13,7 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-type refreshCacheState int
+type refreshCacheState int32
 
 const (
 	refreshCacheLoading refreshCacheState = iota
@@ -28,7 +28,7 @@ type CacheRefreshScreen struct {
 	client         *itchio.Client
 	cachePath      string
 	prev           Screen
-	onCacheUpdated func([]itchio.Game)
+	onCacheUpdated func([]itchio.Game) // called from background goroutine; must be concurrency-safe
 
 	state   refreshCacheState
 	fetched int64 // written atomically from goroutine, read in Draw
@@ -39,6 +39,7 @@ type CacheRefreshScreen struct {
 // NewCacheRefreshScreen creates the screen and immediately starts the
 // background fetch. onCacheUpdated is called on success so the caller can
 // update its in-memory state; it may be nil.
+// onCacheUpdated is called on success from the background goroutine and must be concurrency-safe.
 func NewCacheRefreshScreen(
 	client *itchio.Client,
 	cachePath string,
@@ -53,20 +54,21 @@ func NewCacheRefreshScreen(
 		state:          refreshCacheLoading,
 	}
 	go func() {
+		// TODO: use a cancelable context tied to screen lifetime
 		games, err := client.FetchAllGames(context.Background(), func(fetched int) {
 			atomic.StoreInt64(&s.fetched, int64(fetched))
 		})
 		if err != nil {
 			logger.Error("cache refresh: failed after %d games: %v", len(games), err)
 			s.err = err
-			s.state = refreshCacheError
+			atomic.StoreInt32((*int32)(&s.state), int32(refreshCacheError))
 			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 			return
 		}
 		if err := itchio.SaveGamesCache(cachePath, games); err != nil {
 			logger.Error("cache refresh: save failed: %v", err)
 			s.err = err
-			s.state = refreshCacheError
+			atomic.StoreInt32((*int32)(&s.state), int32(refreshCacheError))
 			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 			return
 		}
@@ -75,7 +77,7 @@ func NewCacheRefreshScreen(
 		if onCacheUpdated != nil {
 			onCacheUpdated(games)
 		}
-		s.state = refreshCacheDone
+		atomic.StoreInt32((*int32)(&s.state), int32(refreshCacheDone))
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 	}()
 	return s
@@ -84,17 +86,20 @@ func NewCacheRefreshScreen(
 func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	r.Clear(colorBG, colorBG, colorBG)
 
-	headerH := int32(72)
 	footerH := int32(40)
+	_, mainFH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	headerH := mainFH + smallFH + 16
 	textY := r.DrawHeaderBar(headerH)
 	r.DrawText("Refreshing Game List", 20, textY, colorText, colorText, colorText)
 
-	_, fontH := r.TextSize("Ag")
+	fontH := mainFH
 	contentTop := headerH + 4
 	contentH := r.H - headerH - footerH
 	mid := contentTop + contentH/2
 
-	switch s.state {
+	state := refreshCacheState(atomic.LoadInt32((*int32)(&s.state)))
+	switch state {
 	case refreshCacheLoading:
 		fetched := atomic.LoadInt64(&s.fetched)
 		r.DrawTextCentered("Fetching games...", 0, mid-fontH-4, r.W, colorText, colorText, colorText)
@@ -110,7 +115,7 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.state {
+	switch state {
 	case refreshCacheLoading:
 		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
 	default:
@@ -120,12 +125,13 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 }
 
 func (s *CacheRefreshScreen) HandleEvent(e sdl.Event) Screen {
+	state := refreshCacheState(atomic.LoadInt32((*int32)(&s.state)))
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		if ev.Type != sdl.KEYDOWN {
 			return s
 		}
-		if s.state != refreshCacheLoading {
+		if state != refreshCacheLoading {
 			switch ev.Keysym.Sym {
 			case sdl.K_ESCAPE, sdl.K_RETURN:
 				return s.prev
@@ -135,7 +141,7 @@ func (s *CacheRefreshScreen) HandleEvent(e sdl.Event) Screen {
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
 		}
-		if s.state != refreshCacheLoading {
+		if state != refreshCacheLoading {
 			switch ev.Button {
 			case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
 				return s.prev
