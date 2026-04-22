@@ -31,14 +31,14 @@ type SettingsScreen struct {
 	cfgPath        string
 	cursor         settingsItem
 	prev           Screen
-	onRefreshGames func() // nil if not available
+	onRefreshGames func(Screen) Screen // nil if not available
 
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
 }
 
-func NewSettingsScreen(cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func()) *SettingsScreen {
+func NewSettingsScreen(cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen) *SettingsScreen {
 	return &SettingsScreen{cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
 }
 
@@ -226,7 +226,7 @@ func (s *SettingsScreen) activate() Screen {
 		os.RemoveAll("/tmp/itchio-pak/cache/")
 	case sItemRefreshCache:
 		if s.onRefreshGames != nil {
-			s.onRefreshGames()
+			return s.onRefreshGames(s)
 		}
 	case sItemContentModeration:
 		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
