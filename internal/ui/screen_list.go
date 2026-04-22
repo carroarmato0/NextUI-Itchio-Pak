@@ -523,6 +523,11 @@ func (s *ListScreen) buildCache() {
 	s.cacheReady = true
 	s.totalGames = len(games)
 	s.totalPages = (len(games) + itchio.PerPage - 1) / itchio.PerPage
+	if s.page > s.totalPages {
+		logger.Info("cache: current page %d exceeds new total %d, jumping to last page", s.page, s.totalPages)
+		s.page = s.totalPages
+		s.loadPage(s.page, "")
+	}
 }
 
 // refreshCacheIfStale triggers a full re-fetch if the cache is older than cacheTTL.
@@ -546,5 +551,10 @@ func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 		s.cacheReady = true
 		s.totalGames = len(games)
 		s.totalPages = (len(games) + itchio.PerPage - 1) / itchio.PerPage
+		if s.page > s.totalPages {
+			logger.Info("cache: current page %d exceeds new total %d, jumping to last page", s.page, s.totalPages)
+			s.page = s.totalPages
+			s.loadPage(s.page, "")
+		}
 	})
 }
