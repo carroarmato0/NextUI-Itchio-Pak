@@ -97,6 +97,7 @@ func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
 }
 
 func (r *Renderer) DrawText(text string, x, y int32, red, green, blue uint8) error {
+	text = sanitizeText(text)
 	surface, err := r.Font.RenderUTF8Blended(text, sdl.Color{R: red, G: green, B: blue, A: 255})
 	if err != nil {
 		return err
@@ -116,6 +117,7 @@ func (r *Renderer) DrawText(text string, x, y int32, red, green, blue uint8) err
 
 // TextSize returns the pixel width and height of text without drawing it.
 func (r *Renderer) TextSize(text string) (int32, int32) {
+	text = sanitizeText(text)
 	w, h, err := r.Font.SizeUTF8(text)
 	if err != nil {
 		return 0, 0
@@ -152,6 +154,7 @@ func (r *Renderer) ClearClipRect() {
 
 // WrapText breaks text into lines that fit within maxWidth pixels.
 func (r *Renderer) WrapText(text string, maxWidth int32) []string {
+	text = sanitizeText(text)
 	var lines []string
 	for _, paragraph := range splitLines(text) {
 		if paragraph == "" {
@@ -196,6 +199,7 @@ func splitWords(s string) []string {
 
 // DrawSmallText draws text using the small hint font.
 func (r *Renderer) DrawSmallText(text string, x, y int32, red, green, blue uint8) error {
+	text = sanitizeText(text)
 	surface, err := r.SmallFont.RenderUTF8Blended(text, sdl.Color{R: red, G: green, B: blue, A: 255})
 	if err != nil {
 		return err
@@ -213,6 +217,7 @@ func (r *Renderer) DrawSmallText(text string, x, y int32, red, green, blue uint8
 
 // SmallTextSize returns the pixel width and height of text in the small font.
 func (r *Renderer) SmallTextSize(text string) (int32, int32) {
+	text = sanitizeText(text)
 	w, h, err := r.SmallFont.SizeUTF8(text)
 	if err != nil {
 		return 0, 0
