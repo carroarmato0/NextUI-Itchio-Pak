@@ -37,9 +37,9 @@ type CacheRefreshScreen struct {
 }
 
 // NewCacheRefreshScreen creates the screen and immediately starts the
-// background fetch. onCacheUpdated is called on success so the caller can
-// update its in-memory state; it may be nil.
-// onCacheUpdated is called on success from the background goroutine and must be concurrency-safe.
+// background fetch. onCacheUpdated is called on success from the background
+// goroutine; the caller is responsible for ensuring its implementation handles
+// concurrent access appropriately. It may be nil.
 func NewCacheRefreshScreen(
 	client *itchio.Client,
 	cachePath string,
