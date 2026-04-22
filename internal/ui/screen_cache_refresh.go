@@ -119,7 +119,7 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	case refreshCacheLoading:
 		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
 	default:
-		r.DrawSmallText("B: back to settings", 10, ftrY, 140, 140, 140)
+		r.DrawSmallText("A / B: back to settings", 10, ftrY, 140, 140, 140)
 	}
 	r.Present()
 }
