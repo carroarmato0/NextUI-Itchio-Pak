@@ -536,6 +536,7 @@ func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
 // rebuild and notifies this ListScreen on completion via onCacheUpdated.
 // It is passed to SettingsScreen as the onRefreshGames callback.
 func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
+	logger.Info("cache: manual refresh triggered from settings")
 	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
 		s.cachedGames = games
 		s.cacheReady = true
