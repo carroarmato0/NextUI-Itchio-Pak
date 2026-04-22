@@ -36,7 +36,10 @@ required.
 ### Game browsing
 - Scrollable list of GB Studio games from itch.io's "made-with-gb-studio" category
 - Live cover art thumbnails alongside the list (LRU image cache, loaded in background)
-- Paged loading — L/R buttons jump between pages of 36 games
+- Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; L/R shoulder buttons jump pages directly
+- On first launch the list loads live from the network while a full cache is built in the background
+- On subsequent launches the full game list loads instantly from the on-device cache
+- Cache auto-refreshes after 24 hours; manual refresh available in Settings
 - Total game count displayed in the header
 
 ### Game detail
@@ -77,6 +80,7 @@ required.
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
+- **Refresh Game List** — re-fetches the full game list from itch.io with a live progress screen showing how many games have been retrieved; the cache is updated on completion
 - **Content Moderation** — configure per-category content filters
 - **About** — app description, version, and QR code linking to the project page
 
@@ -86,7 +90,9 @@ required.
 |---|---|
 | D-pad up/down | Navigate list / scroll detail page |
 | D-pad up/down (hold) | Auto-scroll with acceleration |
-| D-pad L/R | Previous/next page in game list |
+| D-pad down (at last item) | Advance to next page |
+| D-pad up (at first item) | Go back to previous page (lands on last item) |
+| L / R shoulder | Previous/next page in game list (direct jump) |
 | L / R shoulder | Previous/next screenshot in detail view |
 | A | Select / confirm / download |
 | B | Back |
