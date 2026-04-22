@@ -402,8 +402,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_ESCAPE:
 			return nil
 		case sdl.K_PAGEDOWN:
-			s.page++
-			go s.loadPage(s.page, "")
+			if s.totalPages == 0 || s.page < s.totalPages {
+				s.page++
+				go s.loadPage(s.page, "")
+			}
 		case sdl.K_PAGEUP:
 			if s.page > 1 {
 				s.page--
@@ -438,8 +440,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
-			s.page++
-			go s.loadPage(s.page, "")
+			if s.totalPages == 0 || s.page < s.totalPages {
+				s.page++
+				go s.loadPage(s.page, "")
+			}
 		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
 			if s.page > 1 {
 				s.page--
