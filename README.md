@@ -5,7 +5,7 @@
 
 <img src="docs/screenshots/main.png" alt="Game list" width="800"/>
 
-An unofficial community Pak for NextUI on TrimUI and MagicX handheld gaming
+An unofficial community Pak for NextUI on TrimUI and Miyoo Flip handheld gaming
 devices. Browse, discover, and download Game Boy / Game Boy Color ROM files
 directly from itch.io's "made-with-gb-studio" category — all on-device, no PC
 required.
