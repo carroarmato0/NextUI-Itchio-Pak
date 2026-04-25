@@ -111,6 +111,73 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
+func TestFetchAuthUploads_UnknownExt(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer testkey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
+	})
+
+	mux.HandleFunc("/api/1/testkey/game/777/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("download_key_id") != "42" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"uploads":[
+			{"id":1,"filename":"game.gbc"},
+			{"id":2,"filename":"manual.pdf"},
+			{"id":3,"filename":"Glory Hunters 2.0"}
+		]}`))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	uploads, keyID, err := c.FetchAuthUploads("testkey", "777")
+	if err != nil {
+		t.Fatalf("FetchAuthUploads: %v", err)
+	}
+	if keyID != "42" {
+		t.Errorf("keyID = %q, want 42", keyID)
+	}
+	// manual.pdf dropped; game.gbc (known) + Glory Hunters 2.0 (unknown) kept
+	if len(uploads) != 2 {
+		t.Fatalf("expected 2 uploads, got %d", len(uploads))
+	}
+
+	gbc := uploads[0]
+	if gbc.Filename != "game.gbc" {
+		t.Errorf("uploads[0].Filename = %q, want game.gbc", gbc.Filename)
+	}
+	if gbc.NeedsFormat {
+		t.Errorf("uploads[0].NeedsFormat = true, want false for .gbc file")
+	}
+
+	unknown := uploads[1]
+	if unknown.Filename != "Glory Hunters 2.0" {
+		t.Errorf("uploads[1].Filename = %q, want 'Glory Hunters 2.0'", unknown.Filename)
+	}
+	if !unknown.NeedsFormat {
+		t.Errorf("uploads[1].NeedsFormat = false, want true for unknown ext")
+	}
+	if unknown.UploadID != "3" {
+		t.Errorf("uploads[1].UploadID = %q, want 3", unknown.UploadID)
+	}
+
+	for _, u := range uploads {
+		if u.Filename == "manual.pdf" {
+			t.Errorf("manual.pdf should have been dropped (skippable ext)")
+		}
+	}
+}
+
 func TestFetchAuthUploads(t *testing.T) {
 	// Intercept both api.itch.io (owned-keys) and itch.io (uploads).
 	// We override the client's base and also serve the owned-keys path on the

@@ -3,6 +3,7 @@ package itchio
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,10 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	if len(keysResult.OwnedKeys) == 0 {
 		return nil, "", fmt.Errorf("game not owned or API key invalid (no download key found)")
 	}
+	if keysResult.OwnedKeys[0].ID == 0 {
+		logger.Warn("auth: owned-keys returned entry with id=0 (game not owned or API issue)")
+		return nil, "", fmt.Errorf("game not owned or API key invalid (no valid download key)")
+	}
 	downloadKeyID := fmt.Sprintf("%d", keysResult.OwnedKeys[0].ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
@@ -64,8 +69,13 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	}
 	defer resp2.Body.Close()
 
+	rawBody, err := io.ReadAll(resp2.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("read uploads response: %w", err)
+	}
+
 	if resp2.StatusCode != http.StatusOK {
-		logger.Error("auth: upload list HTTP %d", resp2.StatusCode)
+		logger.Error("auth: upload list HTTP %d: %.200s", resp2.StatusCode, rawBody)
 		return nil, "", fmt.Errorf("fetch uploads: HTTP %d", resp2.StatusCode)
 	}
 
@@ -75,7 +85,8 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 			Filename string `json:"filename"`
 		} `json:"uploads"`
 	}
-	if err := json.NewDecoder(resp2.Body).Decode(&uploadsResult); err != nil {
+	if err := json.Unmarshal(rawBody, &uploadsResult); err != nil {
+		logger.Error("auth: decode uploads: %v (body: %.200s)", err, rawBody)
 		return nil, "", fmt.Errorf("decode uploads: %w", err)
 	}
 
@@ -87,11 +98,29 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 				Filename: u.Filename,
 				UploadID: fmt.Sprintf("%d", u.ID),
 			})
-			logger.Debug("auth: found %s id=%d", u.Filename, u.ID)
+			logger.Debug("auth: found ROM %s id=%d", u.Filename, u.ID)
+		} else if !isSkippableExt(ext) {
+			uploads = append(uploads, Upload{
+				Filename:    u.Filename,
+				UploadID:    fmt.Sprintf("%d", u.ID),
+				NeedsFormat: true,
+			})
+			logger.Debug("auth: found unknown-format %s id=%d (user will choose format)", u.Filename, u.ID)
+		} else {
+			logger.Debug("auth: skipping %s (ext=%q)", u.Filename, ext)
 		}
 	}
+	knownCount := 0
+	for _, u := range uploads {
+		if !u.NeedsFormat {
+			knownCount++
+		}
+	}
+	logger.Debug("auth: %d known ROM(s), %d unknown-format file(s) from %d total",
+		knownCount, len(uploads)-knownCount, len(uploadsResult.Uploads))
 	if len(uploads) == 0 {
-		logger.Warn("auth: no .gb/.gbc uploads found (game has %d total uploads)", len(uploadsResult.Uploads))
+		logger.Warn("auth: no downloadable uploads found (game has %d uploads, all skipped)",
+			len(uploadsResult.Uploads))
 	}
 	return uploads, downloadKeyID, nil
 }
