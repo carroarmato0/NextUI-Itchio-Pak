@@ -72,6 +72,74 @@ func TestFetchGameDetailPaidDoesNotCrash(t *testing.T) {
 	}
 }
 
+func TestParseDownloadPage_UnknownExt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html>
+<head><meta name="csrf_token" value="CSRF"/></head>
+<body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column"><div class="upload_name">
+      <strong class="name" title="game.gbc">game.gbc</strong>
+    </div></div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="1">Download</a>
+    </div>
+  </div>
+  <div class="upload">
+    <div class="info_column"><div class="upload_name">
+      <strong class="name" title="Glory Hunters 2.0">Glory Hunters 2.0</strong>
+    </div></div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="2">Download</a>
+    </div>
+  </div>
+  <div class="upload">
+    <div class="info_column"><div class="upload_name">
+      <strong class="name" title="manual.pdf">manual.pdf</strong>
+    </div></div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="3">Download</a>
+    </div>
+  </div>
+</div>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	result, err := c.ParseDownloadPage(srv.URL + "/dl/TOKEN")
+	if err != nil {
+		t.Fatalf("ParseDownloadPage: %v", err)
+	}
+	// manual.pdf must be dropped; game.gbc and Glory Hunters 2.0 must be kept
+	if len(result.Uploads) != 2 {
+		t.Fatalf("expected 2 uploads, got %d", len(result.Uploads))
+	}
+
+	gbc := result.Uploads[0]
+	if gbc.Filename != "game.gbc" {
+		t.Errorf("uploads[0].Filename = %q, want game.gbc", gbc.Filename)
+	}
+	if gbc.NeedsFormat {
+		t.Errorf("uploads[0].NeedsFormat = true, want false for .gbc file")
+	}
+
+	unknown := result.Uploads[1]
+	if unknown.Filename != "Glory Hunters 2.0" {
+		t.Errorf("uploads[1].Filename = %q, want 'Glory Hunters 2.0'", unknown.Filename)
+	}
+	if !unknown.NeedsFormat {
+		t.Errorf("uploads[1].NeedsFormat = false, want true for unknown ext")
+	}
+
+	for _, u := range result.Uploads {
+		if u.Filename == "manual.pdf" {
+			t.Errorf("manual.pdf should have been dropped (skippable ext)")
+		}
+	}
+}
+
 func TestParseDownloadPageFiltersROMs(t *testing.T) {
 	srv := serveFile(t, "../../testdata/download_page.html")
 	defer srv.Close()

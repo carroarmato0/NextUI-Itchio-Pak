@@ -214,10 +214,14 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 			if u, ok := extractUploadEntry(n); ok {
 				ext := strings.ToLower(filepath.Ext(u.Filename))
 				if ext == ".gb" || ext == ".gbc" {
-					logger.Debug("download-page: found upload %s id=%s", u.Filename, u.UploadID)
+					logger.Debug("download-page: found ROM %s id=%s", u.Filename, u.UploadID)
+					result.Uploads = append(result.Uploads, u)
+				} else if !isSkippableExt(ext) {
+					u.NeedsFormat = true
+					logger.Debug("download-page: found unknown-format %s id=%s (user will choose format)", u.Filename, u.UploadID)
 					result.Uploads = append(result.Uploads, u)
 				} else {
-					logger.Debug("download-page: skipping %s (not .gb/.gbc)", u.Filename)
+					logger.Debug("download-page: skipping %s (ext=%q)", u.Filename, ext)
 				}
 			}
 			return // don't recurse into upload divs
@@ -227,7 +231,14 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 		}
 	}
 	walkDoc(doc)
-	logger.Info("download-page: %d uploads available", len(result.Uploads))
+	knownCount := 0
+	for _, u := range result.Uploads {
+		if !u.NeedsFormat {
+			knownCount++
+		}
+	}
+	logger.Info("download-page: %d known ROM(s), %d unknown-format file(s)",
+		knownCount, len(result.Uploads)-knownCount)
 	return result, nil
 }
 

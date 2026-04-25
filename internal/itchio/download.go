@@ -14,6 +14,25 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
+// knownNonROMExts lists extensions that are definitely not GB/GBC ROM files.
+// Uploads with these extensions are silently dropped when scanning a game's
+// upload list. Anything not in this map (including no extension, version-number
+// suffixes like ".0", and ".zip") is returned with NeedsFormat=true so the
+// user can classify it manually.
+var knownNonROMExts = map[string]bool{
+	".7z": true, ".tar": true, ".gz": true, ".rar": true, ".bz2": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".bmp": true, ".webp": true,
+	".mp3": true, ".ogg": true, ".wav": true, ".flac": true, ".aac": true,
+	".pdf": true, ".txt": true, ".md": true, ".epub": true, ".mobi": true,
+	".mp4": true, ".avi": true, ".mkv": true, ".mov": true,
+	".exe": true, ".dmg": true, ".apk": true,
+	".pocket": true, ".nes": true, ".gba": true, ".nds": true, ".sfc": true, ".smc": true,
+}
+
+func isSkippableExt(ext string) bool {
+	return knownNonROMExts[strings.ToLower(ext)]
+}
+
 // presentAbsent returns "present" when s is non-empty, "absent" otherwise.
 // Used to log whether a token exists without logging its value.
 func presentAbsent(s string) string {
