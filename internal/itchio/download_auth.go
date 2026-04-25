@@ -75,6 +75,10 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		return nil, "", fmt.Errorf("read uploads response: %w", err)
 	}
 
+	if resp2.StatusCode == http.StatusForbidden || resp2.StatusCode == http.StatusUnauthorized {
+		logger.Warn("auth: upload list HTTP %d — game not owned or API key lacks access", resp2.StatusCode)
+		return nil, "", fmt.Errorf("game not owned or API key does not grant access to this game's downloads")
+	}
 	if resp2.StatusCode != http.StatusOK {
 		logger.Error("auth: upload list HTTP %d: %.200s", resp2.StatusCode, rawBody)
 		return nil, "", fmt.Errorf("fetch uploads: HTTP %d", resp2.StatusCode)
