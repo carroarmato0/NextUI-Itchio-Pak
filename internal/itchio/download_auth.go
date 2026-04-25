@@ -83,7 +83,7 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	// Treat this as a "not owned" condition rather than a generic server error.
 	if resp2.StatusCode == http.StatusInternalServerError {
 		logger.Warn("auth: upload list HTTP 500 — download key likely invalid; game may not be owned (body: %.200s)", rawBody)
-		return nil, "", fmt.Errorf("game not owned or download key invalid — purchase this game to download it")
+		return nil, "", fmt.Errorf("Game not owned or download key invalid — purchase this game to download it")
 	}
 	if resp2.StatusCode != http.StatusOK {
 		logger.Error("auth: upload list HTTP %d: %.200s", resp2.StatusCode, rawBody)
@@ -117,7 +117,7 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	var uploads []Upload
 	for _, u := range uploadItems {
 		ext := strings.ToLower(filepath.Ext(u.Filename))
-		if ext == ".gb" || ext == ".gbc" {
+		if ext == ".gb" || ext == ".gbc" || ext == ".zip" {
 			uploads = append(uploads, Upload{
 				Filename: u.Filename,
 				UploadID: fmt.Sprintf("%d", u.ID),

@@ -14,6 +14,12 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+type detailModal struct {
+	active bool
+	title  string
+	body   string
+}
+
 type DetailScreen struct {
 	client        *itchio.Client
 	cfg           *settings.Config
@@ -28,6 +34,7 @@ type DetailScreen struct {
 	contentHeight int32 // total content height (computed during Draw)
 	viewportH     int32 // visible content area height (set during Draw)
 	advisoryTriggered bool // true when a filter match is found after loading
+	modal         detailModal
 
 	// Held-button auto-repeat state for scrolling
 	heldDir    int       // -1 = up, +1 = down, 0 = none
@@ -35,6 +42,13 @@ type DetailScreen struct {
 	lastRepeat time.Time
 
 	prev Screen
+}
+
+// ShowModal displays a dismissable overlay message on the detail screen.
+// Called by FetchUploadsScreen when it detects a "not owned" condition so the
+// error appears as a popup on top of the game page rather than a separate screen.
+func (s *DetailScreen) ShowModal(title, body string) {
+	s.modal = detailModal{active: true, title: title, body: body}
 }
 
 func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, prev Screen) *DetailScreen {
@@ -105,12 +119,20 @@ func (s *DetailScreen) processAutoScroll() {
 }
 
 func (s *DetailScreen) Draw(r *renderer.Renderer) {
+	// Draw the modal overlay (if active) and call Present exactly once,
+	// regardless of which branch below renders the underlying content.
+	defer func() {
+		if s.modal.active {
+			s.drawModal(r)
+		}
+		r.Present()
+	}()
+
 	s.processAutoScroll()
 
 	// ── Parental advisory overlay ────────────────────────────
 	if !s.loading && s.err == nil && s.advisoryTriggered {
 		s.drawAdvisoryOverlay(r)
-		r.Present()
 		return
 	}
 
@@ -167,14 +189,12 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		r.DrawText("Loading...", margin, contentTop+imgBoxH+16, colorText, colorText, colorText)
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
-		r.Present()
 		return
 	}
 	if s.err != nil {
 		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, 200, 50, 50)
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
-		r.Present()
 		return
 	}
 
@@ -267,7 +287,42 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawSmallText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, ftrY, 140, 140, 140)
-	r.Present()
+}
+
+// drawModal renders a centered popup overlay with a title, body, and dismiss hint.
+func (s *DetailScreen) drawModal(r *renderer.Renderer) {
+	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	pad := int32(16)
+	lineH := smallFH + 4
+	bodyLines := int32(4) // generous for typical "not owned" messages
+	boxW := r.W * 2 / 3
+	boxH := pad + fontH + pad + 2 + pad + lineH*bodyLines + pad + 2 + pad + smallFH + pad
+	boxX := (r.W - boxW) / 2
+	boxY := (r.H - boxH) / 2
+
+	// Dark background covers underlying content
+	r.DrawRect(0, 0, r.W, r.H, 10, 10, 15)
+
+	// Border + box background
+	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, 70, 70, 70)
+	r.DrawRect(boxX, boxY, boxW, boxH, 25, 25, 35)
+
+	y := boxY + pad
+
+	r.DrawTextCentered(s.modal.title, boxX, y, boxW, 240, 180, 60)
+	y += fontH + pad
+
+	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	y += 1 + pad
+
+	r.DrawWrappedText(s.modal.body, boxX+pad, y, boxW-pad*2, lineH, 200, 200, 200)
+	y += lineH*bodyLines + pad
+
+	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	y += 1 + pad
+
+	r.DrawSmallTextCentered("Press any button to dismiss", boxX, y, boxW, 120, 120, 120)
 }
 
 // drawAdvisoryOverlay renders the full-screen content warning cover.
@@ -363,6 +418,23 @@ func (s *DetailScreen) stopScrollHold(dir int) {
 }
 
 func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
+	// While the modal is visible, consume all input and dismiss on any button press.
+	if s.modal.active {
+		switch ev := e.(type) {
+		case *sdl.KeyboardEvent:
+			if ev.Type == sdl.KEYDOWN {
+				s.modal.active = false
+			}
+		case *sdl.ControllerButtonEvent:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.modal.active = false
+			}
+		case *sdl.QuitEvent:
+			return nil
+		}
+		return s
+	}
+
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
