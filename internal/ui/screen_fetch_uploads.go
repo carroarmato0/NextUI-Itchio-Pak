@@ -36,9 +36,10 @@ type FetchUploadsScreen struct {
 	detail  *itchio.GameDetail
 	prev    Screen
 
-	state   fetchState
-	uploads []roms.Upload
-	err     error
+	state        fetchState
+	uploads      []roms.Upload
+	err          error
+	isNotOwned   bool // true when error is "game not owned" — triggers auto-modal on prev screen
 }
 
 func NewFetchUploadsScreen(
@@ -70,6 +71,7 @@ func NewFetchUploadsScreen(
 			if authErr != nil {
 				s.err = authErr
 				s.state = fetchError
+				s.isNotOwned = strings.Contains(authErr.Error(), "not owned")
 			} else {
 				for _, u := range authUploads {
 					s.uploads = append(s.uploads, roms.Upload{
@@ -166,8 +168,16 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 
 	switch ev := e.(type) {
 	case *sdl.UserEvent:
-		// Fetch finished (error state) — stay on this screen to show the error.
 		_ = ev
+		// "Not owned" error: go back to the detail screen and show a modal there
+		// instead of showing a standalone error screen.
+		if s.isNotOwned {
+			if ds, ok := s.prev.(*DetailScreen); ok {
+				ds.ShowModal("Cannot Download", s.err.Error())
+			}
+			return s.prev
+		}
+		// Other errors: stay on this screen to show the error.
 	case *sdl.KeyboardEvent:
 		if ev.Type != sdl.KEYDOWN {
 			return s

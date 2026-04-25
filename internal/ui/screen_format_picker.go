@@ -133,7 +133,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("↑↓: select  ◄►: GB/GBC/ZIP  B: download  A: back", 10, ftrY, 140, 140, 140)
+	r.DrawSmallText("Up/Down: select  Left/Right: GB/GBC/ZIP  B: download  A: back", 10, ftrY, 140, 140, 140)
 	r.Present()
 }
 

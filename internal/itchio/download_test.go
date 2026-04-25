@@ -205,6 +205,61 @@ func TestFetchAuthUploads_NotOwned500(t *testing.T) {
 	}
 }
 
+func TestFetchAuthUploads_ZipTreatedAsKnown(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
+	})
+	mux.HandleFunc("/api/1/testkey/game/555/uploads", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"uploads":[
+			{"id":1,"filename":"game.gbc"},
+			{"id":2,"filename":"Glory Hunters 2.0.zip"},
+			{"id":3,"filename":"Glory Hunters 1.3 ROM Files.zip"},
+			{"id":4,"filename":"Glory Hunters 2.0"},
+			{"id":5,"filename":"manual.pdf"}
+		]}`))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	uploads, _, err := c.FetchAuthUploads("testkey", "555")
+	if err != nil {
+		t.Fatalf("FetchAuthUploads: %v", err)
+	}
+	// pdf dropped; gbc + 2×zip (known) + extensionless (NeedsFormat) = 4
+	if len(uploads) != 4 {
+		t.Fatalf("expected 4 uploads, got %d", len(uploads))
+	}
+
+	for _, u := range uploads {
+		if u.Filename == "manual.pdf" {
+			t.Errorf("manual.pdf should have been dropped")
+		}
+	}
+
+	byName := make(map[string]itchio.Upload)
+	for _, u := range uploads {
+		byName[u.Filename] = u
+	}
+
+	if byName["game.gbc"].NeedsFormat {
+		t.Errorf("game.gbc should not need format")
+	}
+	if byName["Glory Hunters 2.0.zip"].NeedsFormat {
+		t.Errorf("Glory Hunters 2.0.zip should not need format (zip is a known extension)")
+	}
+	if byName["Glory Hunters 1.3 ROM Files.zip"].NeedsFormat {
+		t.Errorf("Glory Hunters 1.3 ROM Files.zip should not need format")
+	}
+	if !byName["Glory Hunters 2.0"].NeedsFormat {
+		t.Errorf("Glory Hunters 2.0 (no extension) should need format")
+	}
+}
+
 func TestFetchAuthUploads_EmptyObjectResponse(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {

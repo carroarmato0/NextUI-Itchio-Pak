@@ -140,6 +140,60 @@ func TestParseDownloadPage_UnknownExt(t *testing.T) {
 	}
 }
 
+func TestParseDownloadPage_ZipTreatedAsKnown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html>
+<head><meta name="csrf_token" value="CSRF"/></head>
+<body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column"><div class="upload_name">
+      <strong class="name" title="game.gbc">game.gbc</strong>
+    </div></div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="1">Download</a>
+    </div>
+  </div>
+  <div class="upload">
+    <div class="info_column"><div class="upload_name">
+      <strong class="name" title="Glory Hunters 2.0.zip">Glory Hunters 2.0.zip</strong>
+    </div></div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="2">Download</a>
+    </div>
+  </div>
+  <div class="upload">
+    <div class="info_column"><div class="upload_name">
+      <strong class="name" title="manual.pdf">manual.pdf</strong>
+    </div></div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="3">Download</a>
+    </div>
+  </div>
+</div>
+</body></html>`))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	result, err := c.ParseDownloadPage(srv.URL + "/dl/TOKEN")
+	if err != nil {
+		t.Fatalf("ParseDownloadPage: %v", err)
+	}
+	// manual.pdf dropped; game.gbc and Glory Hunters 2.0.zip kept, both NeedsFormat=false
+	if len(result.Uploads) != 2 {
+		t.Fatalf("expected 2 uploads, got %d", len(result.Uploads))
+	}
+	for _, u := range result.Uploads {
+		if u.NeedsFormat {
+			t.Errorf("%q has NeedsFormat=true, want false (.zip should be treated as known)", u.Filename)
+		}
+		if u.Filename == "manual.pdf" {
+			t.Errorf("manual.pdf should have been dropped")
+		}
+	}
+}
+
 func TestParseDownloadPageFiltersROMs(t *testing.T) {
 	srv := serveFile(t, "../../testdata/download_page.html")
 	defer srv.Close()
