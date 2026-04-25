@@ -66,6 +66,9 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			s.state = dlError
 		} else {
 			logger.Info("download: complete file=%s", upload.Filename)
+			if artErr := client.DownloadCoverArt(game.CoverURL, dest); artErr != nil {
+				logger.Warn("cover-art: %v", artErr)
+			}
 			s.state = dlDone
 		}
 	}()
