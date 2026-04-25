@@ -41,27 +41,43 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 	base := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
 	artPath := filepath.Join(mediaDir, base+ext)
 
-	logger.Debug("cover-art: fetching → %s", artPath)
+	logger.Info("cover-art: downloading for %s", filepath.Base(romDestPath))
 
 	resp, err := c.http.Get(coverURL)
 	if err != nil {
+		logger.Error("cover-art: fetch: %v", err)
 		return fmt.Errorf("cover-art: fetch: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Error("cover-art: HTTP %d", resp.StatusCode)
 		return fmt.Errorf("cover-art: HTTP %d", resp.StatusCode)
 	}
 
-	f, err := os.Create(artPath)
+	tmp, err := os.CreateTemp(mediaDir, ".art-*.tmp")
 	if err != nil {
-		return fmt.Errorf("cover-art: create file: %w", err)
+		logger.Error("cover-art: create temp: %v", err)
+		return fmt.Errorf("cover-art: create temp: %w", err)
 	}
-	defer f.Close()
+	tmpPath := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpPath) // no-op after successful rename
+	}()
 
-	n, err := io.Copy(f, resp.Body)
+	n, err := io.Copy(tmp, resp.Body)
 	if err != nil {
+		logger.Error("cover-art: write %s: %v", artPath, err)
 		return fmt.Errorf("cover-art: write: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		logger.Error("cover-art: close temp %s: %v", tmpPath, err)
+		return fmt.Errorf("cover-art: close temp: %w", err)
+	}
+	if err := os.Rename(tmpPath, artPath); err != nil {
+		logger.Error("cover-art: rename to %s: %v", artPath, err)
+		return fmt.Errorf("cover-art: rename: %w", err)
 	}
 	logger.Info("cover-art: saved %d bytes → %s", n, artPath)
 	return nil

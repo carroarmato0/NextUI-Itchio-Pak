@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -38,6 +39,8 @@ func TestDownloadCoverArtHTTP404(t *testing.T) {
 
 	if err := c.DownloadCoverArt(srv.URL+"/cover.jpg", romPath); err == nil {
 		t.Fatal("expected error for HTTP 404, got nil")
+	} else if !strings.Contains(err.Error(), "404") {
+		t.Errorf("expected error to mention 404, got: %v", err)
 	}
 }
 
@@ -87,8 +90,12 @@ func TestDownloadCoverArtNoExtFallback(t *testing.T) {
 	}
 
 	artPath := filepath.Join(dir, ".media", "game.png")
-	if _, err := os.Stat(artPath); os.IsNotExist(err) {
-		t.Errorf("expected art file at %s (png fallback), not found", artPath)
+	fi, statErr := os.Stat(artPath)
+	if os.IsNotExist(statErr) {
+		t.Fatalf("expected art file at %s, not found", artPath)
+	}
+	if fi.Size() == 0 {
+		t.Errorf("art file at %s is empty", artPath)
 	}
 }
 
@@ -109,7 +116,11 @@ func TestDownloadCoverArtROMWithNoExt(t *testing.T) {
 	}
 
 	artPath := filepath.Join(dir, ".media", "game.png")
-	if _, err := os.Stat(artPath); os.IsNotExist(err) {
-		t.Errorf("expected art file at %s, not found", artPath)
+	fi, statErr := os.Stat(artPath)
+	if os.IsNotExist(statErr) {
+		t.Fatalf("expected art file at %s, not found", artPath)
+	}
+	if fi.Size() == 0 {
+		t.Errorf("art file at %s is empty", artPath)
 	}
 }
