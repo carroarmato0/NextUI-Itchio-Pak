@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -124,6 +125,10 @@ func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 	})
 
 	mux.HandleFunc("/api/1/testkey/game/777/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("download_key_id") != "42" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":[
 			{"id":1,"filename":"game.gbc"},
@@ -174,6 +179,57 @@ func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 	}
 }
 
+func TestFetchAuthUploads_NotOwned500(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Returns a key ID even though the user doesn't actually own the game
+		// (itch.io can return non-zero IDs for non-owners in some cases).
+		w.Write([]byte(`{"owned_keys":[{"id":99}]}`))
+	})
+	mux.HandleFunc("/api/1/testkey/game/999/uploads", func(w http.ResponseWriter, r *http.Request) {
+		// itch.io returns 500 when download_key_id doesn't grant access.
+		http.Error(w, `{"errors":["There was a server error"]}`, http.StatusInternalServerError)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	_, _, err := c.FetchAuthUploads("testkey", "999")
+	if err == nil {
+		t.Fatal("expected error for non-owned game, got nil")
+	}
+	if !strings.Contains(err.Error(), "not owned") && !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("error should mention ownership/invalid key, got: %v", err)
+	}
+}
+
+func TestFetchAuthUploads_EmptyObjectResponse(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"owned_keys":[{"id":77}]}`))
+	})
+	mux.HandleFunc("/api/1/testkey/game/888/uploads", func(w http.ResponseWriter, r *http.Request) {
+		// itch.io sometimes returns an object instead of an array for empty upload lists.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"uploads":{}}`))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	uploads, _, err := c.FetchAuthUploads("testkey", "888")
+	if err != nil {
+		t.Fatalf("expected no error for empty uploads object, got: %v", err)
+	}
+	if len(uploads) != 0 {
+		t.Errorf("expected 0 uploads, got %d", len(uploads))
+	}
+}
+
 func TestFetchAuthUploads(t *testing.T) {
 	// Intercept both api.itch.io (owned-keys) and itch.io (uploads).
 	// We override the client's base and also serve the owned-keys path on the
@@ -190,8 +246,12 @@ func TestFetchAuthUploads(t *testing.T) {
 		w.Write([]byte(`{"owned_keys":[{"id":999}]}`))
 	})
 
-	// v1 uploads endpoint — download_key_id is only needed at the download step, not here.
+	// v1 uploads endpoint — requires download_key_id to prove ownership.
 	mux.HandleFunc("/api/1/mykey/game/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("download_key_id") != "999" {
+			http.Error(w, "bad key", http.StatusForbidden)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":[{"id":777,"filename":"game.gbc"},{"id":888,"filename":"manual.pdf"}]}`))
 	})

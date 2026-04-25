@@ -57,10 +57,9 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	downloadKeyID := fmt.Sprintf("%d", keysResult.OwnedKeys[0].ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
-	// Step 2: list uploads. The API key in the URL path identifies the user;
-	// download_key_id is only needed at the actual download step, not here.
-	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads",
-		c.base, apiKey, gameID)
+	// Step 2: list uploads using the download key to prove ownership.
+	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
+		c.base, apiKey, gameID, downloadKeyID)
 	logger.Debug("auth: fetching upload list for game_id=%s", gameID)
 	// The URL contains the API key; the logger's secret registry will redact it.
 
@@ -79,24 +78,44 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		logger.Warn("auth: upload list HTTP %d — game not owned or API key lacks access", resp2.StatusCode)
 		return nil, "", fmt.Errorf("game not owned or API key does not grant access to this game's downloads")
 	}
+	// itch.io returns 500 when the download_key_id is not valid for this game
+	// (e.g. the owned-keys endpoint returned a key that doesn't grant access).
+	// Treat this as a "not owned" condition rather than a generic server error.
+	if resp2.StatusCode == http.StatusInternalServerError {
+		logger.Warn("auth: upload list HTTP 500 — download key likely invalid; game may not be owned (body: %.200s)", rawBody)
+		return nil, "", fmt.Errorf("game not owned or download key invalid — purchase this game to download it")
+	}
 	if resp2.StatusCode != http.StatusOK {
 		logger.Error("auth: upload list HTTP %d: %.200s", resp2.StatusCode, rawBody)
 		return nil, "", fmt.Errorf("fetch uploads: HTTP %d", resp2.StatusCode)
 	}
 
-	var uploadsResult struct {
-		Uploads []struct {
-			ID       int64  `json:"id"`
-			Filename string `json:"filename"`
-		} `json:"uploads"`
+	// itch.io returns {"uploads":[...]} when uploads are accessible, but
+	// {"uploads":{}} (an object, not an array) when there are none or access is
+	// restricted. Decode the uploads field as raw JSON so we can handle both.
+	var envelope struct {
+		Uploads json.RawMessage `json:"uploads"`
 	}
-	if err := json.Unmarshal(rawBody, &uploadsResult); err != nil {
-		logger.Error("auth: decode uploads: %v (body: %.200s)", err, rawBody)
-		return nil, "", fmt.Errorf("decode uploads: %w", err)
+	if err := json.Unmarshal(rawBody, &envelope); err != nil {
+		logger.Error("auth: decode uploads response: %v (body: %.200s)", err, rawBody)
+		return nil, "", fmt.Errorf("decode uploads response: %w", err)
+	}
+
+	var uploadItems []struct {
+		ID       int64  `json:"id"`
+		Filename string `json:"filename"`
+	}
+	if len(envelope.Uploads) > 0 && envelope.Uploads[0] == '[' {
+		if err := json.Unmarshal(envelope.Uploads, &uploadItems); err != nil {
+			logger.Error("auth: decode uploads array: %v", err)
+			return nil, "", fmt.Errorf("decode uploads: %w", err)
+		}
+	} else {
+		logger.Debug("auth: uploads field is not an array (got %.50s) — treating as empty", envelope.Uploads)
 	}
 
 	var uploads []Upload
-	for _, u := range uploadsResult.Uploads {
+	for _, u := range uploadItems {
 		ext := strings.ToLower(filepath.Ext(u.Filename))
 		if ext == ".gb" || ext == ".gbc" {
 			uploads = append(uploads, Upload{
@@ -122,10 +141,10 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		}
 	}
 	logger.Debug("auth: %d known ROM(s), %d unknown-format file(s) from %d total",
-		knownCount, len(uploads)-knownCount, len(uploadsResult.Uploads))
+		knownCount, len(uploads)-knownCount, len(uploadItems))
 	if len(uploads) == 0 {
 		logger.Warn("auth: no downloadable uploads found (game has %d uploads, all skipped)",
-			len(uploadsResult.Uploads))
+			len(uploadItems))
 	}
 	return uploads, downloadKeyID, nil
 }
