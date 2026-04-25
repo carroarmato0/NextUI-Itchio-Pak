@@ -4,6 +4,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -110,8 +111,13 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 		r.DrawTextCentered(fmt.Sprintf("%d games cached.", s.total), 0, mid+4, r.W, colorText, colorText, colorText)
 
 	case refreshCacheError:
-		r.DrawTextCentered("Refresh failed:", 0, mid-fontH-8, r.W, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, mid, r.W-40, fontH+4, 200, 100, 100)
+		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
+			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-8, r.W, 200, 100, 50)
+			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then retry the refresh.", 20, mid, r.W-40, fontH+4, 200, 160, 100)
+		} else {
+			r.DrawTextCentered("Refresh failed:", 0, mid-fontH-8, r.W, 200, 60, 60)
+			r.DrawWrappedText(s.err.Error(), 20, mid, r.W-40, fontH+4, 200, 100, 100)
+		}
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
