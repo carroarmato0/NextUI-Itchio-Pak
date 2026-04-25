@@ -15,7 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
-    "v1.0.6": "More robust handling of Cloudflare checks, download of cover art, handle game page with no .gb or .gbc filenames.",
+    "v1.0.6": "More robust handling of Cloudflare checks, download of cover art, handle game page with .zip filenames.",
     "v1.0.5": "Trasnparant gamelist caching, better scrolling in general, support asian fonts through Noto Sans JP.",
     "v1.0.4": "Add advanced logging, privacy obfuscation in logs, user agent string.",
     "v1.0.3": "Support alternative ROM Location per file-type.",
