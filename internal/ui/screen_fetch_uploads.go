@@ -76,11 +76,12 @@ func NewFetchUploadsScreen(
 						Filename:      u.Filename,
 						UploadID:      u.UploadID,
 						DownloadKeyID: downloadKeyID,
+						NeedsFormat:   u.NeedsFormat,
 					})
 				}
 				if len(s.uploads) == 0 {
-					logger.Warn("fetch: no .gb/.gbc uploads found for game (auth path)")
-					s.err = fmt.Errorf("no .gb or .gbc files found for this game")
+					logger.Warn("fetch: no downloadable uploads found for game (auth path)")
+					s.err = fmt.Errorf("no downloadable files found for this game")
 					s.state = fetchError
 				} else {
 					s.state = fetchDone
@@ -95,11 +96,15 @@ func NewFetchUploadsScreen(
 				s.state = fetchError
 			} else {
 				for _, u := range itchUploads {
-					s.uploads = append(s.uploads, roms.Upload{Filename: u.Filename, URL: u.URL})
+					s.uploads = append(s.uploads, roms.Upload{
+						Filename:    u.Filename,
+						URL:         u.URL,
+						NeedsFormat: u.NeedsFormat,
+					})
 				}
 				if len(s.uploads) == 0 {
-					logger.Warn("fetch: no .gb/.gbc uploads found for game (free path)")
-					s.err = fmt.Errorf("no .gb or .gbc files found for this game")
+					logger.Warn("fetch: no downloadable uploads found for game (free path)")
+					s.err = fmt.Errorf("no downloadable files found for this game")
 					s.state = fetchError
 				} else {
 					s.state = fetchDone
@@ -190,15 +195,26 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 }
 
 func (s *FetchUploadsScreen) nextScreen() Screen {
-	if len(s.uploads) == 1 {
-		upload := s.uploads[0]
-		if s.cfg.ROMLocation == "ask" {
-			return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+	var known, unknown []roms.Upload
+	for _, u := range s.uploads {
+		if u.NeedsFormat {
+			unknown = append(unknown, u)
+		} else {
+			known = append(known, u)
 		}
-		ext := strings.ToLower(filepath.Ext(upload.Filename))
-		dest := roms.DestinationDir(ext) + upload.Filename
-		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
 	}
-	// Multiple files — always show picker so the user can choose
-	return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.uploads, s.prev)
+
+	if len(known) > 0 {
+		if len(known) == 1 {
+			upload := known[0]
+			if s.cfg.ROMLocation == "ask" {
+				return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+			}
+			ext := strings.ToLower(filepath.Ext(upload.Filename))
+			dest := roms.DestinationDir(ext) + upload.Filename
+			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
+		}
+		return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.prev)
+	}
+	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, unknown, s.prev)
 }
