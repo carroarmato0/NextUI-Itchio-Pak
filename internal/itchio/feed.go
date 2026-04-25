@@ -98,6 +98,10 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusForbidden {
+		logger.Error("feed: HTTP 403 from %s (Cloudflare bot-protection)", url)
+		return nil, fmt.Errorf("fetch feed: %w", ErrCloudflareBlocked)
+	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("feed: HTTP %d from %s", resp.StatusCode, url)
 		return nil, fmt.Errorf("fetch feed: HTTP %d", resp.StatusCode)
@@ -206,6 +210,10 @@ func (c *Client) FetchTotalGames() (int, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusForbidden {
+		logger.Error("feed: total-games HTTP 403 (Cloudflare bot-protection)")
+		return 0, fmt.Errorf("fetch total games: %w", ErrCloudflareBlocked)
+	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("feed: total-games HTTP %d", resp.StatusCode)
 		return 0, fmt.Errorf("fetch total games: HTTP %d", resp.StatusCode)
