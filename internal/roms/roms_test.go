@@ -36,6 +36,8 @@ func TestDestinationDir(t *testing.T) {
 		{".GBC", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 		{".gb", "/mnt/SDCARD/Roms/Game Boy (GB)/"},
 		{".GB", "/mnt/SDCARD/Roms/Game Boy (GB)/"},
+		{".zip", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
+		{".ZIP", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 	}
 	for _, tt := range tests {
 		got := roms.DestinationDir(tt.ext)

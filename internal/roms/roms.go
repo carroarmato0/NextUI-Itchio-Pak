@@ -30,6 +30,8 @@ func DestinationDir(ext string) string {
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	case ".gb":
 		return "/mnt/SDCARD/Roms/Game Boy (GB)/"
+	case ".zip":
+		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	default:
 		return ""
 	}
