@@ -2,6 +2,7 @@ package itchio_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -186,5 +187,47 @@ func TestFetchAllGames_MidFetchCancellation(t *testing.T) {
 	// Partial results (page 1) should still be returned.
 	if len(games) != 36 {
 		t.Errorf("got %d games from partial fetch, want 36", len(games))
+	}
+}
+
+func TestFetchGamesFromURL_403ReturnsCloudflareError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	_, err := c.FetchGamesFromURL(srv.URL + "/games/made-with-gb-studio.xml?page=1")
+	if !errors.Is(err, itchio.ErrCloudflareBlocked) {
+		t.Fatalf("expected ErrCloudflareBlocked, got %v", err)
+	}
+}
+
+func TestFetchGamesFromURL_sendsBrowserHeaders(t *testing.T) {
+	var gotUA, gotAccept, gotLang, gotFetchMode string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		gotAccept = r.Header.Get("Accept")
+		gotLang = r.Header.Get("Accept-Language")
+		gotFetchMode = r.Header.Get("Sec-Fetch-Mode")
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	c.FetchGamesFromURL(srv.URL + "/games/made-with-gb-studio.xml?page=1")
+
+	if gotUA == "" {
+		t.Error("User-Agent header not sent")
+	}
+	if gotAccept == "" {
+		t.Error("Accept header not sent")
+	}
+	if gotLang == "" {
+		t.Error("Accept-Language header not sent")
+	}
+	if gotFetchMode == "" {
+		t.Error("Sec-Fetch-Mode header not sent")
 	}
 }
