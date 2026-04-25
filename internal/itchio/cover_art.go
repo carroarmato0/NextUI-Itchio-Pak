@@ -24,6 +24,7 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 
 	parsed, err := url.Parse(coverURL)
 	if err != nil {
+		logger.Error("cover-art: parse URL: %v", err)
 		return fmt.Errorf("cover-art: parse URL: %w", err)
 	}
 
