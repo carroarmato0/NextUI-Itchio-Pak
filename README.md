@@ -269,6 +269,26 @@ in the Settings screen on the device.
 
 ## Known Limitations / To-Do
 
+- **Cloudflare may block RSS feed requests (HTTP 403).** itch.io is protected by
+  Cloudflare, which uses browser fingerprinting to detect bot traffic. Despite the
+  app mimicking Chrome headers and TLS fingerprint, Cloudflare may still issue a
+  temporary block — especially on networks or IP ranges it has not seen before.
+
+  **What you will see:** An error message on the game list or cache-refresh screen
+  that reads *"Cloudflare blocked the request (HTTP 403)"*.
+
+  **What you can do:**
+  1. **Visit itch.io in a browser on the same WiFi network.** Your device and your
+     phone or laptop share the same public IP address. If Cloudflare presents a
+     human-verification challenge in the browser and you pass it, the IP is marked
+     as human traffic. Return to the Pak and press **A** (game list) or retry the
+     refresh — it will often succeed immediately afterwards.
+  2. **Wait a few minutes and retry.** Cloudflare challenges are sometimes
+     temporary. The Pak retries the request each time you press **A** on the error
+     screen.
+  3. **Try a different network.** Switching WiFi networks (e.g. a mobile hotspot)
+     gives the Pak a fresh public IP that may not be challenged.
+
 - **No in-app keyboard for API key entry.** The API key must be set by editing
   `config.json` directly (see [itch.io API Key](#itch-io-api-key-paid-games)).
 
