@@ -45,6 +45,12 @@ func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // dialTLS dials a TCP connection and upgrades it with a Chrome-compatible TLS
 // handshake using utls. This replaces Go's default crypto/tls fingerprint
 // (which Cloudflare bot-protection flags) with Chrome's ClientHello.
+//
+// The Chrome preset hardcodes ALPN ["h2", "http/1.1"] regardless of
+// Config.NextProtos. We must patch the ALPNExtension after BuildHandshakeState
+// to advertise only "http/1.1", because our http.Transport speaks HTTP/1.1
+// only — if the server negotiates h2 it sends HTTP/2 frames that the transport
+// cannot parse ("malformed HTTP response" error).
 func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -54,10 +60,17 @@ func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	uconn := utls.UClient(conn, &utls.Config{
-		ServerName: host,
-		NextProtos: []string{"http/1.1"},
-	}, utls.HelloChrome_Auto)
+	uconn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+	if err := uconn.BuildHandshakeState(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	for _, ext := range uconn.Extensions {
+		if alpn, ok := ext.(*utls.ALPNExtension); ok {
+			alpn.AlpnProtocols = []string{"http/1.1"}
+			break
+		}
+	}
 	if err := uconn.HandshakeContext(ctx); err != nil {
 		conn.Close()
 		return nil, err
