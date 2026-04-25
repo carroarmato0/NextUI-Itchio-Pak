@@ -10,6 +10,7 @@ type Upload struct {
 	URL           string
 	UploadID      string // itch.io upload ID (API-based paid download)
 	DownloadKeyID string // itch.io download key ID (API-based paid download)
+	NeedsFormat   bool   // true if user must choose the format (GB, GBC, or ZIP)
 }
 
 func ScoreUpload(filename string) int {

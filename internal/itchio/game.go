@@ -24,9 +24,10 @@ type GameDetail struct {
 }
 
 type Upload struct {
-	Filename string
-	URL      string   // resolver or CDN URL
-	UploadID string   // itch.io upload ID (from data-upload_id)
+	Filename    string
+	URL         string // resolver or CDN URL
+	UploadID    string // itch.io upload ID (from data-upload_id)
+	NeedsFormat bool   // true if extension unknown; user must choose GB, GBC, or ZIP
 }
 
 var (
