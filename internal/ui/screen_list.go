@@ -4,6 +4,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -208,7 +209,14 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 	if s.err != nil {
-		r.DrawText("Error: "+s.err.Error(), 20, r.H/2, 200, 50, 50)
+		_, fontH := r.TextSize("Ag")
+		mid := r.H / 2
+		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
+			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-4, r.W, 200, 100, 50)
+			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then press A to retry.", 20, mid+4, r.W-40, fontH+4, 200, 160, 100)
+		} else {
+			r.DrawText("Error: "+s.err.Error(), 20, mid, 200, 50, 50)
+		}
 		r.Present()
 		return
 	}
@@ -463,6 +471,11 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
+			return s
+		}
+		// Allow retrying when the feed is blocked.
+		if s.err != nil && ev.Button == sdl.CONTROLLER_BUTTON_A {
+			go s.loadPage(s.page, "")
 			return s
 		}
 		switch ev.Button {
