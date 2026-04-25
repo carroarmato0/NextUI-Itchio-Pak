@@ -57,9 +57,10 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	downloadKeyID := fmt.Sprintf("%d", keysResult.OwnedKeys[0].ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
-	// Step 2: list uploads, passing the download key so itch.io grants access.
-	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
-		c.base, apiKey, gameID, downloadKeyID)
+	// Step 2: list uploads. The API key in the URL path identifies the user;
+	// download_key_id is only needed at the actual download step, not here.
+	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads",
+		c.base, apiKey, gameID)
 	logger.Debug("auth: fetching upload list for game_id=%s", gameID)
 	// The URL contains the API key; the logger's secret registry will redact it.
 

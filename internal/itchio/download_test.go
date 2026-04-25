@@ -124,10 +124,6 @@ func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 	})
 
 	mux.HandleFunc("/api/1/testkey/game/777/uploads", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("download_key_id") != "42" {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":[
 			{"id":1,"filename":"game.gbc"},
@@ -194,12 +190,8 @@ func TestFetchAuthUploads(t *testing.T) {
 		w.Write([]byte(`{"owned_keys":[{"id":999}]}`))
 	})
 
-	// v1 uploads endpoint with download_key_id.
+	// v1 uploads endpoint — download_key_id is only needed at the download step, not here.
 	mux.HandleFunc("/api/1/mykey/game/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("download_key_id") != "999" {
-			http.Error(w, "bad key", http.StatusForbidden)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":[{"id":777,"filename":"game.gbc"},{"id":888,"filename":"manual.pdf"}]}`))
 	})
