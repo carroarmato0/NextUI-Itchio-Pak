@@ -261,7 +261,9 @@ git commit -m "feat(itchio): add browser-compatible HTTP headers to all outbound
 
 > **What this does:** Go's default `crypto/tls` produces a JA3 fingerprint that is instantly recognisable as a Go HTTP client. Cloudflare scores it negatively. `utls` replaces the TLS handshake with an exact byte-for-byte replica of Chrome's ClientHello (cipher suites, extensions, elliptic curves). This is the most impactful change.
 >
-> **HTTP/2 note:** `NextProtos: []string{"http/1.1"}` is set in the utls config to prevent h2 negotiation. If h2 were negotiated at the TLS layer but Go's transport sent HTTP/1.1 frames, the server would reject the connection. HTTP/1.1 is sufficient for RSS XML fetching. The ALPN extension is still present in the ClientHello (matching Chrome structure); only the advertised value differs.
+> **HTTP/2 note — critical implementation detail:** `utls.HelloChrome_Auto` (and every other Chrome preset) hardcodes `AlpnProtocols: []string{"h2", "http/1.1"}` directly inside the spec definition (`u_parrots.go`). `Config.NextProtos` is **never consulted** for preset hellos — the spec wins. Without intervention the server negotiates h2 and sends HTTP/2 SETTINGS frames; Go's `http.Transport` tries to parse them as HTTP/1.1 and fails with `"malformed HTTP response \x00\x00\x12\x04..."`. The fix is to call `BuildHandshakeState()` first (which materialises `uconn.Extensions`), then walk the extension list and overwrite `ALPNExtension.AlpnProtocols` with `["http/1.1"]` before calling `HandshakeContext`. This keeps the full Chrome ClientHello fingerprint intact while preventing h2 negotiation. Do **not** try to set `Config.NextProtos` instead — it has no effect with presets.
+>
+> **Dependency pinning:** Use `utls@v1.3.3`. Newer versions (v1.6.x) pull in `golang.org/x/net >= v0.35.0` which requires Go 1.23, breaking the project's `go 1.22` toolchain. After `go get`, manually verify `go.mod` still reads `go 1.22` — if `go mod tidy` bumped it, downgrade `golang.org/x/crypto` and `golang.org/x/sys` to their last Go-1.22-compatible releases and re-tidy.
 >
 > **Cross-compilation:** `utls` is pure Go — no CGO required. It compiles cleanly for ARM targets (`tg5040`, `tg5050`, `my355`).
 
@@ -269,10 +271,16 @@ git commit -m "feat(itchio): add browser-compatible HTTP headers to all outbound
 
 ```bash
 cd /home/carroarmato0/Applications/Development/NextUI/Paks/Itch-io
-go get github.com/refraction-networking/utls@latest
+go get github.com/refraction-networking/utls@v1.3.3
 go mod tidy
 ```
-Expected: `go.mod` and `go.sum` updated; no errors.
+Expected: `go.mod` and `go.sum` updated; no errors. Confirm `go.mod` still reads `go 1.22` — if it was bumped to `1.23`, run:
+```bash
+go get golang.org/x/crypto@v0.24.0 golang.org/x/sys@v0.21.0 golang.org/x/net@v0.26.0
+go mod tidy
+# then manually edit go.mod: change "go 1.23.0" back to "go 1.22"
+go mod tidy  # must stay at go 1.22 after this second tidy
+```
 
 - [ ] **Step 2: Add the DialTLSContext function and update newHTTPClient in client.go**
 
@@ -296,6 +304,12 @@ Add `dialTLS` function after the `uaTransport` block:
 // dialTLS dials a TCP connection and upgrades it with a Chrome-compatible TLS
 // handshake using utls. This replaces Go's default crypto/tls fingerprint
 // (which Cloudflare bot-protection flags) with Chrome's ClientHello.
+//
+// The Chrome preset hardcodes ALPN ["h2", "http/1.1"] regardless of
+// Config.NextProtos. We must patch the ALPNExtension after BuildHandshakeState
+// to advertise only "http/1.1", because our http.Transport speaks HTTP/1.1
+// only — if the server negotiates h2 it sends HTTP/2 frames that the transport
+// cannot parse ("malformed HTTP response" error).
 func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -305,10 +319,17 @@ func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	uconn := utls.UClient(conn, &utls.Config{
-		ServerName: host,
-		NextProtos: []string{"http/1.1"},
-	}, utls.HelloChrome_Auto)
+	uconn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
+	if err := uconn.BuildHandshakeState(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	for _, ext := range uconn.Extensions {
+		if alpn, ok := ext.(*utls.ALPNExtension); ok {
+			alpn.AlpnProtocols = []string{"http/1.1"}
+			break
+		}
+	}
 	if err := uconn.HandshakeContext(ctx); err != nil {
 		conn.Close()
 		return nil, err
