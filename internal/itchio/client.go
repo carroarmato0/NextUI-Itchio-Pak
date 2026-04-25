@@ -1,9 +1,13 @@
 package itchio
 
 import (
+	"context"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"time"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 // userAgent is sent on every outbound request to avoid Cloudflare bot-protection
@@ -38,12 +42,38 @@ func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.wrapped.RoundTrip(req)
 }
 
+// dialTLS dials a TCP connection and upgrades it with a Chrome-compatible TLS
+// handshake using utls. This replaces Go's default crypto/tls fingerprint
+// (which Cloudflare bot-protection flags) with Chrome's ClientHello.
+func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	uconn := utls.UClient(conn, &utls.Config{
+		ServerName: host,
+		NextProtos: []string{"http/1.1"},
+	}, utls.HelloChrome_Auto)
+	if err := uconn.HandshakeContext(ctx); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return uconn, nil
+}
+
 func newHTTPClient() *http.Client {
 	jar, _ := cookiejar.New(nil)
+	transport := &http.Transport{
+		DialTLSContext: dialTLS,
+	}
 	return &http.Client{
-		Jar:       jar,
-		Timeout:   30 * time.Second,
-		Transport: &uaTransport{wrapped: http.DefaultTransport},
+		Jar:     jar,
+		Timeout: 30 * time.Second,
+		Transport: &uaTransport{wrapped: transport},
 	}
 }
 
