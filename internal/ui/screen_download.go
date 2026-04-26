@@ -35,6 +35,8 @@ type DownloadScreen struct {
 	total         int64
 	dest          string
 	err           error
+	// inv and inventoryPath are used in the dlDone branch to record the
+	// completed download — wired in Task 6.
 	inv           *inventory.Inventory
 	inventoryPath string
 }
