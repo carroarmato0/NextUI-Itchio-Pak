@@ -5,6 +5,7 @@ package ui
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -35,8 +36,6 @@ type DownloadScreen struct {
 	total         int64
 	dest          string
 	err           error
-	// inv and inventoryPath are used in the dlDone branch to record the
-	// completed download — wired in Task 6.
 	inv           *inventory.Inventory
 	inventoryPath string
 }
@@ -74,6 +73,21 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			logger.Info("download: complete file=%s", upload.Filename)
 			if artErr := client.DownloadCoverArt(game.CoverURL, dest); artErr != nil {
 				logger.Warn("cover-art: game=%q url=%s: %v", game.Title, game.CoverURL, artErr)
+			}
+			s.inv.Add(game.URL, inventory.Entry{
+				GameURL:  game.URL,
+				Title:    game.Title,
+				Author:   game.Author,
+				CoverURL: game.CoverURL,
+			}, inventory.DownloadedFile{
+				Filename:     upload.Filename,
+				DestPath:     dest,
+				DownloadedAt: time.Now(),
+			})
+			if err := s.inv.Save(s.inventoryPath); err != nil {
+				logger.Warn("inventory: save failed: %v", err)
+			} else {
+				logger.Info("inventory: recorded game=%q file=%s", game.Title, upload.Filename)
 			}
 			s.state = dlDone
 		}
