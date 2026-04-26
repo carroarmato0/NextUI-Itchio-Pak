@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -24,7 +25,8 @@ const apiItchIO = "https://api.itch.io"
 //  1. GET api.itch.io/profile/owned-keys?game_id=GAME_ID
 //  2a. downloads_url present → fetchAuthUploadsViaSignedPage
 //  2b. key string present    → construct signed URL from gameURL + key string
-//  2c. numeric ID only       → GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=ID
+//  2c. neither present (bundle key) → paginate profile/owned-keys to find downloads_url/key
+//  2d. paginated scan fails  → GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=ID
 func (c *Client) FetchAuthUploads(apiKey, gameID, gameURL string) ([]Upload, string, error) {
 	// Step 1: get download key info from the butler-style API.
 	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
@@ -83,6 +85,21 @@ func (c *Client) FetchAuthUploads(apiKey, gameID, gameURL string) ([]Upload, str
 		logger.Warn("auth: owned-keys returned id=0, no downloads_url, no key string")
 		return nil, "", fmt.Errorf("game not owned or API key invalid (no valid download key)")
 	}
+
+	// 2c. Fallback: paginate through all owned keys (no game_id filter) to find
+	// downloads_url or key string for this game. The game_id-filtered endpoint omits
+	// these fields for bundle purchases, but the paginated endpoint includes them.
+	dlURL, keyStr := c.findDownloadsURLForGame(apiKey, gameID)
+	if dlURL != "" {
+		logger.Debug("auth: found downloads_url via paginated scan for game_id=%s", gameID)
+		return c.fetchAuthUploadsViaSignedPage(dlURL)
+	}
+	if keyStr != "" && gameURL != "" {
+		signedURL := strings.TrimRight(gameURL, "/") + "/download/" + url.PathEscape(keyStr)
+		logger.Debug("auth: found key string via paginated scan, constructing signed URL")
+		return c.fetchAuthUploadsViaSignedPage(signedURL)
+	}
+
 	downloadKeyID := fmt.Sprintf("%d", key.ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
@@ -227,6 +244,71 @@ func (c *Client) fetchAuthUploadsViaSignedPage(downloadsURL string) ([]Upload, s
 	}
 	// Empty keyID: callers use DownloadFree (not DownloadAuthUpload) for these uploads.
 	return uploads, "", nil
+}
+
+// findDownloadsURLForGame paginates through profile/owned-keys (no game_id filter)
+// looking for the entry matching gameID and returns its downloads_url and key string.
+// The paginated endpoint includes fields that the game_id-filtered endpoint may omit
+// for bundle purchases.
+func (c *Client) findDownloadsURLForGame(apiKey, gameID string) (downloadsURL, keyStr string) {
+	targetID, err := strconv.ParseInt(gameID, 10, 64)
+	if err != nil {
+		logger.Warn("auth: paginated scan: invalid game_id %q: %v", gameID, err)
+		return
+	}
+	logger.Debug("auth: paginated scan: searching for game_id=%s across owned-keys pages", gameID)
+	for page := 1; page <= 20; page++ {
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("%s/profile/owned-keys?page=%d", c.butler, page), nil)
+		if err != nil {
+			logger.Warn("auth: paginated scan: build request page %d: %v", page, err)
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		resp, err := c.http.Do(req)
+		if err != nil {
+			logger.Warn("auth: paginated scan: page %d request error: %v", page, err)
+			return
+		}
+		var envelope struct {
+			OwnedKeys json.RawMessage `json:"owned_keys"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&envelope)
+		resp.Body.Close()
+		if decodeErr != nil {
+			logger.Warn("auth: paginated scan: decode page %d: %v", page, decodeErr)
+			return
+		}
+		if len(envelope.OwnedKeys) == 0 || envelope.OwnedKeys[0] != '[' {
+			logger.Debug("auth: paginated scan: page %d returned non-array, stopping", page)
+			return
+		}
+		var items []struct {
+			DownloadsURL string `json:"downloads_url"`
+			Key          string `json:"key"`
+			Game         struct {
+				ID int64 `json:"id"`
+			} `json:"game"`
+		}
+		if err := json.Unmarshal(envelope.OwnedKeys, &items); err != nil {
+			logger.Warn("auth: paginated scan: unmarshal page %d: %v", page, err)
+			return
+		}
+		if len(items) == 0 {
+			logger.Debug("auth: paginated scan: page %d empty, stopping", page)
+			return
+		}
+		for _, item := range items {
+			if item.Game.ID == targetID {
+				logger.Debug("auth: paginated scan: found game_id=%s on page %d: downloads_url=%s key_str=%s",
+					gameID, page, presentAbsent(item.DownloadsURL), presentAbsent(item.Key))
+				return item.DownloadsURL, item.Key
+			}
+		}
+		logger.Debug("auth: paginated scan: page %d scanned (%d entries), not found yet", page, len(items))
+	}
+	logger.Warn("auth: paginated scan: game_id=%s not found in owned-keys pages", gameID)
+	return
 }
 
 // DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
