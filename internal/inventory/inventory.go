@@ -140,13 +140,14 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 		} else if len(kept) < len(entry.Files) {
 			entry.Files = kept
 			entry.VerifiedAt = time.Now()
-		} else {
-			entry.VerifiedAt = time.Now()
 		}
+		// No else — VerifiedAt is only updated when files are actually removed
 	}
 	if removed > 0 {
 		logger.Info("inventory: cleaned %d stale file(s)", removed)
-		_ = inv.Save(path)
+		if err := inv.Save(path); err != nil {
+			logger.Error("inventory: failed to save after clean: %v", err)
+		}
 	}
 	return removed
 }
