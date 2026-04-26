@@ -4,6 +4,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,10 +17,19 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+type modalKind int
+
+const (
+	modalKindInfo          modalKind = iota
+	modalKindDeleteConfirm           // A: confirm delete, B: cancel
+)
+
 type detailModal struct {
-	active bool
-	title  string
-	body   string
+	active    bool
+	kind      modalKind
+	title     string
+	body      string
+	onConfirm func()
 }
 
 type DetailScreen struct {
@@ -51,7 +62,7 @@ type DetailScreen struct {
 // Called by FetchUploadsScreen when it detects a "not owned" condition so the
 // error appears as a popup on top of the game page rather than a separate screen.
 func (s *DetailScreen) ShowModal(title, body string) {
-	s.modal = detailModal{active: true, title: title, body: body}
+	s.modal = detailModal{active: true, kind: modalKindInfo, title: title, body: body}
 }
 
 func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, inv *inventory.Inventory, inventoryPath string, prev Screen) *DetailScreen {
@@ -253,14 +264,42 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 
 	// ── Action area (full width) ────────────────────────────
-	if s.game.IsFree {
-		r.DrawText("[ A: Download ]", margin, y, 80, 200, 80)
-	} else if s.cfg.APIKey == "" {
-		r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
+	isPresent := s.inv.IsPresent(s.game.URL)
+
+	if isPresent {
+		if s.game.IsFree {
+			r.DrawText("[ B: Download again ]", margin, y, 80, 200, 80)
+		} else if s.cfg.APIKey == "" {
+			r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
+		} else {
+			r.DrawText(fmt.Sprintf("[ B: Download again ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+		}
+		y += fontH + 4
+
+		r.DrawText("\U0001F4BE Already on device", margin, y, 80, 200, 220)
+		y += fontH + 4
+
+		if entry, ok := s.inv.Lookup(s.game.URL); ok {
+			for _, f := range entry.Files {
+				line := "  " + f.Filename + "  →  " + filepath.Dir(f.DestPath) + "/"
+				r.DrawSmallText(line, margin, y, 120, 120, 120)
+				y += smallFH + 2
+			}
+		}
+		y += 4
+
+		r.DrawText("[ X: Delete ]", margin, y, 200, 80, 80)
+		y += fontH + 8
 	} else {
-		r.DrawText(fmt.Sprintf("[ A: Download ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+		if s.game.IsFree {
+			r.DrawText("[ B: Download ]", margin, y, 80, 200, 80)
+		} else if s.cfg.APIKey == "" {
+			r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
+		} else {
+			r.DrawText(fmt.Sprintf("[ B: Download ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+		}
+		y += fontH + 8
 	}
-	y += fontH + 8
 
 	// ── Tags ────────────────────────────────────────────────
 	if s.detail != nil && len(s.detail.PageTags) > 0 {
@@ -325,7 +364,11 @@ func (s *DetailScreen) drawModal(r *renderer.Renderer) {
 	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
 	y += 1 + pad
 
-	r.DrawSmallTextCentered("Press any button to dismiss", boxX, y, boxW, 120, 120, 120)
+	if s.modal.kind == modalKindDeleteConfirm {
+		r.DrawSmallTextCentered("A: confirm  B: cancel", boxX, y, boxW, 200, 100, 100)
+	} else {
+		r.DrawSmallTextCentered("Press any button to dismiss", boxX, y, boxW, 120, 120, 120)
+	}
 }
 
 // drawAdvisoryOverlay renders the full-screen content warning cover.
@@ -426,11 +469,35 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev := e.(type) {
 		case *sdl.KeyboardEvent:
 			if ev.Type == sdl.KEYDOWN {
-				s.modal.active = false
+				if s.modal.kind == modalKindDeleteConfirm {
+					switch ev.Keysym.Sym {
+					case sdl.K_RETURN: // physical A = confirm
+						if s.modal.onConfirm != nil {
+							s.modal.onConfirm()
+						}
+						s.modal.active = false
+					case sdl.K_ESCAPE: // physical B = cancel
+						s.modal.active = false
+					}
+				} else {
+					s.modal.active = false
+				}
 			}
 		case *sdl.ControllerButtonEvent:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.modal.active = false
+				if s.modal.kind == modalKindDeleteConfirm {
+					switch ev.Button {
+					case sdl.CONTROLLER_BUTTON_B: // physical A = confirm
+						if s.modal.onConfirm != nil {
+							s.modal.onConfirm()
+						}
+						s.modal.active = false
+					case sdl.CONTROLLER_BUTTON_A: // physical B = cancel
+						s.modal.active = false
+					}
+				} else {
+					s.modal.active = false
+				}
 			}
 		case *sdl.QuitEvent:
 			return nil
@@ -474,6 +541,8 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
+		case sdl.K_x:
+			return s.triggerDelete()
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil)
 		}
@@ -512,6 +581,8 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
+		case sdl.CONTROLLER_BUTTON_X:
+			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil)
 		}
@@ -530,4 +601,55 @@ func (s *DetailScreen) startDownload() Screen {
 		return s
 	}
 	return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.inv, s.inventoryPath, s)
+}
+
+func (s *DetailScreen) triggerDelete() Screen {
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok {
+		return s
+	}
+	if len(entry.Files) > 1 {
+		return NewManageDownloadsScreen(s.inv, s.inventoryPath, s.game.URL, s)
+	}
+	var bodyLines []string
+	if len(entry.Files) == 1 {
+		bodyLines = append(bodyLines, entry.Files[0].Filename)
+		bodyLines = append(bodyLines, filepath.Dir(entry.Files[0].DestPath)+"/")
+	}
+	s.modal = detailModal{
+		active: true,
+		kind:   modalKindDeleteConfirm,
+		title:  "Delete downloaded file?",
+		body:   strings.Join(bodyLines, "\n"),
+		onConfirm: func() {
+			s.performSingleFileDelete()
+		},
+	}
+	return s
+}
+
+func (s *DetailScreen) performSingleFileDelete() {
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok {
+		return
+	}
+	for _, f := range entry.Files {
+		if err := os.Remove(f.DestPath); err != nil && !os.IsNotExist(err) {
+			logger.Warn("inventory: delete file=%s: %v", f.DestPath, err)
+		} else {
+			logger.Debug("inventory: deleted file=%s", f.DestPath)
+		}
+		if artPath := inventory.CoverArtPath(entry.CoverURL, f.DestPath); artPath != "" {
+			if err := os.Remove(artPath); err != nil && !os.IsNotExist(err) {
+				logger.Warn("inventory: delete cover-art=%s: %v", artPath, err)
+			} else {
+				logger.Debug("inventory: deleted cover-art=%s", artPath)
+			}
+		}
+	}
+	logger.Info("inventory: deleted game=%q files=%d", entry.Title, len(entry.Files))
+	s.inv.Remove(s.game.URL)
+	if err := s.inv.Save(s.inventoryPath); err != nil {
+		logger.Warn("inventory: save after delete failed: %v", err)
+	}
 }
