@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -17,6 +18,10 @@ import (
 func runSDL() {
 	cfgPath := os.Getenv("HOME") + "/config.json"
 	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
+	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
+	inv, _ := inventory.Load(inventoryPath)
+	removed := inv.VerifyAndClean(inventoryPath)
+	logger.Info("inventory: cleaned %d stale file(s)", removed)
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
@@ -73,7 +78,7 @@ func runSDL() {
 
 	client := itchio.NewClient()
 
-	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath)
+	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath)
 
 	for current != nil {
 		// Upload any images that background goroutines finished fetching.

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -57,19 +58,24 @@ type ListScreen struct {
 	cacheReady  bool
 	cachePath   string
 
+	inv           *inventory.Inventory
+	inventoryPath string
+
 	// jumpToEnd signals that the next loadPage call should place the cursor on
 	// the last item rather than the first. Set when navigating to a previous page.
 	jumpToEnd bool
 }
 
-func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string) *ListScreen {
+func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string, inv *inventory.Inventory, inventoryPath string) *ListScreen {
 	s := &ListScreen{
-		client:    client,
-		cfg:       cfg,
-		cache:     cache,
-		page:      1,
-		cfgPath:   cfgPath,
-		cachePath: cachePath,
+		client:        client,
+		cfg:           cfg,
+		cache:         cache,
+		page:          1,
+		cfgPath:       cfgPath,
+		cachePath:     cachePath,
+		inv:           inv,
+		inventoryPath: inventoryPath,
 	}
 
 	gameCache, err := itchio.LoadGamesCache(cachePath)
