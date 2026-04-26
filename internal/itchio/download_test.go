@@ -112,6 +112,74 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
+// TestFetchAuthUploads_BundlePurchaseKeyString verifies that when owned-keys
+// returns no downloads_url but includes a key string, we construct the signed
+// page URL from gameURL+key and use the signed-page path.
+func TestFetchAuthUploads_BundlePurchaseKeyString(t *testing.T) {
+	var srvURL string
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer bk" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// downloads_url absent; key string present (bundle purchase pattern).
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"owned_keys": []map[string]interface{}{
+				{"id": 99, "key": "BUNDLEKEYSTRING", "downloads_url": ""},
+			},
+		})
+	})
+
+	// Signed page constructed from gameURL + key string.
+	mux.HandleFunc("/game/download/BUNDLEKEYSTRING", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><meta name="csrf_token" value="BKCSRF"/></head><body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column">
+      <div class="upload_name">
+        <strong class="name" title="bundle-ks.gbc">bundle-ks.gbc</strong>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="66666">Download</a>
+    </div>
+  </div>
+</div>
+</body></html>`))
+	})
+
+	// uploads endpoint must NOT be called.
+	mux.HandleFunc("/api/1/bk/game/444/uploads", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("uploads endpoint should not be called when key string is present")
+		http.Error(w, "server error", http.StatusInternalServerError)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	uploads, keyID, err := c.FetchAuthUploads("bk", "444", srvURL+"/game")
+	if err != nil {
+		t.Fatalf("FetchAuthUploads: %v", err)
+	}
+	if keyID != "" {
+		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
+	}
+	if len(uploads) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(uploads))
+	}
+	if uploads[0].Filename != "bundle-ks.gbc" {
+		t.Errorf("Filename = %q, want bundle-ks.gbc", uploads[0].Filename)
+	}
+	if uploads[0].URL == "" {
+		t.Error("URL should be set for signed-page path")
+	}
+}
+
 // TestFetchAuthUploads_BundlePurchase verifies that when owned-keys returns a
 // downloads_url (signed page URL), we use the signed-page path rather than the
 // butler uploads endpoint. This is the correct path for bundle purchases.
@@ -162,7 +230,7 @@ func TestFetchAuthUploads_BundlePurchase(t *testing.T) {
 	srvURL = srv.URL
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("bundlekey", "321")
+	uploads, keyID, err := c.FetchAuthUploads("bundlekey", "321", "")
 	if err != nil {
 		t.Fatalf("FetchAuthUploads: %v", err)
 	}
@@ -216,7 +284,7 @@ func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("testkey", "777")
+	uploads, keyID, err := c.FetchAuthUploads("testkey", "777", "")
 	if err != nil {
 		t.Fatalf("FetchAuthUploads: %v", err)
 	}
@@ -268,7 +336,7 @@ func TestFetchAuthUploads_NotOwned500(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	_, _, err := c.FetchAuthUploads("testkey", "999")
+	_, _, err := c.FetchAuthUploads("testkey", "999", "")
 	if err == nil {
 		t.Fatal("expected error for non-owned game, got nil")
 	}
@@ -298,7 +366,7 @@ func TestFetchAuthUploads_ZipTreatedAsKnown(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, _, err := c.FetchAuthUploads("testkey", "555")
+	uploads, _, err := c.FetchAuthUploads("testkey", "555", "")
 	if err != nil {
 		t.Fatalf("FetchAuthUploads: %v", err)
 	}
@@ -347,7 +415,7 @@ func TestFetchAuthUploads_EmptyObjectResponse(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, _, err := c.FetchAuthUploads("testkey", "888")
+	uploads, _, err := c.FetchAuthUploads("testkey", "888", "")
 	if err != nil {
 		t.Fatalf("expected no error for empty uploads object, got: %v", err)
 	}
@@ -386,7 +454,7 @@ func TestFetchAuthUploads(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("mykey", "12345")
+	uploads, keyID, err := c.FetchAuthUploads("mykey", "12345", "")
 	if err != nil {
 		t.Fatalf("FetchAuthUploads: %v", err)
 	}

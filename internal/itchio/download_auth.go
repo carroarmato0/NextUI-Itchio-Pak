@@ -16,15 +16,16 @@ const apiItchIO = "https://api.itch.io"
 
 // FetchAuthUploads lists .gb/.gbc uploads for a paid game the user owns.
 //
+// gameURL is the public game page URL (e.g. "https://author.itch.io/game"); it
+// is used as a fallback to construct the signed download URL when the owned-keys
+// response includes a key string but no downloads_url.
+//
 // Flow:
-//  1. GET api.itch.io/profile/owned-keys?game_id=GAME_ID  → downloads_url (preferred)
-//     or numeric download key ID (fallback)
-//  2a. If downloads_url present: parse the signed download page (works for direct
-//      purchases AND bundle purchases). Returns uploads with URL set, empty keyID.
-//  2b. Otherwise: GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=KEY_ID
-//      The simple API accepts both direct-purchase and bundle keys. The butler
-//      uploads endpoint (api.itch.io/games/{id}/uploads) rejects bundle keys.
-func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, error) {
+//  1. GET api.itch.io/profile/owned-keys?game_id=GAME_ID
+//  2a. downloads_url present → fetchAuthUploadsViaSignedPage
+//  2b. key string present    → construct signed URL from gameURL + key string
+//  2c. numeric ID only       → GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=ID
+func (c *Client) FetchAuthUploads(apiKey, gameID, gameURL string) ([]Upload, string, error) {
 	// Step 1: get download key info from the butler-style API.
 	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
 	logger.Debug("auth: fetching owned keys for game_id=%s", gameID)
@@ -48,7 +49,8 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	var keysResult struct {
 		OwnedKeys []struct {
 			ID           int64  `json:"id"`
-			DownloadsURL string `json:"downloads_url"`
+			Key          string `json:"key"`          // alphanumeric key string (may be present)
+			DownloadsURL string `json:"downloads_url"` // pre-signed page URL (preferred)
 		} `json:"owned_keys"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&keysResult); err != nil {
@@ -59,16 +61,26 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	}
 
 	key := keysResult.OwnedKeys[0]
+	logger.Debug("auth: owned-keys: id=%d downloads_url=%s key_str=%s",
+		key.ID, presentAbsent(key.DownloadsURL), presentAbsent(key.Key))
 
-	// Prefer downloads_url when present: it is a signed page URL that encodes
-	// the user's entitlement and feeds directly into ParseDownloadPage.
+	// 2a. Prefer downloads_url: pre-signed page URL that works for any purchase type.
 	if key.DownloadsURL != "" {
 		logger.Debug("auth: using signed-page path via downloads_url")
 		return c.fetchAuthUploadsViaSignedPage(key.DownloadsURL)
 	}
 
+	// 2b. If the key string is present and we have the game URL, construct the
+	// signed page URL ourselves. This handles bundle purchases where downloads_url
+	// is absent but the key string is available.
+	if key.Key != "" && gameURL != "" {
+		signedURL := strings.TrimRight(gameURL, "/") + "/download/" + url.PathEscape(key.Key)
+		logger.Debug("auth: constructing signed URL from key string + game URL")
+		return c.fetchAuthUploadsViaSignedPage(signedURL)
+	}
+
 	if key.ID == 0 {
-		logger.Warn("auth: owned-keys returned id=0 and no downloads_url (game may not be owned)")
+		logger.Warn("auth: owned-keys returned id=0, no downloads_url, no key string")
 		return nil, "", fmt.Errorf("game not owned or API key invalid (no valid download key)")
 	}
 	downloadKeyID := fmt.Sprintf("%d", key.ID)

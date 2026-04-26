@@ -72,7 +72,7 @@ func NewFetchUploadsScreen(
 
 		if useAuthPath {
 			// Paid game owned by the user — use the itch.io API.
-			authUploads, downloadKeyID, authErr := client.FetchAuthUploads(cfg.APIKey, detail.GameID)
+			authUploads, downloadKeyID, authErr := client.FetchAuthUploads(cfg.APIKey, detail.GameID, game.URL)
 			if authErr != nil {
 				s.err = authErr
 				s.state = fetchError
