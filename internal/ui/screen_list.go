@@ -264,51 +264,78 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawRect(0, rowTop, leftW, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 
-		// Price badge — measure width to anchor it at the right edge.
-		// Draw it last so it always renders on top of any scrolling title.
-		var priceLabel string
-		var priceR, priceG, priceB uint8
-		if g.IsFree {
-			priceLabel = "Free"
-			priceR, priceG, priceB = 80, 200, 80
-		} else {
-			priceLabel = fmt.Sprintf("$%.2f", g.Price)
-			priceR, priceG, priceB = 220, 180, 60
-		}
-		priceW, _ := r.TextSize(priceLabel)
-		priceX := leftW - priceW - 8
+		// Determine download status for this row.
+		isPresent := s.inv.IsPresent(g.URL)
 
-		// Title — clip strictly to the area left of the price badge
-		titleAreaW := priceX - 14 // available width before the price badge
+		// Badge: floppy disk if downloaded, otherwise price.
+		var badgeLabel string
+		var badgeR, badgeG, badgeB uint8
+		if isPresent {
+			badgeLabel = "\U0001F4BE"
+			badgeR, badgeG, badgeB = 80, 200, 220
+		} else if g.IsFree {
+			badgeLabel = "Free"
+			badgeR, badgeG, badgeB = 80, 200, 80
+		} else {
+			badgeLabel = fmt.Sprintf("$%.2f", g.Price)
+			badgeR, badgeG, badgeB = 220, 180, 60
+		}
+		badgeW, _ := r.TextSize(badgeLabel)
+		badgeX := leftW - badgeW - 8
+
+		// Title area is left of the badge.
+		titleAreaW := badgeX - 14
+
 		if i == s.cursor {
-			titleW, _ := r.TextSize(g.Title)
-			if titleW <= titleAreaW {
-				// Fits — draw normally and reset any scroll
-				s.titleScrollX = 0
-				r.DrawText(g.Title, 10, y, colorText, colorText, colorText)
-			} else {
-				// Clamp scroll so the end of the title lands flush at the right edge
-				maxScroll := titleW - titleAreaW
-				scrollX := s.titleScrollX
-				if scrollX > maxScroll {
-					scrollX = maxScroll
-				}
-				// Clip to the title area only — price badge stays outside this rect
-				r.SetClipRect(10, rowTop, titleAreaW, rowH)
-				r.DrawText(g.Title, 10-scrollX, y, colorText, colorText, colorText)
-				r.ClearClipRect()
-				// Reset cycle: once we've held at the end for 1s, restart
-				if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
+			if isPresent {
+				titleW, _ := r.BoldTextSize(g.Title)
+				if titleW <= titleAreaW {
 					s.titleScrollX = 0
-					s.titleScrollAt = time.Now()
+					r.DrawBoldText(g.Title, 10, y, colorText, colorText, colorText)
+				} else {
+					maxScroll := titleW - titleAreaW
+					scrollX := s.titleScrollX
+					if scrollX > maxScroll {
+						scrollX = maxScroll
+					}
+					r.SetClipRect(10, rowTop, titleAreaW, rowH)
+					r.DrawBoldText(g.Title, 10-scrollX, y, colorText, colorText, colorText)
+					r.ClearClipRect()
+					if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
+						s.titleScrollX = 0
+						s.titleScrollAt = time.Now()
+					}
+				}
+			} else {
+				titleW, _ := r.TextSize(g.Title)
+				if titleW <= titleAreaW {
+					s.titleScrollX = 0
+					r.DrawText(g.Title, 10, y, colorText, colorText, colorText)
+				} else {
+					maxScroll := titleW - titleAreaW
+					scrollX := s.titleScrollX
+					if scrollX > maxScroll {
+						scrollX = maxScroll
+					}
+					r.SetClipRect(10, rowTop, titleAreaW, rowH)
+					r.DrawText(g.Title, 10-scrollX, y, colorText, colorText, colorText)
+					r.ClearClipRect()
+					if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
+						s.titleScrollX = 0
+						s.titleScrollAt = time.Now()
+					}
 				}
 			}
 		} else {
-			r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
+			if isPresent {
+				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
+			} else {
+				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
+			}
 		}
 
-		// Draw price badge after title so it always appears on top
-		r.DrawText(priceLabel, priceX, y, priceR, priceG, priceB)
+		// Badge always rendered on top of title.
+		r.DrawText(badgeLabel, badgeX, y, badgeR, badgeG, badgeB)
 	}
 
 	// Right panel: cover art (or placeholder) + metadata
@@ -522,6 +549,26 @@ func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
 	runes := []rune(text)
 	for len(runes) > 0 {
 		tw, _ = r.TextSize(string(runes))
+		if tw <= target {
+			break
+		}
+		runes = runes[:len(runes)-1]
+	}
+	return strings.TrimRight(string(runes), " ") + "…"
+}
+
+// truncateBoldToWidth truncates text with "…" so it fits within maxW pixels
+// when rendered in bold.
+func truncateBoldToWidth(r *renderer.Renderer, text string, maxW int32) string {
+	tw, _ := r.BoldTextSize(text)
+	if tw <= maxW {
+		return text
+	}
+	ellipsisW, _ := r.BoldTextSize("…")
+	target := maxW - ellipsisW
+	runes := []rune(text)
+	for len(runes) > 0 {
+		tw, _ = r.BoldTextSize(string(runes))
 		if tw <= target {
 			break
 		}
