@@ -17,7 +17,7 @@ const apiItchIO = "https://api.itch.io"
 //
 // Flow:
 //  1. GET api.itch.io/profile/owned-keys?game_id=GAME_ID  → buyer's download key ID
-//  2. GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=KEY_ID → upload list
+//  2. GET api.itch.io/games/GAME_ID/uploads?download_key_id=KEY_ID → upload list
 func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, error) {
 	// Step 1: get buyer's download key ID from the butler-style API.
 	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
@@ -57,13 +57,17 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	downloadKeyID := fmt.Sprintf("%d", keysResult.OwnedKeys[0].ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
-	// Step 2: list uploads using the download key to prove ownership.
-	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
-		c.base, apiKey, gameID, downloadKeyID)
+	// Step 2: list uploads using the butler API with the download key to prove ownership.
+	req2, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/games/%s/uploads?download_key_id=%s", c.butler, gameID, downloadKeyID),
+		nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build uploads request: %w", err)
+	}
+	req2.Header.Set("Authorization", "Bearer "+apiKey)
 	logger.Debug("auth: fetching upload list for game_id=%s", gameID)
-	// The URL contains the API key; the logger's secret registry will redact it.
 
-	resp2, err := c.http.Get(uploadsURL)
+	resp2, err := c.http.Do(req2)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch uploads: %w", err)
 	}
@@ -151,12 +155,16 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 
 // DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
 func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string, progress func(int64, int64)) error {
-	dlURL := fmt.Sprintf("%s/api/1/%s/upload/%s/download?download_key_id=%s",
-		c.base, apiKey, uploadID, downloadKeyID)
+	req, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/uploads/%s/download?download_key_id=%s", c.butler, uploadID, downloadKeyID),
+		nil)
+	if err != nil {
+		return fmt.Errorf("build auth download request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	logger.Debug("auth: resolving CDN for upload id=%s", uploadID)
-	// dlURL contains the API key — the logger's secret registry will redact it if logged.
 
-	resp, err := c.http.Get(dlURL)
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("resolve auth CDN URL: %w", err)
 	}

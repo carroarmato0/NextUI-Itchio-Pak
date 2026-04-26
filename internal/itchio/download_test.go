@@ -124,7 +124,11 @@ func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
 	})
 
-	mux.HandleFunc("/api/1/testkey/game/777/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/777/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer testkey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if r.URL.Query().Get("download_key_id") != "42" {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -187,7 +191,7 @@ func TestFetchAuthUploads_NotOwned500(t *testing.T) {
 		// (itch.io can return non-zero IDs for non-owners in some cases).
 		w.Write([]byte(`{"owned_keys":[{"id":99}]}`))
 	})
-	mux.HandleFunc("/api/1/testkey/game/999/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/999/uploads", func(w http.ResponseWriter, r *http.Request) {
 		// itch.io returns 500 when download_key_id doesn't grant access.
 		http.Error(w, `{"errors":["There was a server error"]}`, http.StatusInternalServerError)
 	})
@@ -211,7 +215,7 @@ func TestFetchAuthUploads_ZipTreatedAsKnown(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
 	})
-	mux.HandleFunc("/api/1/testkey/game/555/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/555/uploads", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":[
 			{"id":1,"filename":"game.gbc"},
@@ -266,7 +270,7 @@ func TestFetchAuthUploads_EmptyObjectResponse(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"owned_keys":[{"id":77}]}`))
 	})
-	mux.HandleFunc("/api/1/testkey/game/888/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/888/uploads", func(w http.ResponseWriter, r *http.Request) {
 		// itch.io sometimes returns an object instead of an array for empty upload lists.
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":{}}`))
@@ -301,8 +305,12 @@ func TestFetchAuthUploads(t *testing.T) {
 		w.Write([]byte(`{"owned_keys":[{"id":999}]}`))
 	})
 
-	// v1 uploads endpoint — requires download_key_id to prove ownership.
-	mux.HandleFunc("/api/1/mykey/game/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
+	// Butler uploads endpoint — requires Authorization header and download_key_id query param.
+	mux.HandleFunc("/games/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer mykey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if r.URL.Query().Get("download_key_id") != "999" {
 			http.Error(w, "bad key", http.StatusForbidden)
 			return
