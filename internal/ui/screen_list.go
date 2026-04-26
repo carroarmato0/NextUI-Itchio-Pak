@@ -454,7 +454,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_RETURN:
 			if s.cursor < len(s.games) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s)
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
@@ -497,7 +497,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.games) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s)
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil

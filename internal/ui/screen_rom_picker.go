@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
@@ -20,15 +21,18 @@ type ROMPickerScreen struct {
 	cache   *renderer.ImageCache
 	game    itchio.Game
 	detail  *itchio.GameDetail
-	uploads []roms.Upload
-	cursor  int
-	prev    Screen
+	uploads       []roms.Upload
+	cursor        int
+	prev          Screen
+	inv           *inventory.Inventory
+	inventoryPath string
 }
 
-func NewROMPickerScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, detail *itchio.GameDetail, uploads []roms.Upload, prev Screen) *ROMPickerScreen {
+func NewROMPickerScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, detail *itchio.GameDetail, uploads []roms.Upload, inv *inventory.Inventory, inventoryPath string, prev Screen) *ROMPickerScreen {
 	return &ROMPickerScreen{
 		client: client, cfg: cfg, cfgPath: cfgPath, cache: cache,
 		game: game, detail: detail, uploads: uploads, prev: prev,
+		inv: inv, inventoryPath: inventoryPath,
 	}
 }
 
@@ -115,9 +119,9 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 
 func (s *ROMPickerScreen) chooseUpload(upload roms.Upload) Screen {
 	if s.cfg.ROMLocation == "ask" {
-		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 	}
 	ext := strings.ToLower(filepath.Ext(upload.Filename))
 	dest := roms.DestinationDir(ext) + upload.Filename
-	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
+	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -40,17 +41,21 @@ type FetchUploadsScreen struct {
 	uploads      []roms.Upload
 	err          error
 	isNotOwned   bool // true when error is "game not owned" — triggers auto-modal on prev screen
+	inv           *inventory.Inventory
+	inventoryPath string
 }
 
 func NewFetchUploadsScreen(
 	client *itchio.Client, cfg *settings.Config, cfgPath string,
 	cache *renderer.ImageCache, game itchio.Game, detail *itchio.GameDetail,
+	inv *inventory.Inventory, inventoryPath string,
 	prev Screen,
 ) *FetchUploadsScreen {
 	s := &FetchUploadsScreen{
 		client: client, cfg: cfg, cfgPath: cfgPath,
 		cache: cache, game: game, detail: detail, prev: prev,
 		state: fetchLoading,
+		inv: inv, inventoryPath: inventoryPath,
 	}
 	go func() {
 		var err error
@@ -218,13 +223,13 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 		if len(known) == 1 {
 			upload := known[0]
 			if s.cfg.ROMLocation == "ask" {
-				return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+				return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 			}
 			ext := strings.ToLower(filepath.Ext(upload.Filename))
 			dest := roms.DestinationDir(ext) + upload.Filename
-			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
+			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 		}
-		return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.prev)
+		return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
 	}
-	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, unknown, s.prev)
+	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, unknown, s.inv, s.inventoryPath, s.prev)
 }

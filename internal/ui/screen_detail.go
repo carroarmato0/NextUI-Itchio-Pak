@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -41,7 +42,9 @@ type DetailScreen struct {
 	heldSince  time.Time
 	lastRepeat time.Time
 
-	prev Screen
+	prev          Screen
+	inv           *inventory.Inventory
+	inventoryPath string
 }
 
 // ShowModal displays a dismissable overlay message on the detail screen.
@@ -51,8 +54,8 @@ func (s *DetailScreen) ShowModal(title, body string) {
 	s.modal = detailModal{active: true, title: title, body: body}
 }
 
-func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, prev Screen) *DetailScreen {
-	s := &DetailScreen{client: client, cfg: cfg, cfgPath: cfgPath, cache: cache, game: game, prev: prev, loading: true}
+func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, inv *inventory.Inventory, inventoryPath string, prev Screen) *DetailScreen {
+	s := &DetailScreen{client: client, cfg: cfg, cfgPath: cfgPath, cache: cache, game: game, prev: prev, loading: true, inv: inv, inventoryPath: inventoryPath}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -526,5 +529,5 @@ func (s *DetailScreen) startDownload() Screen {
 	if !s.game.IsFree && s.cfg.APIKey == "" {
 		return s
 	}
-	return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s)
+	return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.inv, s.inventoryPath, s)
 }

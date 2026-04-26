@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -68,16 +69,18 @@ type FormatPickerScreen struct {
 	cfgPath string
 	game    itchio.Game
 	detail  *itchio.GameDetail
-	uploads []roms.Upload
-	formats []formatChoice // parallel to uploads
-	cursor  int
-	prev    Screen
+	uploads       []roms.Upload
+	formats       []formatChoice // parallel to uploads
+	cursor        int
+	prev          Screen
+	inv           *inventory.Inventory
+	inventoryPath string
 }
 
 func NewFormatPickerScreen(
 	client *itchio.Client, cfg *settings.Config, cfgPath string,
 	game itchio.Game, detail *itchio.GameDetail,
-	uploads []roms.Upload, prev Screen,
+	uploads []roms.Upload, inv *inventory.Inventory, inventoryPath string, prev Screen,
 ) *FormatPickerScreen {
 	formats := make([]formatChoice, len(uploads))
 	for i, u := range uploads {
@@ -88,6 +91,7 @@ func NewFormatPickerScreen(
 		game: game, detail: detail,
 		uploads: uploads, formats: formats,
 		prev: prev,
+		inv: inv, inventoryPath: inventoryPath,
 	}
 }
 
@@ -214,8 +218,8 @@ func (s *FormatPickerScreen) confirm() Screen {
 		strings.ToUpper(strings.TrimPrefix(chosenExt, ".")))
 
 	if s.cfg.ROMLocation == "ask" {
-		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.prev)
+		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 	}
 	dest := roms.DestinationDir(chosenExt) + upload.Filename
-	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.prev)
+	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 }

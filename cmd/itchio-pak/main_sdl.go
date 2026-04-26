@@ -18,15 +18,16 @@ import (
 func runSDL() {
 	cfgPath := os.Getenv("HOME") + "/config.json"
 	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
-	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
-	inv, _ := inventory.Load(inventoryPath)
-	inv.VerifyAndClean(inventoryPath)
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
 	// else is logged.
 	logger.SetLevel(logger.LevelFromString(cfg.LogLevel))
 	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
+
+	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
+	inv, _ := inventory.Load(inventoryPath)
+	inv.VerifyAndClean(inventoryPath)
 
 	// Log the environment header so the log file is self-describing.
 	level := cfg.LogLevel

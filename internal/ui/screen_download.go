@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -23,23 +24,26 @@ const (
 )
 
 type DownloadScreen struct {
-	client     *itchio.Client
-	cfg        *settings.Config
-	game       itchio.Game
-	detail     *itchio.GameDetail
-	upload     roms.Upload
-	prev       Screen
-	state      dlState
-	downloaded int64
-	total      int64
-	dest       string
-	err        error
+	client        *itchio.Client
+	cfg           *settings.Config
+	game          itchio.Game
+	detail        *itchio.GameDetail
+	upload        roms.Upload
+	prev          Screen
+	state         dlState
+	downloaded    int64
+	total         int64
+	dest          string
+	err           error
+	inv           *inventory.Inventory
+	inventoryPath string
 }
 
-func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.Game, detail *itchio.GameDetail, upload roms.Upload, dest string, prev Screen) *DownloadScreen {
+func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.Game, detail *itchio.GameDetail, upload roms.Upload, dest string, inv *inventory.Inventory, inventoryPath string, prev Screen) *DownloadScreen {
 	s := &DownloadScreen{
 		client: client, cfg: cfg, game: game, detail: detail,
 		upload: upload, prev: prev, dest: dest, state: dlDownloading,
+		inv: inv, inventoryPath: inventoryPath,
 	}
 
 	go func() {

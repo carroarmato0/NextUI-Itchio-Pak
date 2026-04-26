@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
@@ -48,6 +49,9 @@ type LocationPickerScreen struct {
 	rows         []pickerRow // [rowSaveHere, optional rowUp, zero or more rowEntry]
 	cursor       int         // index into rows
 	scrollOffset int         // index into rows[] of the first displayed row (for rows[1:])
+
+	inv           *inventory.Inventory
+	inventoryPath string
 }
 
 // NewLocationPickerScreen creates a directory browser that opens at the
@@ -55,19 +59,23 @@ type LocationPickerScreen struct {
 // remembered path exists or the remembered path no longer exists on disk).
 func NewLocationPickerScreen(
 	client *itchio.Client, cfg *settings.Config, cfgPath string,
-	game itchio.Game, detail *itchio.GameDetail, upload roms.Upload, prev Screen,
+	game itchio.Game, detail *itchio.GameDetail, upload roms.Upload,
+	inv *inventory.Inventory, inventoryPath string,
+	prev Screen,
 ) *LocationPickerScreen {
 	ext := strings.ToLower(filepath.Ext(upload.Filename))
 	startDir := resolveStartDir(cfg, ext, cfgPath)
 	s := &LocationPickerScreen{
-		client:  client,
-		cfg:     cfg,
-		cfgPath: cfgPath,
-		game:    game,
-		detail:  detail,
-		upload:  upload,
-		prev:    prev,
-		ext:     ext,
+		client:        client,
+		cfg:           cfg,
+		cfgPath:       cfgPath,
+		game:          game,
+		detail:        detail,
+		upload:        upload,
+		prev:          prev,
+		ext:           ext,
+		inv:           inv,
+		inventoryPath: inventoryPath,
 	}
 	s.loadDir(startDir)
 	return s
@@ -343,7 +351,7 @@ func (s *LocationPickerScreen) confirm() Screen {
 	s.cfg.LastROMDirs[s.ext] = s.currentDir
 	s.cfg.Save(s.cfgPath) //nolint:errcheck — best-effort persistence
 	dest := s.currentDir + s.upload.Filename
-	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.upload, dest, s.prev)
+	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.upload, dest, s.inv, s.inventoryPath, s.prev)
 }
 
 // leftTruncatePath shortens text from the left with a "…" prefix so it fits
