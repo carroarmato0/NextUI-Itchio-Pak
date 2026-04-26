@@ -14,119 +14,6 @@ import (
 
 const apiItchIO = "https://api.itch.io"
 
-// FetchAuthUploadsViaGamePage lists uploads for an owned game by POSTing to the
-// game's own download_url endpoint with the API key as a Bearer token. This
-// mirrors what the itch.io website does when a logged-in user clicks Download,
-// and works for both direct purchases and bundle purchases.
-//
-// Returns (nil, err) when the game is not owned or the API key is rejected.
-func (c *Client) FetchAuthUploadsViaGamePage(apiKey, gameURL string) ([]Upload, error) {
-	logger.Debug("auth: game-page path for %s", gameURL)
-
-	// Step 1: GET game page to extract CSRF token.
-	req, err := http.NewRequest("GET", gameURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build game page request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch game page: %w", err)
-	}
-	body, readErr := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if readErr != nil {
-		return nil, fmt.Errorf("read game page: %w", readErr)
-	}
-	if resp.StatusCode != http.StatusOK {
-		logger.Error("auth: game page HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
-	}
-
-	csrfM := csrfRegex.FindStringSubmatch(string(body))
-	if len(csrfM) < 2 {
-		return nil, fmt.Errorf("csrf_token not found on game page")
-	}
-	csrf := csrfM[1]
-	logger.Debug("auth: game page CSRF %s", presentAbsent(csrf))
-
-	// Step 2: POST to download_url with Bearer auth. itch.io checks the API key
-	// and returns a signed URL if the user owns the game (regardless of purchase
-	// method — direct or bundle).
-	postURL := strings.TrimRight(gameURL, "/") + "/download_url"
-	form := url.Values{"csrf_token": {csrf}}
-	req2, err := http.NewRequest("POST", postURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("build download_url request: %w", err)
-	}
-	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req2.Header.Set("Authorization", "Bearer "+apiKey)
-
-	postResp, err := c.http.Do(req2)
-	if err != nil {
-		return nil, fmt.Errorf("download_url POST: %w", err)
-	}
-	defer postResp.Body.Close()
-
-	var dlResult struct {
-		URL    string   `json:"url"`
-		Errors []string `json:"errors"`
-	}
-	if err := json.NewDecoder(postResp.Body).Decode(&dlResult); err != nil {
-		return nil, fmt.Errorf("parse download_url response: %w", err)
-	}
-	if len(dlResult.Errors) > 0 {
-		logger.Warn("auth: game-page download_url errors: %s", strings.Join(dlResult.Errors, "; "))
-		return nil, fmt.Errorf("game not owned or API key invalid: %s", strings.Join(dlResult.Errors, "; "))
-	}
-	if dlResult.URL == "" {
-		logger.Warn("auth: game-page download_url returned empty URL (game not owned or Bearer auth not accepted)")
-		return nil, fmt.Errorf("game not owned or download requires purchase")
-	}
-	logger.Debug("auth: game-page signed URL received")
-
-	// Step 3: extract the download key from the signed URL path.
-	key := extractDownloadKey(dlResult.URL)
-	if key == "" {
-		return nil, fmt.Errorf("auth: could not extract download key from signed URL")
-	}
-
-	// Step 4: parse the signed download page for upload IDs + filenames + CSRF token.
-	dlPage, err := c.ParseDownloadPage(dlResult.URL)
-	if err != nil {
-		return nil, fmt.Errorf("auth: parse signed download page: %w", err)
-	}
-
-	// Step 5: build resolver URLs. Same format as the free-game path.
-	base := strings.TrimRight(gameURL, "/")
-	var uploads []Upload
-	for _, u := range dlPage.Uploads {
-		resolverURL := base + "/file/" + u.UploadID +
-			"?key=" + url.QueryEscape(key) +
-			"&csrf=" + url.QueryEscape(dlPage.CSRFToken)
-		logger.Debug("auth: found %s id=%s (game-page path)", u.Filename, u.UploadID)
-		uploads = append(uploads, Upload{
-			Filename:    u.Filename,
-			UploadID:    u.UploadID,
-			URL:         resolverURL,
-			NeedsFormat: u.NeedsFormat,
-		})
-	}
-	knownCount := 0
-	for _, u := range uploads {
-		if !u.NeedsFormat {
-			knownCount++
-		}
-	}
-	logger.Debug("auth: %d known ROM(s), %d unknown-format file(s) (game-page path)",
-		knownCount, len(uploads)-knownCount)
-	if len(uploads) == 0 {
-		logger.Warn("auth: no downloadable uploads found via game-page path")
-	}
-	return uploads, nil
-}
-
 // FetchAuthUploads lists .gb/.gbc uploads for a paid game the user owns.
 //
 // Flow:
@@ -134,7 +21,9 @@ func (c *Client) FetchAuthUploadsViaGamePage(apiKey, gameURL string) ([]Upload, 
 //     or numeric download key ID (fallback)
 //  2a. If downloads_url present: parse the signed download page (works for direct
 //      purchases AND bundle purchases). Returns uploads with URL set, empty keyID.
-//  2b. Otherwise: GET api.itch.io/games/GAME_ID/uploads?download_key_id=KEY_ID
+//  2b. Otherwise: GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=KEY_ID
+//      The simple API accepts both direct-purchase and bundle keys. The butler
+//      uploads endpoint (api.itch.io/games/{id}/uploads) rejects bundle keys.
 func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, error) {
 	// Step 1: get download key info from the butler-style API.
 	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
@@ -171,15 +60,13 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 
 	key := keysResult.OwnedKeys[0]
 
-	// Prefer downloads_url: it is a signed page URL generated by itch.io that
-	// works for both direct purchases and bundle purchases. The numeric key only
-	// works for direct purchases — bundle keys cause HTTP 500 on the uploads endpoint.
+	// Prefer downloads_url when present: it is a signed page URL that encodes
+	// the user's entitlement and feeds directly into ParseDownloadPage.
 	if key.DownloadsURL != "" {
 		logger.Debug("auth: using signed-page path via downloads_url")
 		return c.fetchAuthUploadsViaSignedPage(key.DownloadsURL)
 	}
 
-	// Fall back to butler API with numeric download key.
 	if key.ID == 0 {
 		logger.Warn("auth: owned-keys returned id=0 and no downloads_url (game may not be owned)")
 		return nil, "", fmt.Errorf("game not owned or API key invalid (no valid download key)")
@@ -187,17 +74,14 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 	downloadKeyID := fmt.Sprintf("%d", key.ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
-	// Step 2: list uploads using the butler API with the download key to prove ownership.
-	req2, err := http.NewRequest("GET",
-		fmt.Sprintf("%s/games/%s/uploads?download_key_id=%s", c.butler, gameID, downloadKeyID),
-		nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("build uploads request: %w", err)
-	}
-	req2.Header.Set("Authorization", "Bearer "+apiKey)
+	// Step 2: list uploads via the simple API. The simple API (itch.io/api/1)
+	// accepts both direct-purchase keys and bundle keys. The URL contains the API
+	// key; do not log it.
+	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
+		c.base, apiKey, gameID, downloadKeyID)
 	logger.Debug("auth: fetching upload list for game_id=%s", gameID)
 
-	resp2, err := c.http.Do(req2)
+	resp2, err := c.http.Get(uploadsURL)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch uploads: %w", err)
 	}
@@ -212,11 +96,8 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		logger.Warn("auth: upload list HTTP %d — game not owned or API key lacks access", resp2.StatusCode)
 		return nil, "", fmt.Errorf("game not owned or API key does not grant access to this game's downloads")
 	}
-	// itch.io returns 500 when the download_key_id is not valid for this game
-	// (e.g. the owned-keys endpoint returned a key that doesn't grant access).
-	// Treat this as a "not owned" condition rather than a generic server error.
 	if resp2.StatusCode == http.StatusInternalServerError {
-		logger.Warn("auth: upload list HTTP 500 — download key likely invalid; game may not be owned (body: %.200s)", rawBody)
+		logger.Warn("auth: upload list HTTP 500 (body: %.200s)", rawBody)
 		return nil, "", fmt.Errorf("Game not owned or download key invalid — purchase this game to download it")
 	}
 	if resp2.StatusCode != http.StatusOK {
@@ -224,9 +105,8 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 		return nil, "", fmt.Errorf("fetch uploads: HTTP %d", resp2.StatusCode)
 	}
 
-	// itch.io returns {"uploads":[...]} when uploads are accessible, but
-	// {"uploads":{}} (an object, not an array) when there are none or access is
-	// restricted. Decode the uploads field as raw JSON so we can handle both.
+	// itch.io returns {"uploads":[...]} when accessible, and {"uploads":{}} (an
+	// object, not an array) when the game has no uploads or access is denied.
 	var envelope struct {
 		Uploads json.RawMessage `json:"uploads"`
 	}
@@ -284,8 +164,7 @@ func (c *Client) FetchAuthUploads(apiKey, gameID string) ([]Upload, string, erro
 }
 
 // fetchAuthUploadsViaSignedPage uses the signed downloads_url from the owned-keys
-// response to list uploads. This path works for both direct purchases and bundle
-// purchases; the butler numeric key does not work for bundle keys.
+// response to list uploads via ParseDownloadPage.
 func (c *Client) fetchAuthUploadsViaSignedPage(downloadsURL string) ([]Upload, string, error) {
 	key := extractDownloadKey(downloadsURL)
 	if key == "" {
@@ -334,22 +213,19 @@ func (c *Client) fetchAuthUploadsViaSignedPage(downloadsURL string) ([]Upload, s
 	if len(uploads) == 0 {
 		logger.Warn("auth: no downloadable uploads found via signed-page path")
 	}
-	// Empty keyID signals to callers that DownloadFree (not DownloadAuthUpload) handles these uploads.
+	// Empty keyID: callers use DownloadFree (not DownloadAuthUpload) for these uploads.
 	return uploads, "", nil
 }
 
 // DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
+// Uses the simple API (itch.io/api/1) which accepts both direct-purchase and bundle keys.
 func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string, progress func(int64, int64)) error {
-	req, err := http.NewRequest("GET",
-		fmt.Sprintf("%s/uploads/%s/download?download_key_id=%s", c.butler, uploadID, downloadKeyID),
-		nil)
-	if err != nil {
-		return fmt.Errorf("build auth download request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// URL contains the API key; do not log it.
+	dlURL := fmt.Sprintf("%s/api/1/%s/upload/%s/download?download_key_id=%s",
+		c.base, apiKey, uploadID, downloadKeyID)
 	logger.Debug("auth: resolving CDN for upload id=%s", uploadID)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Get(dlURL)
 	if err != nil {
 		return fmt.Errorf("resolve auth CDN URL: %w", err)
 	}

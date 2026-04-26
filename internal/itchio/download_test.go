@@ -112,116 +112,6 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
-// TestFetchAuthUploadsViaGamePage verifies that the game-page Bearer auth path
-// returns uploads and resolver URLs without touching the butler API at all.
-// This is the primary auth path and handles both direct and bundle purchases.
-func TestFetchAuthUploadsViaGamePage(t *testing.T) {
-	var srvURL string
-	mux := http.NewServeMux()
-
-	// Game page returns CSRF token.
-	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer gpkey" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		w.Write([]byte(`<html><body><input name="csrf_token" value="GPCSRF"/></body></html>`))
-	})
-
-	// download_url POST with Bearer auth returns a signed URL.
-	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
-		if r.Header.Get("Authorization") != "Bearer gpkey" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]string{"url": ""})
-			return
-		}
-		if err := r.ParseForm(); err != nil {
-			t.Errorf("parse form: %v", err)
-		}
-		if r.FormValue("csrf_token") != "GPCSRF" {
-			t.Errorf("expected csrf_token=GPCSRF, got %q", r.FormValue("csrf_token"))
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"url": srvURL + "/game/download/eyJpZCI6MTIzLCJleHBpcmVzIjo5OTk5OTk5OTk5fQ.SIG",
-		})
-	})
-
-	// Signed download page.
-	mux.HandleFunc("/game/download/eyJpZCI6MTIzLCJleHBpcmVzIjo5OTk5OTk5OTk5fQ.SIG", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="PAGECSRF2"/></head><body>
-<div class="upload_list_widget">
-  <div class="upload">
-    <div class="info_column">
-      <div class="upload_name">
-        <strong class="name" title="gp-game.gbc">gp-game.gbc</strong>
-      </div>
-    </div>
-    <div class="actions">
-      <a class="button download_btn" href="javascript:void(0);" data-upload_id="77777">Download</a>
-    </div>
-  </div>
-</div>
-</body></html>`))
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	srvURL = srv.URL
-
-	c := itchio.NewClientWithBase(srv.URL)
-	uploads, err := c.FetchAuthUploadsViaGamePage("gpkey", srv.URL+"/game")
-	if err != nil {
-		t.Fatalf("FetchAuthUploadsViaGamePage: %v", err)
-	}
-	if len(uploads) != 1 {
-		t.Fatalf("expected 1 upload, got %d", len(uploads))
-	}
-	if uploads[0].Filename != "gp-game.gbc" {
-		t.Errorf("Filename = %q, want gp-game.gbc", uploads[0].Filename)
-	}
-	if uploads[0].UploadID != "77777" {
-		t.Errorf("UploadID = %q, want 77777", uploads[0].UploadID)
-	}
-	if uploads[0].URL == "" {
-		t.Error("URL should be set for game-page path")
-	}
-	if !strings.Contains(uploads[0].URL, "/game/file/77777") {
-		t.Errorf("URL should contain /game/file/77777, got %q", uploads[0].URL)
-	}
-	if uploads[0].NeedsFormat {
-		t.Error("NeedsFormat should be false for .gbc file")
-	}
-}
-
-// TestFetchAuthUploadsViaGamePage_NotOwned verifies that an empty URL from
-// download_url (game not owned or Bearer auth rejected) produces an error.
-func TestFetchAuthUploadsViaGamePage_NotOwned(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><body><input name="csrf_token" value="X"/></body></html>`))
-	})
-	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"url": ""})
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	c := itchio.NewClientWithBase(srv.URL)
-	_, err := c.FetchAuthUploadsViaGamePage("badkey", srv.URL+"/game")
-	if err == nil {
-		t.Fatal("expected error for not-owned game, got nil")
-	}
-	if !strings.Contains(err.Error(), "not owned") && !strings.Contains(err.Error(), "purchase") {
-		t.Errorf("error should mention ownership/purchase, got: %v", err)
-	}
-}
-
 // TestFetchAuthUploads_BundlePurchase verifies that when owned-keys returns a
 // downloads_url (signed page URL), we use the signed-page path rather than the
 // butler uploads endpoint. This is the correct path for bundle purchases.
@@ -261,9 +151,9 @@ func TestFetchAuthUploads_BundlePurchase(t *testing.T) {
 </body></html>`))
 	})
 
-	// butler uploads endpoint must NOT be called (bundle key would 500).
-	mux.HandleFunc("/games/321/uploads", func(w http.ResponseWriter, r *http.Request) {
-		t.Error("uploads endpoint should not be called for bundle purchases")
+	// uploads endpoint must NOT be called when downloads_url is present.
+	mux.HandleFunc("/api/1/bundlekey/game/321/uploads", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("uploads endpoint should not be called when downloads_url is present")
 		http.Error(w, "server error", http.StatusInternalServerError)
 	})
 
@@ -308,11 +198,8 @@ func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
 	})
 
-	mux.HandleFunc("/games/777/uploads", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer testkey" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+	// Simple API path: key in URL, download_key_id as query param.
+	mux.HandleFunc("/api/1/testkey/game/777/uploads", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("download_key_id") != "42" {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -371,12 +258,9 @@ func TestFetchAuthUploads_NotOwned500(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Returns a key ID even though the user doesn't actually own the game
-		// (itch.io can return non-zero IDs for non-owners in some cases).
 		w.Write([]byte(`{"owned_keys":[{"id":99}]}`))
 	})
-	mux.HandleFunc("/games/999/uploads", func(w http.ResponseWriter, r *http.Request) {
-		// itch.io returns 500 when download_key_id doesn't grant access.
+	mux.HandleFunc("/api/1/testkey/game/999/uploads", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"errors":["There was a server error"]}`, http.StatusInternalServerError)
 	})
 
@@ -399,7 +283,7 @@ func TestFetchAuthUploads_ZipTreatedAsKnown(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
 	})
-	mux.HandleFunc("/games/555/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/1/testkey/game/555/uploads", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":[
 			{"id":1,"filename":"game.gbc"},
@@ -454,8 +338,7 @@ func TestFetchAuthUploads_EmptyObjectResponse(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"owned_keys":[{"id":77}]}`))
 	})
-	mux.HandleFunc("/games/888/uploads", func(w http.ResponseWriter, r *http.Request) {
-		// itch.io sometimes returns an object instead of an array for empty upload lists.
+	mux.HandleFunc("/api/1/testkey/game/888/uploads", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"uploads":{}}`))
 	})
@@ -489,12 +372,8 @@ func TestFetchAuthUploads(t *testing.T) {
 		w.Write([]byte(`{"owned_keys":[{"id":999}]}`))
 	})
 
-	// Butler uploads endpoint — requires Authorization header and download_key_id query param.
-	mux.HandleFunc("/games/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer mykey" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+	// Simple API uploads endpoint: key is in URL path, download_key_id as query param.
+	mux.HandleFunc("/api/1/mykey/game/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("download_key_id") != "999" {
 			http.Error(w, "bad key", http.StatusForbidden)
 			return

@@ -71,30 +71,8 @@ func NewFetchUploadsScreen(
 			}(), useAuthPath)
 
 		if useAuthPath {
-			// Paid game owned by the user. Try the game-page approach first: it
-			// works for both direct purchases and bundle purchases. Fall back to
-			// the butler API if the game-page approach fails (e.g. Bearer auth
-			// not supported by that endpoint on this itch.io instance).
-			var authUploads []itchio.Upload
-			var downloadKeyID string
-			var authErr error
-
-			if game.URL != "" {
-				logger.Debug("fetch: trying game-page auth path for %s", game.URL)
-				authUploads, authErr = client.FetchAuthUploadsViaGamePage(cfg.APIKey, game.URL)
-				if authErr != nil {
-					logger.Debug("fetch: game-page auth failed (%v), falling back to butler API", authErr)
-				}
-			}
-			if authErr != nil || game.URL == "" {
-				logger.Debug("fetch: using butler API auth path for game_id=%s", detail.GameID)
-				var butlerUploads []itchio.Upload
-				butlerUploads, downloadKeyID, authErr = client.FetchAuthUploads(cfg.APIKey, detail.GameID)
-				if authErr == nil {
-					authUploads = butlerUploads
-				}
-			}
-
+			// Paid game owned by the user — use the itch.io API.
+			authUploads, downloadKeyID, authErr := client.FetchAuthUploads(cfg.APIKey, detail.GameID)
 			if authErr != nil {
 				s.err = authErr
 				s.state = fetchError
