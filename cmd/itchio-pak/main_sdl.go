@@ -20,8 +20,7 @@ func runSDL() {
 	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
 	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
 	inv, _ := inventory.Load(inventoryPath)
-	removed := inv.VerifyAndClean(inventoryPath)
-	logger.Info("inventory: cleaned %d stale file(s)", removed)
+	inv.VerifyAndClean(inventoryPath)
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
