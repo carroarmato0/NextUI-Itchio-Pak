@@ -84,8 +84,8 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 				DestPath:     dest,
 				DownloadedAt: time.Now(),
 			})
-			if err := s.inv.Save(s.inventoryPath); err != nil {
-				logger.Warn("inventory: save failed: %v", err)
+			if saveErr := s.inv.Save(s.inventoryPath); saveErr != nil {
+				logger.Warn("inventory: save failed: %v", saveErr)
 			} else {
 				logger.Info("inventory: recorded game=%q file=%s", game.Title, upload.Filename)
 			}
