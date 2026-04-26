@@ -271,7 +271,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		var badgeLabel string
 		var badgeR, badgeG, badgeB uint8
 		if isPresent {
-			badgeLabel = "\U0001F4BE"
+			badgeLabel = "[DL]"
 			badgeR, badgeG, badgeB = 80, 200, 220
 		} else if g.IsFree {
 			badgeLabel = "Free"

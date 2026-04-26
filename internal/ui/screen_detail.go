@@ -276,7 +276,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		}
 		y += fontH + 4
 
-		r.DrawText("\U0001F4BE Already on device", margin, y, 80, 200, 220)
+		r.DrawText("[DL] On device", margin, y, 80, 200, 220)
 		y += fontH + 4
 
 		if entry, ok := s.inv.Lookup(s.game.URL); ok {
@@ -581,7 +581,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
-		case sdl.CONTROLLER_BUTTON_X:
+		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil)
