@@ -147,3 +147,125 @@ func TestLookup_Missing(t *testing.T) {
 		t.Error("Lookup of missing key should return false")
 	}
 }
+
+func TestIsPresent_NoEntry(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	if inv.IsPresent("https://dev.itch.io/game") {
+		t.Error("IsPresent should be false when no entry exists")
+	}
+}
+
+func TestIsPresent_EntryWithFiles(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	if !inv.IsPresent("https://dev.itch.io/game") {
+		t.Error("IsPresent should be true when entry has files")
+	}
+}
+
+func TestVerifyAndClean_KeepsExistingFiles(t *testing.T) {
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.gb")
+	if err := os.WriteFile(romPath, []byte("rom"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "inventory.json")
+
+	inv := &inventory.Inventory{Entries: map[string]*inventory.Entry{
+		"https://dev.itch.io/game": {
+			GameURL: "https://dev.itch.io/game",
+			Title:   "Game",
+			Files:   []inventory.DownloadedFile{{Filename: "game.gb", DestPath: romPath}},
+		},
+	}}
+	removed := inv.VerifyAndClean(path)
+	if removed != 0 {
+		t.Errorf("removed = %d, want 0", removed)
+	}
+	if _, ok := inv.Lookup("https://dev.itch.io/game"); !ok {
+		t.Error("entry should still exist")
+	}
+}
+
+func TestVerifyAndClean_RemovesStaleFile(t *testing.T) {
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "real.gb")
+	if err := os.WriteFile(romPath, []byte("rom"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "inventory.json")
+
+	inv := &inventory.Inventory{Entries: map[string]*inventory.Entry{
+		"https://dev.itch.io/game": {
+			GameURL: "https://dev.itch.io/game",
+			Title:   "Game",
+			Files: []inventory.DownloadedFile{
+				{Filename: "real.gb", DestPath: romPath},
+				{Filename: "gone.gb", DestPath: "/nonexistent/gone.gb"},
+			},
+		},
+	}}
+	removed := inv.VerifyAndClean(path)
+	if removed != 1 {
+		t.Errorf("removed = %d, want 1", removed)
+	}
+	e, ok := inv.Lookup("https://dev.itch.io/game")
+	if !ok {
+		t.Fatal("entry should still exist after partial file removal")
+	}
+	if len(e.Files) != 1 {
+		t.Errorf("Files len = %d, want 1", len(e.Files))
+	}
+	if e.Files[0].Filename != "real.gb" {
+		t.Errorf("kept wrong file: %q", e.Files[0].Filename)
+	}
+}
+
+func TestVerifyAndClean_RemovesEmptyEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+
+	inv := &inventory.Inventory{Entries: map[string]*inventory.Entry{
+		"https://dev.itch.io/gone": {
+			GameURL: "https://dev.itch.io/gone",
+			Title:   "Gone",
+			Files:   []inventory.DownloadedFile{{Filename: "gone.gb", DestPath: "/nonexistent/gone.gb"}},
+		},
+	}}
+	removed := inv.VerifyAndClean(path)
+	if removed != 1 {
+		t.Errorf("removed = %d, want 1", removed)
+	}
+	if _, ok := inv.Lookup("https://dev.itch.io/gone"); ok {
+		t.Error("entry should have been removed")
+	}
+}
+
+func TestCoverArtPath_WithPNGCover(t *testing.T) {
+	got := inventory.CoverArtPath(
+		"https://img.itch.zone/abc/cover.png",
+		"/mnt/SDCARD/Roms/Game Boy (GB)/my-game.gb",
+	)
+	want := "/mnt/SDCARD/Roms/Game Boy (GB)/.media/my-game.png"
+	if got != want {
+		t.Errorf("CoverArtPath = %q, want %q", got, want)
+	}
+}
+
+func TestCoverArtPath_EmptyCoverURL(t *testing.T) {
+	got := inventory.CoverArtPath("", "/roms/game.gb")
+	if got != "" {
+		t.Errorf("empty coverURL should return empty string, got %q", got)
+	}
+}
+
+func TestCoverArtPath_NoExtensionInURL(t *testing.T) {
+	got := inventory.CoverArtPath(
+		"https://img.itch.zone/abc/coverimage",
+		"/roms/game.gb",
+	)
+	want := "/roms/.media/game.png"
+	if got != want {
+		t.Errorf("CoverArtPath = %q, want %q", got, want)
+	}
+}

@@ -119,6 +119,38 @@ func (inv *Inventory) IsPresent(gameURL string) bool {
 	return len(e.Files) > 0
 }
 
+// VerifyAndClean walks all entries, removes DownloadedFile rows whose DestPath no
+// longer exists on disk, removes Entry values with no remaining files, saves if
+// any changes were made, and returns the count of removed DownloadedFile rows.
+func (inv *Inventory) VerifyAndClean(path string) int {
+	removed := 0
+	for gameURL, entry := range inv.Entries {
+		var kept []DownloadedFile
+		for _, f := range entry.Files {
+			if _, err := os.Stat(f.DestPath); err == nil {
+				kept = append(kept, f)
+			} else {
+				logger.Debug("inventory: removing stale file=%s", f.DestPath)
+				removed++
+			}
+		}
+		if len(kept) == 0 {
+			logger.Debug("inventory: removing empty entry game=%q", entry.Title)
+			delete(inv.Entries, gameURL)
+		} else if len(kept) < len(entry.Files) {
+			entry.Files = kept
+			entry.VerifiedAt = time.Now()
+		} else {
+			entry.VerifiedAt = time.Now()
+		}
+	}
+	if removed > 0 {
+		logger.Info("inventory: cleaned %d stale file(s)", removed)
+		_ = inv.Save(path)
+	}
+	return removed
+}
+
 // CoverArtPath returns the filesystem path for the cover art of a downloaded ROM,
 // mirroring the naming convention used by itchio.DownloadCoverArt.
 // Returns "" if either argument is empty.
