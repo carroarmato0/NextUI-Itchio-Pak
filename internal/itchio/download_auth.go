@@ -14,6 +14,119 @@ import (
 
 const apiItchIO = "https://api.itch.io"
 
+// FetchAuthUploadsViaGamePage lists uploads for an owned game by POSTing to the
+// game's own download_url endpoint with the API key as a Bearer token. This
+// mirrors what the itch.io website does when a logged-in user clicks Download,
+// and works for both direct purchases and bundle purchases.
+//
+// Returns (nil, err) when the game is not owned or the API key is rejected.
+func (c *Client) FetchAuthUploadsViaGamePage(apiKey, gameURL string) ([]Upload, error) {
+	logger.Debug("auth: game-page path for %s", gameURL)
+
+	// Step 1: GET game page to extract CSRF token.
+	req, err := http.NewRequest("GET", gameURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build game page request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch game page: %w", err)
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("read game page: %w", readErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("auth: game page HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
+	}
+
+	csrfM := csrfRegex.FindStringSubmatch(string(body))
+	if len(csrfM) < 2 {
+		return nil, fmt.Errorf("csrf_token not found on game page")
+	}
+	csrf := csrfM[1]
+	logger.Debug("auth: game page CSRF %s", presentAbsent(csrf))
+
+	// Step 2: POST to download_url with Bearer auth. itch.io checks the API key
+	// and returns a signed URL if the user owns the game (regardless of purchase
+	// method — direct or bundle).
+	postURL := strings.TrimRight(gameURL, "/") + "/download_url"
+	form := url.Values{"csrf_token": {csrf}}
+	req2, err := http.NewRequest("POST", postURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("build download_url request: %w", err)
+	}
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2.Header.Set("Authorization", "Bearer "+apiKey)
+
+	postResp, err := c.http.Do(req2)
+	if err != nil {
+		return nil, fmt.Errorf("download_url POST: %w", err)
+	}
+	defer postResp.Body.Close()
+
+	var dlResult struct {
+		URL    string   `json:"url"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.NewDecoder(postResp.Body).Decode(&dlResult); err != nil {
+		return nil, fmt.Errorf("parse download_url response: %w", err)
+	}
+	if len(dlResult.Errors) > 0 {
+		logger.Warn("auth: game-page download_url errors: %s", strings.Join(dlResult.Errors, "; "))
+		return nil, fmt.Errorf("game not owned or API key invalid: %s", strings.Join(dlResult.Errors, "; "))
+	}
+	if dlResult.URL == "" {
+		logger.Warn("auth: game-page download_url returned empty URL (game not owned or Bearer auth not accepted)")
+		return nil, fmt.Errorf("game not owned or download requires purchase")
+	}
+	logger.Debug("auth: game-page signed URL received")
+
+	// Step 3: extract the download key from the signed URL path.
+	key := extractDownloadKey(dlResult.URL)
+	if key == "" {
+		return nil, fmt.Errorf("auth: could not extract download key from signed URL")
+	}
+
+	// Step 4: parse the signed download page for upload IDs + filenames + CSRF token.
+	dlPage, err := c.ParseDownloadPage(dlResult.URL)
+	if err != nil {
+		return nil, fmt.Errorf("auth: parse signed download page: %w", err)
+	}
+
+	// Step 5: build resolver URLs. Same format as the free-game path.
+	base := strings.TrimRight(gameURL, "/")
+	var uploads []Upload
+	for _, u := range dlPage.Uploads {
+		resolverURL := base + "/file/" + u.UploadID +
+			"?key=" + url.QueryEscape(key) +
+			"&csrf=" + url.QueryEscape(dlPage.CSRFToken)
+		logger.Debug("auth: found %s id=%s (game-page path)", u.Filename, u.UploadID)
+		uploads = append(uploads, Upload{
+			Filename:    u.Filename,
+			UploadID:    u.UploadID,
+			URL:         resolverURL,
+			NeedsFormat: u.NeedsFormat,
+		})
+	}
+	knownCount := 0
+	for _, u := range uploads {
+		if !u.NeedsFormat {
+			knownCount++
+		}
+	}
+	logger.Debug("auth: %d known ROM(s), %d unknown-format file(s) (game-page path)",
+		knownCount, len(uploads)-knownCount)
+	if len(uploads) == 0 {
+		logger.Warn("auth: no downloadable uploads found via game-page path")
+	}
+	return uploads, nil
+}
+
 // FetchAuthUploads lists .gb/.gbc uploads for a paid game the user owns.
 //
 // Flow:

@@ -112,6 +112,116 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
+// TestFetchAuthUploadsViaGamePage verifies that the game-page Bearer auth path
+// returns uploads and resolver URLs without touching the butler API at all.
+// This is the primary auth path and handles both direct and bundle purchases.
+func TestFetchAuthUploadsViaGamePage(t *testing.T) {
+	var srvURL string
+	mux := http.NewServeMux()
+
+	// Game page returns CSRF token.
+	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer gpkey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Write([]byte(`<html><body><input name="csrf_token" value="GPCSRF"/></body></html>`))
+	})
+
+	// download_url POST with Bearer auth returns a signed URL.
+	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.Header.Get("Authorization") != "Bearer gpkey" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"url": ""})
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse form: %v", err)
+		}
+		if r.FormValue("csrf_token") != "GPCSRF" {
+			t.Errorf("expected csrf_token=GPCSRF, got %q", r.FormValue("csrf_token"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"url": srvURL + "/game/download/eyJpZCI6MTIzLCJleHBpcmVzIjo5OTk5OTk5OTk5fQ.SIG",
+		})
+	})
+
+	// Signed download page.
+	mux.HandleFunc("/game/download/eyJpZCI6MTIzLCJleHBpcmVzIjo5OTk5OTk5OTk5fQ.SIG", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><meta name="csrf_token" value="PAGECSRF2"/></head><body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column">
+      <div class="upload_name">
+        <strong class="name" title="gp-game.gbc">gp-game.gbc</strong>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="77777">Download</a>
+    </div>
+  </div>
+</div>
+</body></html>`))
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	c := itchio.NewClientWithBase(srv.URL)
+	uploads, err := c.FetchAuthUploadsViaGamePage("gpkey", srv.URL+"/game")
+	if err != nil {
+		t.Fatalf("FetchAuthUploadsViaGamePage: %v", err)
+	}
+	if len(uploads) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(uploads))
+	}
+	if uploads[0].Filename != "gp-game.gbc" {
+		t.Errorf("Filename = %q, want gp-game.gbc", uploads[0].Filename)
+	}
+	if uploads[0].UploadID != "77777" {
+		t.Errorf("UploadID = %q, want 77777", uploads[0].UploadID)
+	}
+	if uploads[0].URL == "" {
+		t.Error("URL should be set for game-page path")
+	}
+	if !strings.Contains(uploads[0].URL, "/game/file/77777") {
+		t.Errorf("URL should contain /game/file/77777, got %q", uploads[0].URL)
+	}
+	if uploads[0].NeedsFormat {
+		t.Error("NeedsFormat should be false for .gbc file")
+	}
+}
+
+// TestFetchAuthUploadsViaGamePage_NotOwned verifies that an empty URL from
+// download_url (game not owned or Bearer auth rejected) produces an error.
+func TestFetchAuthUploadsViaGamePage_NotOwned(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body><input name="csrf_token" value="X"/></body></html>`))
+	})
+	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"url": ""})
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	_, err := c.FetchAuthUploadsViaGamePage("badkey", srv.URL+"/game")
+	if err == nil {
+		t.Fatal("expected error for not-owned game, got nil")
+	}
+	if !strings.Contains(err.Error(), "not owned") && !strings.Contains(err.Error(), "purchase") {
+		t.Errorf("error should mention ownership/purchase, got: %v", err)
+	}
+}
+
 // TestFetchAuthUploads_BundlePurchase verifies that when owned-keys returns a
 // downloads_url (signed page URL), we use the signed-page path rather than the
 // butler uploads endpoint. This is the correct path for bundle purchases.
