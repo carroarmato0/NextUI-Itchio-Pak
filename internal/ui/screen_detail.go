@@ -38,9 +38,9 @@ type DetailScreen struct {
 	modal         detailModal
 
 	// Held-button auto-repeat state for scrolling
-	heldDir    int       // -1 = up, +1 = down, 0 = none
-	heldSince  time.Time
-	lastRepeat time.Time
+	heldDir       int       // -1 = up, +1 = down, 0 = none
+	heldSince     time.Time
+	lastRepeat    time.Time
 
 	prev          Screen
 	inv           *inventory.Inventory

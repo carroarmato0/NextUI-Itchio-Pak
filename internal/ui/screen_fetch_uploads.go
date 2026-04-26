@@ -37,10 +37,10 @@ type FetchUploadsScreen struct {
 	detail  *itchio.GameDetail
 	prev    Screen
 
-	state        fetchState
-	uploads      []roms.Upload
-	err          error
-	isNotOwned   bool // true when error is "game not owned" — triggers auto-modal on prev screen
+	state         fetchState
+	uploads       []roms.Upload
+	err           error
+	isNotOwned    bool // true when error is "game not owned" — triggers auto-modal on prev screen
 	inv           *inventory.Inventory
 	inventoryPath string
 }
