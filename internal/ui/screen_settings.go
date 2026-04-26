@@ -119,7 +119,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				case itchio.APIKeyStatusRejected:
 					r.DrawText("REJECTED", 20+labelW, y, 200, 60, 60)
 				default:
-					r.DrawText("PRESENT", 20+labelW, y, 140, 140, 140)
+					r.DrawText("PRESENT", 20+labelW, y, colorText, colorText, colorText)
 				}
 			} else {
 				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
