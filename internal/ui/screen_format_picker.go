@@ -64,11 +64,11 @@ func defaultFormatChoice(filename string) formatChoice {
 // download proceeds. The chosen extension is appended to the filename so all
 // downstream routing (DestinationDir, LastROMDirs, cover-art) works correctly.
 type FormatPickerScreen struct {
-	client  *itchio.Client
-	cfg     *settings.Config
-	cfgPath string
-	game    itchio.Game
-	detail  *itchio.GameDetail
+	client        *itchio.Client
+	cfg           *settings.Config
+	cfgPath       string
+	game          itchio.Game
+	detail        *itchio.GameDetail
 	uploads       []roms.Upload
 	formats       []formatChoice // parallel to uploads
 	cursor        int

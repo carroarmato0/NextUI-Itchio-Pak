@@ -15,12 +15,12 @@ import (
 )
 
 type ROMPickerScreen struct {
-	client  *itchio.Client
-	cfg     *settings.Config
-	cfgPath string
-	cache   *renderer.ImageCache
-	game    itchio.Game
-	detail  *itchio.GameDetail
+	client        *itchio.Client
+	cfg           *settings.Config
+	cfgPath       string
+	cache         *renderer.ImageCache
+	game          itchio.Game
+	detail        *itchio.GameDetail
 	uploads       []roms.Upload
 	cursor        int
 	prev          Screen
