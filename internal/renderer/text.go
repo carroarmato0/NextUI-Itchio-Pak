@@ -23,6 +23,9 @@ func sanitizeText(s string) string {
 // isEmoji reports whether r falls within a Unicode block reserved for emoji or
 // symbol characters that the bundled font is known not to support.
 func isEmoji(r rune) bool {
+	if r == 0x1F4BE { // floppy disk — used as download indicator
+		return false
+	}
 	return (r >= 0x2600 && r <= 0x26FF) || // Miscellaneous Symbols
 		(r >= 0x2700 && r <= 0x27BF) || // Dingbats
 		(r >= 0x2B00 && r <= 0x2BFF) || // Miscellaneous Symbols and Arrows

@@ -125,6 +125,20 @@ func (r *Renderer) TextSize(text string) (int32, int32) {
 	return int32(w), int32(h)
 }
 
+// DrawBoldText renders text using SDL_ttf bold style synthesis.
+func (r *Renderer) DrawBoldText(text string, x, y int32, red, green, blue uint8) {
+	r.Font.SetStyle(ttf.STYLE_BOLD)
+	defer r.Font.SetStyle(ttf.STYLE_NORMAL)
+	r.DrawText(text, x, y, red, green, blue)
+}
+
+// BoldTextSize returns the pixel width and height of text measured in bold style.
+func (r *Renderer) BoldTextSize(text string) (int32, int32) {
+	r.Font.SetStyle(ttf.STYLE_BOLD)
+	defer r.Font.SetStyle(ttf.STYLE_NORMAL)
+	return r.TextSize(text)
+}
+
 // DrawTextCentered draws text horizontally centered within a region [x, x+w].
 func (r *Renderer) DrawTextCentered(text string, x, y, w int32, red, green, blue uint8) {
 	tw, _ := r.TextSize(text)

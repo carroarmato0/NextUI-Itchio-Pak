@@ -24,6 +24,7 @@ func TestSanitizeText(t *testing.T) {
 		{"mixed cjk and emoji", "かぞくロボット 🎮", "かぞくロボット "},
 		{"invalid utf-8 preserved", "\xff\xfe", "\xff\xfe"},
 		{"empty string", "", ""},
+		{"floppy disk U+1F4BE passes through", "\U0001F4BE", "\U0001F4BE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
