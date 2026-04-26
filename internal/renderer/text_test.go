@@ -25,6 +25,8 @@ func TestSanitizeText(t *testing.T) {
 		{"invalid utf-8 preserved", "\xff\xfe", "\xff\xfe"},
 		{"empty string", "", ""},
 		{"floppy disk U+1F4BE passes through", "\U0001F4BE", "\U0001F4BE"},
+		{"codepoint before floppy disk still stripped", "\U0001F4BD", ""},
+		{"codepoint after floppy disk still stripped", "\U0001F4BF", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

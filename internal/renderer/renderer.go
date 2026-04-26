@@ -126,10 +126,10 @@ func (r *Renderer) TextSize(text string) (int32, int32) {
 }
 
 // DrawBoldText renders text using SDL_ttf bold style synthesis.
-func (r *Renderer) DrawBoldText(text string, x, y int32, red, green, blue uint8) {
+func (r *Renderer) DrawBoldText(text string, x, y int32, red, green, blue uint8) error {
 	r.Font.SetStyle(ttf.STYLE_BOLD)
 	defer r.Font.SetStyle(ttf.STYLE_NORMAL)
-	r.DrawText(text, x, y, red, green, blue)
+	return r.DrawText(text, x, y, red, green, blue)
 }
 
 // BoldTextSize returns the pixel width and height of text measured in bold style.
