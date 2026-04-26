@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -27,6 +28,7 @@ const (
 )
 
 type SettingsScreen struct {
+	client         *itchio.Client
 	cfg            *settings.Config
 	cfgPath        string
 	cursor         settingsItem
@@ -38,8 +40,8 @@ type SettingsScreen struct {
 	lastRepeat time.Time
 }
 
-func NewSettingsScreen(cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen) *SettingsScreen {
-	return &SettingsScreen{cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
+func NewSettingsScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen) *SettingsScreen {
+	return &SettingsScreen{client: client, cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
 }
 
 func (s *SettingsScreen) processAutoRepeat() {
@@ -108,7 +110,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("D-pad navigate · B select · A back", 10, ftrY, 140, 140, 140)
+	footerHint := "D-pad navigate · B select · A back"
+	if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+		footerHint = "D-pad navigate · A: test API key · B back"
+	}
+	r.DrawSmallText(footerHint, 10, ftrY, 140, 140, 140)
 	r.Present()
 }
 
@@ -157,6 +163,9 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Keysym.Sym {
 		case sdl.K_RETURN:
+			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+				return NewKeyTestScreen(s.client, s.cfg, s)
+			}
 			return s.activate()
 		case sdl.K_ESCAPE:
 			return s.prev
@@ -187,6 +196,9 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_B:
 			return s.activate()
 		case sdl.CONTROLLER_BUTTON_A:
+			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+				return NewKeyTestScreen(s.client, s.cfg, s)
+			}
 			return s.prev
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev
