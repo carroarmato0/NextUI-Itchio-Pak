@@ -4,9 +4,65 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
+
+// APIKeyStatus is the result of the background API key validation.
+type APIKeyStatus int32
+
+const (
+	APIKeyStatusUnknown  APIKeyStatus = 0 // not yet tested, or network unavailable
+	APIKeyStatusWorking  APIKeyStatus = 1 // accepted by itch.io
+	APIKeyStatusRejected APIKeyStatus = 2 // explicitly rejected by itch.io
+)
+
+// GetAPIKeyStatus returns the cached result of the most recent key check.
+func (c *Client) GetAPIKeyStatus() APIKeyStatus {
+	return APIKeyStatus(atomic.LoadInt32(&c.apiKeyStatus))
+}
+
+// StoreAPIKeyStatus saves the result of a completed key check.
+func (c *Client) StoreAPIKeyStatus(s APIKeyStatus) {
+	atomic.StoreInt32(&c.apiKeyStatus, int32(s))
+}
+
+// MarkAPIKeyCheckStarted atomically marks the background check as started.
+// Returns true only on the first call — the caller should then launch the check.
+func (c *Client) MarkAPIKeyCheckStarted() bool {
+	return atomic.CompareAndSwapInt32(&c.apiKeyChecking, 0, 1)
+}
+
+// CheckAPIKey does a lightweight /profile fetch to determine whether apiKey is
+// accepted. Returns APIKeyStatusWorking on success, APIKeyStatusRejected when
+// the server explicitly rejects the key, and APIKeyStatusUnknown on network or
+// other transient errors (so the UI can show "PRESENT" rather than "REJECTED").
+func (c *Client) CheckAPIKey(apiKey string) APIKeyStatus {
+	req, err := http.NewRequest("GET", c.butler+"/profile", nil)
+	if err != nil {
+		return APIKeyStatusUnknown
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		logger.Debug("validate: background key check network error: %v", err)
+		return APIKeyStatusUnknown
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return APIKeyStatusWorking
+	case http.StatusUnauthorized, http.StatusForbidden:
+		logger.Debug("validate: background key check rejected (HTTP %d)", resp.StatusCode)
+		return APIKeyStatusRejected
+	default:
+		logger.Debug("validate: background key check unexpected HTTP %d", resp.StatusCode)
+		return APIKeyStatusUnknown
+	}
+}
 
 // OwnedGame is a public summary of a game the user owns.
 // Download key IDs are never included here — they grant download access and

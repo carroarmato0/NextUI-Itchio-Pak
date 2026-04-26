@@ -41,7 +41,18 @@ type SettingsScreen struct {
 }
 
 func NewSettingsScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen) *SettingsScreen {
-	return &SettingsScreen{client: client, cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
+	s := &SettingsScreen{client: client, cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
+	// Start a one-shot background validation the first time Settings is opened
+	// this session. MarkAPIKeyCheckStarted is a CAS gate so subsequent opens
+	// are a no-op.
+	if cfg.APIKey != "" && client.MarkAPIKeyCheckStarted() {
+		go func() {
+			status := client.CheckAPIKey(cfg.APIKey)
+			client.StoreAPIKeyStatus(status)
+			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+		}()
+	}
+	return s
 }
 
 func (s *SettingsScreen) processAutoRepeat() {
@@ -98,11 +109,18 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		}
 		r.DrawText(label, 20, y, colorText, colorText, colorText)
 
-		// API Key row: append status in a distinct colour.
+		// API Key row: append live validation status.
 		if settingsItem(i) == sItemAPIKey {
 			labelW, _ := r.TextSize(label)
 			if s.cfg.APIKey != "" {
-				r.DrawText("FOUND", 20+labelW, y, 80, 200, 80)
+				switch s.client.GetAPIKeyStatus() {
+				case itchio.APIKeyStatusWorking:
+					r.DrawText("WORKING", 20+labelW, y, 80, 200, 80)
+				case itchio.APIKeyStatusRejected:
+					r.DrawText("REJECTED", 20+labelW, y, 200, 60, 60)
+				default:
+					r.DrawText("PRESENT", 20+labelW, y, 140, 140, 140)
+				}
 			} else {
 				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
 			}

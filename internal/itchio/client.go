@@ -94,6 +94,10 @@ type Client struct {
 	http   *http.Client
 	base   string // itch.io/api/1/... base URL
 	butler string // api.itch.io base URL (butler-style endpoints)
+
+	// Background API key validation state (atomic, written once per session).
+	apiKeyStatus   int32 // stores APIKeyStatus constants
+	apiKeyChecking int32 // 0 = not started, 1 = started (CAS gate)
 }
 
 func NewClient() *Client {
