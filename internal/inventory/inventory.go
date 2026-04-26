@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 type DownloadedFile struct {
@@ -34,15 +36,22 @@ type Inventory struct {
 func Load(path string) (*Inventory, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Debug("inventory: no file at %s, starting empty", path)
+		} else {
+			logger.Warn("inventory: read error at %s: %v, starting empty", path, err)
+		}
 		return &Inventory{Entries: make(map[string]*Entry)}, nil
 	}
 	var inv Inventory
 	if err := json.Unmarshal(data, &inv); err != nil {
+		logger.Warn("inventory: corrupt file at %s: %v, starting empty", path, err)
 		return &Inventory{Entries: make(map[string]*Entry)}, nil
 	}
 	if inv.Entries == nil {
 		inv.Entries = make(map[string]*Entry)
 	}
+	logger.Debug("inventory: loaded %d entries from %s", len(inv.Entries), path)
 	return &inv, nil
 }
 
@@ -60,6 +69,7 @@ func (inv *Inventory) Save(path string) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename inventory: %w", err)
 	}
+	logger.Debug("inventory: saved %d entries to %s", len(inv.Entries), path)
 	return nil
 }
 
