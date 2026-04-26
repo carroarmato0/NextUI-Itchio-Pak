@@ -121,9 +121,10 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 			"&csrf=" + url.QueryEscape(dlPage.CSRFToken)
 		logger.Debug("uploads: found %s id=%s", u.Filename, u.UploadID)
 		uploads = append(uploads, Upload{
-			Filename: u.Filename,
-			UploadID: u.UploadID,
-			URL:      resolverURL,
+			Filename:    u.Filename,
+			UploadID:    u.UploadID,
+			URL:         resolverURL,
+			NeedsFormat: u.NeedsFormat,
 		})
 	}
 	return uploads, nil

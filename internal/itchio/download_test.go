@@ -112,6 +112,80 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
+// TestFetchAuthUploads_BundlePurchase verifies that when owned-keys returns a
+// downloads_url (signed page URL), we use the signed-page path rather than the
+// butler uploads endpoint. This is the correct path for bundle purchases.
+func TestFetchAuthUploads_BundlePurchase(t *testing.T) {
+	var srvURL string
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer bundlekey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// downloads_url present — no numeric id needed.
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"owned_keys": []map[string]interface{}{
+				{"id": 0, "downloads_url": srvURL + "/game/download/SIGNEDTOKEN"},
+			},
+		})
+	})
+
+	// Signed download page for the bundle purchase.
+	mux.HandleFunc("/game/download/SIGNEDTOKEN", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><meta name="csrf_token" value="BCSRF"/></head><body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column">
+      <div class="upload_name">
+        <strong class="name" title="bundle-game.gbc">bundle-game.gbc</strong>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="button download_btn" href="javascript:void(0);" data-upload_id="55555">Download</a>
+    </div>
+  </div>
+</div>
+</body></html>`))
+	})
+
+	// butler uploads endpoint must NOT be called (bundle key would 500).
+	mux.HandleFunc("/games/321/uploads", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("uploads endpoint should not be called for bundle purchases")
+		http.Error(w, "server error", http.StatusInternalServerError)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	uploads, keyID, err := c.FetchAuthUploads("bundlekey", "321")
+	if err != nil {
+		t.Fatalf("FetchAuthUploads: %v", err)
+	}
+	if keyID != "" {
+		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
+	}
+	if len(uploads) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(uploads))
+	}
+	if uploads[0].Filename != "bundle-game.gbc" {
+		t.Errorf("Filename = %q, want bundle-game.gbc", uploads[0].Filename)
+	}
+	if uploads[0].UploadID != "55555" {
+		t.Errorf("UploadID = %q, want 55555", uploads[0].UploadID)
+	}
+	if uploads[0].URL == "" {
+		t.Error("URL should be set for signed-page path")
+	}
+	if uploads[0].NeedsFormat {
+		t.Error("NeedsFormat should be false for .gbc file")
+	}
+}
+
 func TestFetchAuthUploads_UnknownExt(t *testing.T) {
 	mux := http.NewServeMux()
 

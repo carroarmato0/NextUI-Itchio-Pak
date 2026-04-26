@@ -82,6 +82,7 @@ func NewFetchUploadsScreen(
 					s.uploads = append(s.uploads, roms.Upload{
 						Filename:      u.Filename,
 						UploadID:      u.UploadID,
+						URL:           u.URL,
 						DownloadKeyID: downloadKeyID,
 						NeedsFormat:   u.NeedsFormat,
 					})
