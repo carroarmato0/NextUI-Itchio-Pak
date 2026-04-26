@@ -39,27 +39,30 @@ func (c *Client) MarkAPIKeyCheckStarted() bool {
 // the server explicitly rejects the key, and APIKeyStatusUnknown on network or
 // other transient errors (so the UI can show "PRESENT" rather than "REJECTED").
 func (c *Client) CheckAPIKey(apiKey string) APIKeyStatus {
+	logger.Debug("validate: background API key check starting")
 	req, err := http.NewRequest("GET", c.butler+"/profile", nil)
 	if err != nil {
+		logger.Error("validate: build profile request: %v", err)
 		return APIKeyStatusUnknown
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		logger.Debug("validate: background key check network error: %v", err)
+		logger.Debug("validate: background key check network error (device may be offline): %v", err)
 		return APIKeyStatusUnknown
 	}
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusOK:
+		logger.Info("validate: API key valid")
 		return APIKeyStatusWorking
 	case http.StatusUnauthorized, http.StatusForbidden:
-		logger.Debug("validate: background key check rejected (HTTP %d)", resp.StatusCode)
+		logger.Warn("validate: API key rejected by itch.io (HTTP %d)", resp.StatusCode)
 		return APIKeyStatusRejected
 	default:
-		logger.Debug("validate: background key check unexpected HTTP %d", resp.StatusCode)
+		logger.Warn("validate: background key check unexpected HTTP %d", resp.StatusCode)
 		return APIKeyStatusUnknown
 	}
 }
