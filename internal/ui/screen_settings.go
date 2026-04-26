@@ -110,9 +110,9 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	footerHint := "D-pad navigate · B select · A back"
+	footerHint := "D-pad navigate · B back · A select"
 	if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-		footerHint = "D-pad navigate · A: test API key · B back"
+		footerHint = "D-pad navigate · B back · A test API key"
 	}
 	r.DrawSmallText(footerHint, 10, ftrY, 140, 140, 140)
 	r.Present()
@@ -194,11 +194,11 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_B:
-			return s.activate()
-		case sdl.CONTROLLER_BUTTON_A:
 			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
 				return NewKeyTestScreen(s.client, s.cfg, s)
 			}
+			return s.activate()
+		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev
