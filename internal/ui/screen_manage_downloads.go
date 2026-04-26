@@ -87,7 +87,7 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
-func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry *inventory.Entry) {
+func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry inventory.Entry) {
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	pad := int32(16)
@@ -148,14 +148,14 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 			}
 			switch ev.Button {
 			case sdl.CONTROLLER_BUTTON_B: // physical A = confirm
-				allGone := s.performDelete(entry, s.confirmFileIdx)
+				allGone, newFileCount := s.performDelete(s.gameURL, s.confirmFileIdx)
 				s.confirmActive = false
 				s.confirmFileIdx = -1
 				if allGone {
 					return s.prev
 				}
-				if s.cursor >= len(entry.Files) {
-					s.cursor = len(entry.Files)
+				if s.cursor >= newFileCount {
+					s.cursor = newFileCount
 				}
 			case sdl.CONTROLLER_BUTTON_A: // physical B = cancel
 				s.confirmActive = false
@@ -167,14 +167,14 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 			}
 			switch ev.Keysym.Sym {
 			case sdl.K_RETURN:
-				allGone := s.performDelete(entry, s.confirmFileIdx)
+				allGone, newFileCount := s.performDelete(s.gameURL, s.confirmFileIdx)
 				s.confirmActive = false
 				s.confirmFileIdx = -1
 				if allGone {
 					return s.prev
 				}
-				if s.cursor >= len(entry.Files) {
-					s.cursor = len(entry.Files)
+				if s.cursor >= newFileCount {
+					s.cursor = newFileCount
 				}
 			case sdl.K_ESCAPE:
 				s.confirmActive = false
@@ -239,21 +239,18 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
-func (s *ManageDownloadsScreen) performDelete(entry *inventory.Entry, fileIdx int) bool {
+func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool, int) {
+	entry, ok := s.inv.Lookup(gameURL)
+	if !ok {
+		return true, 0
+	}
+
 	var toDelete []inventory.DownloadedFile
 	if fileIdx == -1 {
 		toDelete = make([]inventory.DownloadedFile, len(entry.Files))
 		copy(toDelete, entry.Files)
-		entry.Files = nil
-	} else {
+	} else if fileIdx < len(entry.Files) {
 		toDelete = []inventory.DownloadedFile{entry.Files[fileIdx]}
-		var remaining []inventory.DownloadedFile
-		for i, f := range entry.Files {
-			if i != fileIdx {
-				remaining = append(remaining, f)
-			}
-		}
-		entry.Files = remaining
 	}
 
 	for _, f := range toDelete {
@@ -272,11 +269,25 @@ func (s *ManageDownloadsScreen) performDelete(entry *inventory.Entry, fileIdx in
 	}
 	logger.Info("inventory: deleted game=%q files=%d", entry.Title, len(toDelete))
 
-	if len(entry.Files) == 0 {
-		s.inv.Remove(entry.GameURL)
+	var allGone bool
+	var remaining int
+	if fileIdx == -1 {
+		s.inv.Remove(gameURL)
+		allGone = true
+		remaining = 0
+	} else if len(toDelete) > 0 {
+		allGone = s.inv.RemoveFile(gameURL, toDelete[0].DestPath)
+		if allGone {
+			remaining = 0
+		} else {
+			remaining = len(entry.Files) - 1
+		}
+	} else {
+		allGone = false
+		remaining = len(entry.Files)
 	}
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Warn("inventory: save after delete failed: %v", err)
 	}
-	return len(entry.Files) == 0
+	return allGone, remaining
 }

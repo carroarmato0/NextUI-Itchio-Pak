@@ -268,11 +268,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	if isPresent {
 		if s.game.IsFree {
-			r.DrawText("[ B: Download again ]", margin, y, 80, 200, 80)
+			r.DrawText("[ A: Download again ]", margin, y, 80, 200, 80)
 		} else if s.cfg.APIKey == "" {
 			r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
 		} else {
-			r.DrawText(fmt.Sprintf("[ B: Download again ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+			r.DrawText(fmt.Sprintf("[ A: Download again ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
 		}
 		y += fontH + 4
 
@@ -292,11 +292,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += fontH + 8
 	} else {
 		if s.game.IsFree {
-			r.DrawText("[ B: Download ]", margin, y, 80, 200, 80)
+			r.DrawText("[ A: Download ]", margin, y, 80, 200, 80)
 		} else if s.cfg.APIKey == "" {
 			r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
 		} else {
-			r.DrawText(fmt.Sprintf("[ B: Download ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+			r.DrawText(fmt.Sprintf("[ A: Download ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
 		}
 		y += fontH + 8
 	}
@@ -606,6 +606,9 @@ func (s *DetailScreen) startDownload() Screen {
 func (s *DetailScreen) triggerDelete() Screen {
 	entry, ok := s.inv.Lookup(s.game.URL)
 	if !ok {
+		return s
+	}
+	if len(entry.Files) == 0 {
 		return s
 	}
 	if len(entry.Files) > 1 {

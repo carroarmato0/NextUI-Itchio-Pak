@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -28,6 +29,7 @@ type Entry struct {
 }
 
 type Inventory struct {
+	mu      sync.Mutex
 	Entries map[string]*Entry `json:"entries"`
 }
 
@@ -57,7 +59,10 @@ func Load(path string) (*Inventory, error) {
 
 // Save writes the inventory to path atomically (write to .tmp then rename).
 func (inv *Inventory) Save(path string) error {
+	inv.mu.Lock()
 	data, err := json.MarshalIndent(inv, "", "  ")
+	count := len(inv.Entries)
+	inv.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("marshal inventory: %w", err)
 	}
@@ -69,12 +74,14 @@ func (inv *Inventory) Save(path string) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename inventory: %w", err)
 	}
-	logger.Debug("inventory: saved %d entries to %s", len(inv.Entries), path)
+	logger.Debug("inventory: saved %d entries to %s", count, path)
 	return nil
 }
 
 // Add upserts an entry and appends a file, deduplicating by DestPath.
 func (inv *Inventory) Add(gameURL string, e Entry, file DownloadedFile) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
 	existing, ok := inv.Entries[gameURL]
 	if !ok {
 		entry := &Entry{
@@ -100,18 +107,29 @@ func (inv *Inventory) Add(gameURL string, e Entry, file DownloadedFile) {
 
 // Remove deletes the entry for gameURL.
 func (inv *Inventory) Remove(gameURL string) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
 	delete(inv.Entries, gameURL)
 }
 
-// Lookup returns the entry for gameURL.
-func (inv *Inventory) Lookup(gameURL string) (*Entry, bool) {
+// Lookup returns a deep copy of the entry for gameURL.
+func (inv *Inventory) Lookup(gameURL string) (Entry, bool) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
 	e, ok := inv.Entries[gameURL]
-	return e, ok
+	if !ok {
+		return Entry{}, false
+	}
+	snap := *e
+	snap.Files = append([]DownloadedFile(nil), e.Files...)
+	return snap, true
 }
 
 // IsPresent reports whether gameURL has an inventory entry with at least one file.
 // Assumes VerifyAndClean has already removed entries whose files are gone from disk.
 func (inv *Inventory) IsPresent(gameURL string) bool {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
 	e, ok := inv.Entries[gameURL]
 	if !ok {
 		return false
@@ -119,11 +137,35 @@ func (inv *Inventory) IsPresent(gameURL string) bool {
 	return len(e.Files) > 0
 }
 
+// RemoveFile removes the DownloadedFile with the given destPath from the entry for gameURL.
+// Returns true when no files remain (the entry is also removed from the inventory).
+func (inv *Inventory) RemoveFile(gameURL, destPath string) bool {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	entry, ok := inv.Entries[gameURL]
+	if !ok {
+		return true
+	}
+	var remaining []DownloadedFile
+	for _, f := range entry.Files {
+		if f.DestPath != destPath {
+			remaining = append(remaining, f)
+		}
+	}
+	entry.Files = remaining
+	if len(entry.Files) == 0 {
+		delete(inv.Entries, gameURL)
+		return true
+	}
+	return false
+}
+
 // VerifyAndClean walks all entries, removes DownloadedFile rows whose DestPath no
 // longer exists on disk, removes Entry values with no remaining files, saves if
 // any changes were made, and returns the count of removed DownloadedFile rows.
 func (inv *Inventory) VerifyAndClean(path string) int {
 	removed := 0
+	inv.mu.Lock()
 	for gameURL, entry := range inv.Entries {
 		var kept []DownloadedFile
 		for _, f := range entry.Files {
@@ -143,6 +185,7 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 		}
 		// No else — VerifiedAt is only updated when files are actually removed
 	}
+	inv.mu.Unlock()
 	logger.Info("inventory: cleaned %d stale file(s)", removed)
 	if removed > 0 {
 		if err := inv.Save(path); err != nil {
