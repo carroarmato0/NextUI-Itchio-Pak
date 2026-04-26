@@ -241,6 +241,49 @@ func TestVerifyAndClean_RemovesEmptyEntry(t *testing.T) {
 	}
 }
 
+func TestRemoveFile_PartialRemoval(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{Filename: "v1.gb", DestPath: "/v1.gb"})
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{Filename: "v2.gbc", DestPath: "/v2.gbc"})
+
+	allGone := inv.RemoveFile("https://dev.itch.io/game", "/v1.gb")
+	if allGone {
+		t.Error("allGone should be false when one file remains")
+	}
+	e, ok := inv.Lookup("https://dev.itch.io/game")
+	if !ok {
+		t.Fatal("entry should still exist")
+	}
+	if len(e.Files) != 1 {
+		t.Fatalf("Files len = %d, want 1", len(e.Files))
+	}
+	if e.Files[0].Filename != "v2.gbc" {
+		t.Errorf("wrong file kept: %q", e.Files[0].Filename)
+	}
+}
+
+func TestRemoveFile_LastFileRemovesEntry(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{Filename: "game.gb", DestPath: "/game.gb"})
+
+	allGone := inv.RemoveFile("https://dev.itch.io/game", "/game.gb")
+	if !allGone {
+		t.Error("allGone should be true when last file is removed")
+	}
+	if _, ok := inv.Lookup("https://dev.itch.io/game"); ok {
+		t.Error("entry should have been removed from inventory")
+	}
+}
+
+func TestRemoveFile_UnknownURL(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+
+	allGone := inv.RemoveFile("https://nobody.itch.io/nothing", "/some.gb")
+	if !allGone {
+		t.Error("allGone should be true for unknown game URL")
+	}
+}
+
 func TestCoverArtPath_WithPNGCover(t *testing.T) {
 	got := inventory.CoverArtPath(
 		"https://img.itch.zone/abc/cover.png",

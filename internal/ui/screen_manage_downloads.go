@@ -27,10 +27,11 @@ type ManageDownloadsScreen struct {
 
 func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, gameURL string, prev Screen) *ManageDownloadsScreen {
 	return &ManageDownloadsScreen{
-		inv:           inv,
-		inventoryPath: inventoryPath,
-		gameURL:       gameURL,
-		prev:          prev,
+		inv:            inv,
+		inventoryPath:  inventoryPath,
+		gameURL:        gameURL,
+		prev:           prev,
+		confirmFileIdx: -1,
 	}
 }
 
