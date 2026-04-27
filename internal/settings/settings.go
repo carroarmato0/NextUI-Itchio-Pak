@@ -53,7 +53,7 @@ type Config struct {
 	LastROMDirs  map[string]string `json:"last_rom_dirs,omitempty"`
 	Filter       ContentFilter     `json:"content_filter"`
 	LogLevel     string            `json:"log_level,omitempty"`  // "debug" | "" (resolves to "info")
-	SortMode     string            `json:"sort_mode,omitempty"`  // "az" | "za" | "rss" | "" (resolves to [RSS] at UI runtime)
+	SortMode     string            `json:"sort_mode,omitempty"`  // "az" | "za" | "new" | "dl" | "free" | "paid" | "" (empty = [RSS])
 }
 
 func defaults() *Config {
