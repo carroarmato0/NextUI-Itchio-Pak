@@ -258,3 +258,67 @@ func TestLogLevelOmittedWhenEmpty(t *testing.T) {
 		t.Errorf("log_level should be omitted when empty, found in JSON:\n%s", data)
 	}
 }
+
+func TestSortModeRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{SortMode: "az"}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.SortMode != "az" {
+		t.Errorf("SortMode = %q, want %q", loaded.SortMode, "az")
+	}
+}
+
+func TestSortModeDefaultsToEmpty(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path/config.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SortMode != "" {
+		t.Errorf("default SortMode = %q, want %q", cfg.SortMode, "")
+	}
+}
+
+func TestSortModeOmittedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{} // SortMode is ""
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if bytes.Contains(data, []byte("sort_mode")) {
+		t.Errorf("sort_mode should be omitted when empty, found in JSON:\n%s", data)
+	}
+}
+
+func TestSortModeBackwardsCompatible(t *testing.T) {
+	// Old config without sort_mode key must unmarshal to ""
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	oldJSON := `{"api_key":"","rom_selection":"auto","content_filter":{}}`
+	if err := os.WriteFile(path, []byte(oldJSON), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.SortMode != "" {
+		t.Errorf("old config SortMode = %q, want empty string", loaded.SortMode)
+	}
+}
