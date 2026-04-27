@@ -202,13 +202,21 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		r.DrawRect(margin+imgBoxW+10, contentTop, qrColW, imgBoxH, colorBG, colorBG, colorBG)
 		r.DrawText("Loading...", margin, contentTop+imgBoxH+16, colorText, colorText, colorText)
 		ftrY := r.DrawFooterBar(footerH)
-		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
+		if r.W <= narrowScreenW {
+			r.DrawSmallText("B:back  ⚙", 10, ftrY, 140, 140, 140)
+		} else {
+			r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
+		}
 		return
 	}
 	if s.err != nil {
 		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, 200, 50, 50)
 		ftrY := r.DrawFooterBar(footerH)
-		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
+		if r.W <= narrowScreenW {
+			r.DrawSmallText("B:back  ⚙", 10, ftrY, 140, 140, 140)
+		} else {
+			r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
+		}
 		return
 	}
 
@@ -328,7 +336,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		scrollHint = "  |  Up/Down:scroll"
 	}
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, ftrY, 140, 140, 140)
+	if r.W <= narrowScreenW {
+		r.DrawSmallText("B:back  L/R  ⚙"+scrollHint, 10, ftrY, 140, 140, 140)
+	} else {
+		r.DrawSmallText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, ftrY, 140, 140, 140)
+	}
 }
 
 // drawModal renders a centered popup overlay with a title, body, and dismiss hint.
@@ -405,7 +417,11 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 
 	footerH := int32(40)
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
+	if r.W <= narrowScreenW {
+		r.DrawSmallText("B:back  ⚙", 10, ftrY, 140, 140, 140)
+	} else {
+		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
+	}
 }
 
 // drawQR renders the QR code centered within the given box.
