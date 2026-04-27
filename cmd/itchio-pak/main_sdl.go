@@ -80,11 +80,30 @@ func runSDL() {
 
 	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath)
 
+	platform := readPlatform()
+	var pressedScancodes map[sdl.Scancode]bool
+	if platform == "my355" {
+		pressedScancodes = make(map[sdl.Scancode]bool)
+	}
+
 	for current != nil {
 		// Upload any images that background goroutines finished fetching.
 		cache.ProcessPending(r)
 
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+			if pressedScancodes != nil {
+				if kev, ok := e.(*sdl.KeyboardEvent); ok {
+					sc := kev.Keysym.Scancode
+					if kev.Type == sdl.KEYDOWN {
+						if pressedScancodes[sc] {
+							continue // duplicate KEYDOWN — drop it
+						}
+						pressedScancodes[sc] = true
+					} else if kev.Type == sdl.KEYUP {
+						delete(pressedScancodes, sc)
+					}
+				}
+			}
 			current = current.HandleEvent(e)
 			if current == nil {
 				break
