@@ -289,7 +289,8 @@ func TestCoverArtPath_WithPNGCover(t *testing.T) {
 		"https://img.itch.zone/abc/cover.png",
 		"/mnt/SDCARD/Roms/Game Boy (GB)/my-game.gb",
 	)
-	want := "/mnt/SDCARD/Roms/Game Boy (GB)/.media/my-game.png"
+	// Cover art is always stored as .jpg regardless of source format.
+	want := "/mnt/SDCARD/Roms/Game Boy (GB)/.media/my-game.jpg"
 	if got != want {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}
@@ -307,7 +308,19 @@ func TestCoverArtPath_NoExtensionInURL(t *testing.T) {
 		"https://img.itch.zone/abc/coverimage",
 		"/roms/game.gb",
 	)
-	want := "/roms/.media/game.png"
+	// Always .jpg regardless of whether source URL has an extension.
+	want := "/roms/.media/game.jpg"
+	if got != want {
+		t.Errorf("CoverArtPath = %q, want %q", got, want)
+	}
+}
+
+func TestCoverArtPath_BracketTagsStripped(t *testing.T) {
+	got := inventory.CoverArtPath(
+		"https://img.itch.zone/abc/cover.jpg",
+		"/roms/Game Boy Color (GBC)/Kero Kero Cowboy [v1.2].gbc",
+	)
+	want := "/roms/Game Boy Color (GBC)/.media/Kero Kero Cowboy.jpg"
 	if got != want {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}
