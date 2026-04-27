@@ -43,5 +43,6 @@ debug-run:
 	./scripts/debug.sh run
 
 clean:
-	rm -rf bin/ dist/ coverage.out coverage.html debug-cache/
-	$(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker) rmi itchio-pak-dev 2>/dev/null || true
+	rm -rf bin/ dist/ lib/ coverage.out coverage.html debug-cache/
+	@RUNTIME=$$(command -v podman >/dev/null 2>&1 && echo podman || echo docker); \
+	$$RUNTIME rmi itchio-pak-dev itchio-pak-tg5040-dev itchio-pak-tg5050-dev itchio-pak-my355-dev 2>/dev/null || true

@@ -1,0 +1,20 @@
+# Platform cross-compilation image.
+# Layers Go (from Alpine) on top of the LoveRetro platform toolchain so that
+# CGo builds pick up the device-native SDL2 from the toolchain sysroot rather
+# than the Debian desktop SDL2.  Supported PLATFORM values: tg5040, tg5050, my355.
+ARG PLATFORM=tg5040
+FROM golang:1.22-alpine AS golang
+FROM ghcr.io/loveretro/${PLATFORM}-toolchain:latest
+COPY --from=golang /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:$PATH
+ENV GOPATH=/go
+ENV GOROOT=/usr/local/go
+RUN apt-get update && apt-get install -y zip ca-certificates && rm -rf /var/lib/apt/lists/*
+# tg5040 ships libSDL2_ttf but no SDL2_ttf.pc; create a minimal one so CGo can
+# find it via pkg-config (tg5050 and my355 already include SDL2_ttf.pc).
+RUN PCDIR="$SYSROOT/usr/lib/pkgconfig" && \
+    if [ ! -f "$PCDIR/SDL2_ttf.pc" ] && [ -f "$SYSROOT/usr/lib/libSDL2_ttf.so" ]; then \
+        printf 'prefix=/usr\nexec_prefix=/usr\nlibdir=${exec_prefix}/lib\nincludedir=${prefix}/include\n\nName: SDL2_ttf\nDescription: TrueType Font library for SDL2\nVersion: 2.0.10\nRequires: sdl2 >= 2.0.0\nLibs: -L${libdir} -lSDL2_ttf\nCflags: -I${includedir}/SDL2\n' \
+        > "$PCDIR/SDL2_ttf.pc"; \
+    fi
+WORKDIR /workspace

@@ -36,12 +36,21 @@ if [ -z "${IN_CONTAINER:-}" ]; then
     fi
 fi
 
-IMAGE="itchio-pak-dev"
+DEV_IMAGE="itchio-pak-dev"
 
-# Ensure the dev image exists (builds it if missing).
-ensure_image() {
-    $RUNTIME image inspect "$IMAGE" >/dev/null 2>&1 || \
-        $RUNTIME build -t "$IMAGE" -f docker/Dockerfile.dev .
+# Ensure the dev image exists (used for native builds and tests).
+ensure_dev_image() {
+    $RUNTIME image inspect "$DEV_IMAGE" >/dev/null 2>&1 || \
+        $RUNTIME build -t "$DEV_IMAGE" -f docker/Dockerfile.dev .
+}
+
+# Ensure the per-platform image exists (LoveRetro toolchain + Go).
+ensure_platform_image() {
+    PLATFORM="$1"
+    TAG="itchio-pak-$PLATFORM-dev"
+    $RUNTIME image inspect "$TAG" >/dev/null 2>&1 || \
+        $RUNTIME build -t "$TAG" --build-arg "PLATFORM=$PLATFORM" \
+            -f docker/Dockerfile.platform .
 }
 
 pak_version() {
@@ -50,12 +59,12 @@ pak_version() {
 
 build_native() {
     if [ -z "${IN_CONTAINER:-}" ]; then
-        ensure_image
+        ensure_dev_image
         exec $RUNTIME run --rm \
             -v "$(pwd):/workspace" \
             -w /workspace \
             -e IN_CONTAINER=1 \
-            "$IMAGE" "$0" native
+            "$DEV_IMAGE" "$0" native
     fi
     VERSION="$(pak_version)"
     mkdir -p bin/native
@@ -67,40 +76,33 @@ build_native() {
 build_platform() {
     PLATFORM="$1"
 
-    mkdir -p bin/"$PLATFORM" lib/tg5040 lib/my355 assets
+    mkdir -p bin/"$PLATFORM" lib/"$PLATFORM" assets
 
-    # Copy the Debian CA bundle into assets/ so launch.sh can point SSL_CERT_FILE
-    # at it — the device has no system CA store, so HTTPS would fail otherwise.
+    # Copy CA bundle into assets/ so SSL_CERT_FILE works on devices without a
+    # system certificate store.
     cp /etc/ssl/certs/ca-certificates.crt assets/ca-certificates.crt 2>/dev/null || true
 
-    # Cross-compile for ARM64 using the aarch64-linux-gnu toolchain installed in
-    # the dev image. PKG_CONFIG_PATH points at the arm64 SDL2 .pc files so that
-    # the go-sdl2 cgo directives pick up the right library paths.
-    # -tags netgo: use Go's built-in DNS resolver instead of the CGo one.
-    #   Without this, the CGo net resolver links res_search@GLIBC_2.34 which
-    #   is unavailable on TrimUI/Miyoo devices that ship glibc 2.33.
-    # -a: force recompile of all packages; without this, cached .a files from
-    #   a previous toolchain/image can embed GLIBC_2.34 symbol version tags.
+    # CC, PKG_CONFIG_PATH, and SYSROOT are set by the LoveRetro toolchain image.
+    # -a:        force recompile; cached .a files from a different toolchain/image
+    #            can embed GLIBC symbol versions that the device's libc lacks.
+    # -tags netgo: use Go's built-in DNS resolver to avoid linking res_search
+    #            which requires GLIBC_2.34 (devices ship glibc 2.33).
     VERSION="$(pak_version)"
-    PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
-    CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
+    CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
         go build -a -tags netgo -buildvcs=false \
         -ldflags "-X main.version=$VERSION -X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
         -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
     echo "Built: bin/$PLATFORM/itchio-pak ($VERSION)"
 
-    # Extract SDL2 shared libs for bundling inside the pak.
-    ARM64_LIB=/usr/lib/aarch64-linux-gnu
-    case "$PLATFORM" in
-        tg5040|tg5050)
-            cp -P "$ARM64_LIB"/libSDL2-2.0.so.0*    lib/tg5040/ 2>/dev/null || true
-            cp -P "$ARM64_LIB"/libSDL2_ttf-2.0.so.0* lib/tg5040/ 2>/dev/null || true
-            ;;
-        my355)
-            cp -P "$ARM64_LIB"/libSDL2-2.0.so.0*    lib/my355/ 2>/dev/null || true
-            cp -P "$ARM64_LIB"/libSDL2_ttf-2.0.so.0* lib/my355/ 2>/dev/null || true
-            ;;
-    esac
+    # Bundle SDL2 .so files from the LoveRetro sysroot.  These are compiled
+    # without X11 / PulseAudio / Wayland so they work on embedded devices.
+    # Copy only the real versioned file under the SONAME name so the zip ships
+    # a single file per library rather than a symlink + versioned duplicate.
+    rm -f lib/"$PLATFORM"/libSDL2*.so*
+    SDL2_SO=$(ls "$SYSROOT/usr/lib"/libSDL2-2.0.so.0.* 2>/dev/null | grep -v '\.so$' | head -1)
+    SDL2_TTF_SO=$(ls "$SYSROOT/usr/lib"/libSDL2_ttf-2.0.so.0.* 2>/dev/null | grep -v '\.so$' | head -1)
+    [ -n "$SDL2_SO" ]     && cp "$SDL2_SO"     lib/"$PLATFORM"/libSDL2-2.0.so.0
+    [ -n "$SDL2_TTF_SO" ] && cp "$SDL2_TTF_SO" lib/"$PLATFORM"/libSDL2_ttf-2.0.so.0
 }
 
 case "$TARGET" in
@@ -108,31 +110,30 @@ case "$TARGET" in
         build_native
         ;;
     tg5040|tg5050|my355)
-        # Single-platform build: launch container then run inside it.
         if [ -z "${IN_CONTAINER:-}" ]; then
-            ensure_image
+            ensure_platform_image "$TARGET"
             exec $RUNTIME run --rm \
                 -v "$(pwd):/workspace" \
                 -w /workspace \
                 -e IN_CONTAINER=1 \
-                "$IMAGE" "$0" "$TARGET"
+                "itchio-pak-$TARGET-dev" "$0" "$TARGET"
         fi
         build_platform "$TARGET"
         ;;
     all)
-        # All three ARM64 targets: launch ONE container and build all inside it
-        # so we don't exec three times (exec replaces the process).
-        if [ -z "${IN_CONTAINER:-}" ]; then
-            ensure_image
-            exec $RUNTIME run --rm \
+        # Each platform needs its own toolchain container; run them sequentially.
+        if [ -n "${IN_CONTAINER:-}" ]; then
+            echo "ERROR: 'build.sh all' must be run from the host, not inside a container." >&2
+            exit 1
+        fi
+        for p in tg5040 tg5050 my355; do
+            ensure_platform_image "$p"
+            $RUNTIME run --rm \
                 -v "$(pwd):/workspace" \
                 -w /workspace \
                 -e IN_CONTAINER=1 \
-                "$IMAGE" "$0" all
-        fi
-        build_platform tg5040
-        build_platform tg5050
-        build_platform my355
+                "itchio-pak-$p-dev" "$0" "$p"
+        done
         ;;
     *)
         echo "Unknown target: $TARGET" >&2; exit 1
