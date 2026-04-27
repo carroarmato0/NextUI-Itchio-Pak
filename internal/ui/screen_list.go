@@ -23,6 +23,10 @@ const (
 	colorText      = uint8(220)
 )
 
+// narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
+// are abbreviated at or below this width to prevent overflow.
+const narrowScreenW = int32(640)
+
 // Auto-repeat timing for held D-pad buttons
 const (
 	repeatDelay    = 300 * time.Millisecond // initial delay before repeating
@@ -260,7 +264,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, 140, 140, 140)
 		r.DrawTextCentered("Press SELECT to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
 		ftrY := r.DrawFooterBar(footerH)
-		if r.W <= 640 {
+		if r.W <= narrowScreenW {
 			r.DrawSmallText("SEL:sort  B:exit  ⚙", 10, ftrY, 140, 140, 140)
 		} else {
 			r.DrawSmallText("SELECT:sort  B:exit  Start:settings", 10, ftrY, 140, 140, 140)
@@ -453,7 +457,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		countInfo = fmt.Sprintf("%d games", len(s.games))
 	}
 	var hints string
-	if r.W <= 640 {
+	if r.W <= narrowScreenW {
 		if s.cacheReady {
 			hints = "A:sel  L/R  SEL:sort  B:exit  ⚙"
 		} else {
