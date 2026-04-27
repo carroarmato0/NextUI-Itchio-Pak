@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	_ "image/gif"
+	"image/color"
+	"image/draw"
+	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"image/png"
@@ -15,6 +17,81 @@ import (
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
+
+// compositeGIFFrames renders an animated GIF using the standard GIF compositing
+// algorithm (disposal methods, frame offsets, background colour) and returns the
+// single rendered frame that has the highest total brightness. That frame is
+// typically the most visually complete, making it the best static thumbnail.
+func compositeGIFFrames(g *gif.GIF) image.Image {
+	w, h := g.Config.Width, g.Config.Height
+	if w == 0 || h == 0 {
+		b := g.Image[0].Bounds()
+		w, h = b.Dx(), b.Dy()
+	}
+	bounds := image.Rect(0, 0, w, h)
+
+	bgColor := color.Color(color.RGBA{A: 255}) // opaque black default
+	if pal, ok := g.Config.ColorModel.(color.Palette); ok && int(g.BackgroundIndex) < len(pal) {
+		bgColor = pal[g.BackgroundIndex]
+	}
+	bgFill := image.NewUniform(bgColor)
+
+	canvas := image.NewRGBA(bounds)
+	draw.Draw(canvas, bounds, bgFill, image.Point{}, draw.Src)
+
+	var (
+		bestCanvas *image.RGBA
+		bestSum    uint64
+	)
+
+	for i, frame := range g.Image {
+		disposal := byte(gif.DisposalNone)
+		if i < len(g.Disposal) {
+			disposal = g.Disposal[i]
+		}
+
+		// Save canvas before drawing this frame so DisposalPrevious can restore it.
+		var preCanvas *image.RGBA
+		if disposal == gif.DisposalPrevious {
+			preCanvas = image.NewRGBA(bounds)
+			draw.Draw(preCanvas, bounds, canvas, image.Point{}, draw.Src)
+		}
+
+		draw.Draw(canvas, frame.Bounds(), frame, frame.Bounds().Min, draw.Over)
+
+		// Track the brightest rendered frame for use as the static thumbnail.
+		if sum := gifFrameBrightness(canvas); bestCanvas == nil || sum > bestSum {
+			bestSum = sum
+			bestCanvas = image.NewRGBA(bounds)
+			draw.Draw(bestCanvas, bounds, canvas, image.Point{}, draw.Src)
+		}
+
+		// Apply disposal to prepare the canvas for the next frame.
+		switch disposal {
+		case gif.DisposalBackground:
+			draw.Draw(canvas, frame.Bounds(), bgFill, image.Point{}, draw.Src)
+		case gif.DisposalPrevious:
+			if preCanvas != nil {
+				draw.Draw(canvas, frame.Bounds(), preCanvas, frame.Bounds().Min, draw.Src)
+			}
+		}
+	}
+
+	if bestCanvas != nil {
+		return bestCanvas
+	}
+	return canvas
+}
+
+// gifFrameBrightness sums all RGB channel values for the canvas, used to pick
+// the most visually complete frame from an animated GIF.
+func gifFrameBrightness(img *image.RGBA) uint64 {
+	var sum uint64
+	for i := 0; i < len(img.Pix); i += 4 {
+		sum += uint64(img.Pix[i]) + uint64(img.Pix[i+1]) + uint64(img.Pix[i+2])
+	}
+	return sum
+}
 
 // coverArtBasename returns the exact ROM filename stem (no extension).
 // NextUI's cover art lookup matches on the full stem including tags like [v1.2],
@@ -68,6 +145,15 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 		return fmt.Errorf("cover-art: decode image (%s): %w", coverURL, err)
 	}
 	logger.Debug("cover-art: decoded %s as %s", filepath.Base(artPath), format)
+
+	// image.Decode returns only the first frame of an animated GIF, which is
+	// often blank/black. Re-decode with gif.DecodeAll and composite all frames
+	// so the saved PNG reflects the complete image.
+	if format == "gif" {
+		if g, err2 := gif.DecodeAll(bytes.NewReader(buf.Bytes())); err2 == nil && len(g.Image) > 1 {
+			img = compositeGIFFrames(g)
+		}
+	}
 
 	tmp, err := os.CreateTemp(mediaDir, ".art-*.tmp")
 	if err != nil {

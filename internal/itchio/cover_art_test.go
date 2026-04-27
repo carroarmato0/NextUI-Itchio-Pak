@@ -188,6 +188,70 @@ func TestDownloadCoverArtFullStemPreserved(t *testing.T) {
 	}
 }
 
+// animatedGIFFirstFrameBlack returns a 2-frame animated GIF where frame 1 is
+// entirely black and frame 2 composites a red pixel at (0,0). Calling
+// image.Decode on this GIF yields only the first (black) frame; correct
+// handling must composite all frames so pixel (0,0) is red in the output PNG.
+func animatedGIFFirstFrameBlack() []byte {
+	palette := color.Palette{color.Black, color.RGBA{R: 255, A: 255}}
+
+	frame1 := image.NewPaletted(image.Rect(0, 0, 2, 1), palette)
+	frame1.SetColorIndex(0, 0, 0) // black
+	frame1.SetColorIndex(1, 0, 0) // black
+
+	frame2 := image.NewPaletted(image.Rect(0, 0, 2, 1), palette)
+	frame2.SetColorIndex(0, 0, 1) // red
+	frame2.SetColorIndex(1, 0, 0) // black
+
+	g := &gif.GIF{
+		Image:    []*image.Paletted{frame1, frame2},
+		Delay:    []int{0, 0},
+		Disposal: []byte{gif.DisposalNone, gif.DisposalNone},
+	}
+	var buf bytes.Buffer
+	_ = gif.EncodeAll(&buf, g)
+	return buf.Bytes()
+}
+
+// TestDownloadCoverArtAnimatedGIFComposited verifies that when a cover art GIF
+// has multiple frames the saved PNG reflects the composited image and is not
+// just the (often black/blank) first frame.
+func TestDownloadCoverArtAnimatedGIFComposited(t *testing.T) {
+	gifBytes := animatedGIFFirstFrameBlack()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/gif")
+		w.Write(gifBytes)
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "Moon Escape.gb")
+
+	if err := c.DownloadCoverArt(srv.URL+"/cover.gif", romPath); err != nil {
+		t.Fatalf("DownloadCoverArt: %v", err)
+	}
+
+	artPath := filepath.Join(dir, ".media", "Moon Escape.png")
+	f, err := os.Open(artPath)
+	if err != nil {
+		t.Fatalf("open saved PNG: %v", err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("decode saved PNG: %v", err)
+	}
+
+	// Frame 2 places a red pixel at (0,0). If only the first (all-black) frame
+	// was encoded, this pixel would be black.
+	red, _, _, _ := img.At(0, 0).RGBA()
+	if red < 0x8000 {
+		t.Errorf("pixel (0,0) red channel = 0x%04x; expected >= 0x8000 — animated GIF compositing produced a black image (first-frame-only bug)", red)
+	}
+}
+
 // TestDownloadCoverArtStaleFilesCleaned verifies that an old art file with the
 // same stem but a different extension (e.g. a stale .gif) is removed when the
 // new .png is saved.
