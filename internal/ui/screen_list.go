@@ -56,6 +56,10 @@ type ListScreen struct {
 	titleScrollX  int32     // current pixel offset (increases over time)
 	titleScrollAt time.Time // when the cursor last moved (scroll starts after a delay)
 
+	// Vertical tag scroll for selected game's right-panel tag line
+	tagScrollY  int32
+	tagScrollAt time.Time
+
 	// Cache fields — populated once the on-disk game cache is loaded.
 	// cachedGames is nil until the cache is available.
 	cachedGames []itchio.Game
@@ -128,6 +132,8 @@ func (s *ListScreen) loadPage(page int, query string) {
 		s.placeCursor()
 		s.titleScrollX = 0
 		s.titleScrollAt = time.Now()
+		s.tagScrollY = 0
+		s.tagScrollAt = time.Now()
 		return
 	}
 	// Live network fetch (existing behaviour).
@@ -145,6 +151,8 @@ func (s *ListScreen) loadPage(page int, query string) {
 	s.placeCursor()
 	s.titleScrollX = 0
 	s.titleScrollAt = time.Now()
+	s.tagScrollY = 0
+	s.tagScrollAt = time.Now()
 	s.loading = false
 }
 
@@ -182,6 +190,8 @@ func (s *ListScreen) moveCursor(dir int) {
 			s.cursor++
 			s.titleScrollX = 0
 			s.titleScrollAt = time.Now()
+			s.tagScrollY = 0
+			s.tagScrollAt = time.Now()
 		} else if s.totalPages == 0 || s.page < s.totalPages {
 			// At the last item on the page — advance to the next page.
 			s.page++
@@ -192,6 +202,8 @@ func (s *ListScreen) moveCursor(dir int) {
 			s.cursor--
 			s.titleScrollX = 0
 			s.titleScrollAt = time.Now()
+			s.tagScrollY = 0
+			s.tagScrollAt = time.Now()
 		} else if s.page > 1 {
 			// At the first item on the page — go back to the previous page,
 			// landing on its last item.
@@ -285,6 +297,14 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		elapsed := time.Since(s.titleScrollAt)
 		if elapsed > scrollDelay {
 			s.titleScrollX = int32((elapsed - scrollDelay).Seconds() * float64(scrollSpeed))
+		}
+	}
+
+	const tagScrollSpeed = int32(30) // pixels per second
+	if !s.tagScrollAt.IsZero() {
+		elapsed := time.Since(s.tagScrollAt)
+		if elapsed > scrollDelay {
+			s.tagScrollY = int32((elapsed - scrollDelay).Seconds() * float64(tagScrollSpeed))
 		}
 	}
 
@@ -429,8 +449,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawText(fmt.Sprintf("$%.2f", g.Price), rightX, metaY, 220, 180, 60)
 		}
 		metaY += lineGap
-		// Tags — skip duplicates of the price already shown:
-		// "Free" bracket tags and any bracket price tags like "$12.00"
+		// Tags: filter, comma-join, wrap to panel width, vertical-scroll if overflow.
+		var filteredTags []string
 		for _, tag := range g.Tags {
 			if strings.EqualFold(tag, "free") {
 				continue
@@ -438,8 +458,36 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
 				continue
 			}
-			r.DrawText(tag, rightX, metaY, 120, 180, 220)
-			metaY += lineGap
+			filteredTags = append(filteredTags, tag)
+		}
+		if len(filteredTags) > 0 {
+			tagLine := strings.Join(filteredTags, ", ")
+			wrappedLines := r.WrapText(tagLine, rightW)
+			wrappedH := int32(len(wrappedLines)) * lineGap
+			availH := r.H - footerH - metaY
+			if wrappedH <= availH {
+				for _, line := range wrappedLines {
+					r.DrawText(line, rightX, metaY, 120, 180, 220)
+					metaY += lineGap
+				}
+			} else {
+				maxTagScroll := wrappedH - availH
+				if s.tagScrollY > maxTagScroll {
+					s.tagScrollY = maxTagScroll
+				}
+				if s.tagScrollY == maxTagScroll &&
+					time.Since(s.tagScrollAt) > scrollDelay+time.Duration(maxTagScroll)*time.Second/time.Duration(tagScrollSpeed)+time.Second {
+					s.tagScrollY = 0
+					s.tagScrollAt = time.Now()
+				}
+				r.SetClipRect(rightX, metaY, rightW, availH)
+				drawY := metaY - s.tagScrollY
+				for _, line := range wrappedLines {
+					r.DrawText(line, rightX, drawY, 120, 180, 220)
+					drawY += lineGap
+				}
+				r.ClearClipRect()
+			}
 		}
 	}
 
