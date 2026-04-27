@@ -504,11 +504,17 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_ESCAPE:
 			return nil
 		case sdl.K_PAGEDOWN:
+			if len(s.viewGames) == 0 {
+				return s
+			}
 			if s.totalPages == 0 || s.page < s.totalPages {
 				s.page++
 				go s.loadPage(s.page, "")
 			}
 		case sdl.K_PAGEUP:
+			if len(s.viewGames) == 0 {
+				return s
+			}
 			if s.page > 1 {
 				s.page--
 				go s.loadPage(s.page, "")
@@ -547,11 +553,17 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+			if len(s.viewGames) == 0 {
+				return s
+			}
 			if s.totalPages == 0 || s.page < s.totalPages {
 				s.page++
 				go s.loadPage(s.page, "")
 			}
 		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+			if len(s.viewGames) == 0 {
+				return s
+			}
 			if s.page > 1 {
 				s.page--
 				go s.loadPage(s.page, "")
@@ -569,7 +581,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				return s
 			}
 			s.sortMode = itchio.NextSortMode(s.sortMode)
-			logger.Debug("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
+			logger.Info("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
 			s.rebuildView()
 			s.cfg.SortMode = string(s.sortMode)
 			go s.cfg.Save(s.cfgPath)
@@ -635,6 +647,7 @@ func (s *ListScreen) rebuildView() {
 	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
 	s.page = 1
 	s.loadPage(1, "")
+	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }
 
 // pageSlice returns the sub-slice of games for the given 1-based page number,

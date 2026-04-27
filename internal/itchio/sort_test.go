@@ -196,6 +196,13 @@ func TestNextSortMode_Cycle(t *testing.T) {
 	}
 }
 
+func TestNextSortMode_UnknownModeFallsBackToRSS(t *testing.T) {
+	got := itchio.NextSortMode("corrupt_value")
+	if got != itchio.SortModeRSS {
+		t.Errorf("unknown mode: got %q, want SortModeRSS", got)
+	}
+}
+
 // helpers
 
 func titles(games []itchio.Game) []string {
