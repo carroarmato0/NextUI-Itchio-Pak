@@ -22,7 +22,7 @@ type Game struct {
 	Price       float64   `json:"price"`
 	IsFree      bool      `json:"is_free"`
 	Tags        []string  `json:"tags,omitempty"`        // extracted from [Tag] brackets in the RSS title
-	PublishedAt time.Time `json:"published_at,omitempty"` // parsed from <pubDate> in RSS feed
+	PublishedAt time.Time `json:"published_at"` // parsed from <pubDate> in RSS feed
 }
 
 var (
@@ -103,6 +103,7 @@ func parsePubDate(raw string) time.Time {
 			return t
 		}
 	}
+	logger.Warn("feed: unrecognised pubDate format %q, treating as undated", raw)
 	return time.Time{}
 }
 
