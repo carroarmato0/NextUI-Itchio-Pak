@@ -49,8 +49,8 @@ type ListScreen struct {
 	lastRepeat time.Time // when we last advanced the cursor
 
 	// Horizontal title scroll for selected row
-	titleScrollX   int32     // current pixel offset (increases over time)
-	titleScrollAt  time.Time // when the cursor last moved (scroll starts after a delay)
+	titleScrollX  int32     // current pixel offset (increases over time)
+	titleScrollAt time.Time // when the cursor last moved (scroll starts after a delay)
 
 	// Cache fields — populated once the on-disk game cache is loaded.
 	// cachedGames is nil until the cache is available.
@@ -260,7 +260,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, 140, 140, 140)
 		r.DrawTextCentered("Press SELECT to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
 		ftrY := r.DrawFooterBar(footerH)
-		r.DrawSmallText("SELECT:sort  B:exit  Start:settings", 10, ftrY, 140, 140, 140)
+		if r.W <= 640 {
+			r.DrawSmallText("SEL:sort  B:exit  ⚙", 10, ftrY, 140, 140, 140)
+		} else {
+			r.DrawSmallText("SELECT:sort  B:exit  Start:settings", 10, ftrY, 140, 140, 140)
+		}
 		r.Present()
 		return
 	}
@@ -449,10 +453,18 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		countInfo = fmt.Sprintf("%d games", len(s.games))
 	}
 	var hints string
-	if s.cacheReady {
-		hints = "A:select  L/R:page  SELECT:sort  B:exit  Start:settings"
+	if r.W <= 640 {
+		if s.cacheReady {
+			hints = "A:sel  L/R  SEL:sort  B:exit  ⚙"
+		} else {
+			hints = "A:sel  L/R  B:exit  ⚙"
+		}
 	} else {
-		hints = "A:select  L/R:page  B:exit  Start:settings"
+		if s.cacheReady {
+			hints = "A:select  L/R:page  SELECT:sort  B:exit  Start:settings"
+		} else {
+			hints = "A:select  L/R:page  B:exit  Start:settings"
+		}
 	}
 	footer := fmt.Sprintf("%s · %s  |  %s", pageInfo, countInfo, hints)
 	ftrY := r.DrawFooterBar(footerH)
