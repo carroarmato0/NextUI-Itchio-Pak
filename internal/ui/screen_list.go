@@ -242,6 +242,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		} else {
 			r.DrawText("Error: "+s.err.Error(), 20, mid, 200, 50, 50)
 		}
+		ftrY := r.DrawFooterBar(40)
+		r.DrawSmallText("A:retry  B:exit", 10, ftrY, 140, 140, 140)
 		r.Present()
 		return
 	}
@@ -546,8 +548,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
 		}
-		// Allow retrying when the feed is blocked.
-		if s.err != nil && ev.Button == sdl.CONTROLLER_BUTTON_A {
+		// Allow retrying when the feed is blocked (physical A = confirm button = sdl B).
+		// CONTROLLER_BUTTON_A (physical B = back/exit) is intentionally left unhandled
+		// here so it falls through to the exit case below.
+		if s.err != nil && ev.Button == sdl.CONTROLLER_BUTTON_B {
 			go s.loadPage(s.page, "")
 			return s
 		}
