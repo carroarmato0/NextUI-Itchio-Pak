@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 )
@@ -200,6 +201,47 @@ func TestFetchGamesFromURL_403ReturnsCloudflareError(t *testing.T) {
 	_, err := c.FetchGamesFromURL(srv.URL + "/games/made-with-gb-studio.xml?page=1")
 	if !errors.Is(err, itchio.ErrCloudflareBlocked) {
 		t.Fatalf("expected ErrCloudflareBlocked, got %v", err)
+	}
+}
+
+func TestFetchGamesFromURL_PublishedAt(t *testing.T) {
+	xml := `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+<item>
+  <title>Dated Game</title>
+  <link>https://dev.itch.io/dated-game</link>
+  <description></description>
+  <price>0.0</price>
+  <pubDate>Fri, 11 Dec 2020 02:30:01 GMT</pubDate>
+</item>
+<item>
+  <title>Undated Game</title>
+  <link>https://dev.itch.io/undated-game</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+</channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(xml))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	games, err := c.FetchGamesFromURL(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGamesFromURL: %v", err)
+	}
+	if len(games) != 2 {
+		t.Fatalf("want 2 games, got %d", len(games))
+	}
+
+	want := time.Date(2020, 12, 11, 2, 30, 1, 0, time.UTC)
+	if !games[0].PublishedAt.Equal(want) {
+		t.Errorf("PublishedAt = %v, want %v", games[0].PublishedAt, want)
+	}
+	if !games[1].PublishedAt.IsZero() {
+		t.Errorf("undated game PublishedAt should be zero, got %v", games[1].PublishedAt)
 	}
 }
 

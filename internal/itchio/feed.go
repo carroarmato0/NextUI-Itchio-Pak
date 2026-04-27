@@ -9,18 +9,20 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 type Game struct {
-	Title    string   `json:"title"`
-	Author   string   `json:"author"`
-	URL      string   `json:"url"`
-	CoverURL string   `json:"cover_url"`
-	Price    float64  `json:"price"`
-	IsFree   bool     `json:"is_free"`
-	Tags     []string `json:"tags,omitempty"` // extracted from [Tag] brackets in the RSS title
+	Title       string    `json:"title"`
+	Author      string    `json:"author"`
+	URL         string    `json:"url"`
+	CoverURL    string    `json:"cover_url"`
+	Price       float64   `json:"price"`
+	IsFree      bool      `json:"is_free"`
+	Tags        []string  `json:"tags,omitempty"`        // extracted from [Tag] brackets in the RSS title
+	PublishedAt time.Time `json:"published_at,omitempty"` // parsed from <pubDate> in RSS feed
 }
 
 var (
@@ -54,6 +56,7 @@ type rssItem struct {
 	Description string `xml:"description"`
 	ImageURL    string `xml:"imageurl"`
 	Price       string `xml:"price"`
+	PubDate     string `xml:"pubDate"`
 }
 
 type rssFeed struct {
@@ -90,6 +93,19 @@ func parsePrice(raw string) float64 {
 	return price
 }
 
+func parsePubDate(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC1123, time.RFC1123Z} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
 func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	logger.Debug("feed: fetching %s", url)
 	resp, err := c.http.Get(url)
@@ -124,13 +140,14 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	for _, item := range feed.Items {
 		price := parsePrice(item.Price)
 		games = append(games, Game{
-			Title:    parseTitle(item.Title),
-			Tags:     parseTags(item.Title),
-			Author:   parseAuthor(item.Link),
-			URL:      item.Link,
-			CoverURL: parseCover(item.ImageURL, item.Description),
-			Price:    price,
-			IsFree:   price == 0,
+			Title:       parseTitle(item.Title),
+			Tags:        parseTags(item.Title),
+			Author:      parseAuthor(item.Link),
+			URL:         item.Link,
+			CoverURL:    parseCover(item.ImageURL, item.Description),
+			Price:       price,
+			IsFree:      price == 0,
+			PublishedAt: parsePubDate(item.PubDate),
 		})
 	}
 	return games, nil
