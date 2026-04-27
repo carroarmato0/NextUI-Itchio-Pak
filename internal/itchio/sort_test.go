@@ -84,6 +84,10 @@ func TestApplySort_New_AllZero(t *testing.T) {
 	if len(result) != 2 {
 		t.Fatalf("want 2 games, got %d", len(result))
 	}
+	// Stable sort must preserve input order when all dates are zero.
+	if result[0].Title != "A" || result[1].Title != "B" {
+		t.Errorf("NEW all-zero: want [A B], got %v", titles(result))
+	}
 }
 
 func TestApplySort_DL(t *testing.T) {

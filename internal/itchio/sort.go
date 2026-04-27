@@ -22,6 +22,8 @@ var SortModes = []SortMode{
 	SortModeDL, SortModeFree, SortModePaid,
 }
 
+// SortModeBadge returns the display label shown in the UI header for m.
+// An unrecognised mode is treated as SortModeRSS.
 func SortModeBadge(m SortMode) string {
 	switch m {
 	case SortModeAZ:
@@ -41,13 +43,15 @@ func SortModeBadge(m SortMode) string {
 	}
 }
 
+// NextSortMode returns the mode that follows current in the SortModes cycle.
+// If current is not a recognised mode it returns SortModeRSS.
 func NextSortMode(current SortMode) SortMode {
 	for i, m := range SortModes {
 		if m == current {
 			return SortModes[(i+1)%len(SortModes)]
 		}
 	}
-	return SortModeAZ
+	return SortModeRSS // treat any unrecognised value as RSS; next press goes to AZ
 }
 
 // ApplySort returns a new slice derived from games according to mode.
