@@ -11,30 +11,24 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
-// bracketTagRegex matches [...] and (...) annotation tags in ROM filenames.
-// NextUI strips these when deriving display titles, so cover art must too.
-var bracketTagRegex = regexp.MustCompile(`\s*[\[(][^\]\)]*[\]\)]`)
-
-// coverArtBasename returns the stem of romDestPath with bracket/paren tags
-// stripped, matching the name NextUI uses for display and cover art lookup.
-// e.g. "Kero Kero Cowboy [v1.2].gbc" → "Kero Kero Cowboy"
+// coverArtBasename returns the exact ROM filename stem (no extension).
+// NextUI's cover art lookup matches on the full stem including tags like [v1.2],
+// even though it strips those tags for the display name in the ROM browser.
 func coverArtBasename(romDestPath string) string {
-	stem := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
-	clean := bracketTagRegex.ReplaceAllString(stem, "")
-	return strings.TrimSpace(clean)
+	return strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
 }
 
 // DownloadCoverArt fetches the cover image at coverURL and saves it as a JPEG
 // into the .media/ subdirectory of the ROM's directory. The filename is the
-// ROM stem with bracket/paren tags stripped (to match NextUI's display name),
-// always with a .jpg extension. GIF, PNG, and other formats are all re-encoded
-// as JPEG so NextUI can display them. Returns nil for an empty coverURL.
+// exact ROM stem (matching NextUI's art lookup convention) with a .jpg extension.
+// GIF, PNG, and other formats are all re-encoded as JPEG. Any stale art files
+// with the same stem but a different extension are removed. Returns nil for an
+// empty coverURL.
 func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 	if coverURL == "" {
 		logger.Debug("cover-art: no cover URL, skipping")
@@ -64,7 +58,6 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 		return fmt.Errorf("cover-art: HTTP %d", resp.StatusCode)
 	}
 
-	// Read the full response so we can decode it regardless of format.
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(resp.Body); err != nil {
 		return fmt.Errorf("cover-art: read body: %w", err)
@@ -100,5 +93,20 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 		return fmt.Errorf("cover-art: rename: %w", err)
 	}
 	logger.Info("cover-art: saved → %s", artPath)
+
+	// Remove stale art files with the same stem but a different extension
+	// (e.g. an old .gif or .png left over from a previous download).
+	artBase := filepath.Base(artPath)
+	if entries, err := os.ReadDir(mediaDir); err == nil {
+		for _, e := range entries {
+			name := e.Name()
+			if strings.TrimSuffix(name, filepath.Ext(name)) == base && name != artBase {
+				stale := filepath.Join(mediaDir, name)
+				if removeErr := os.Remove(stale); removeErr == nil {
+					logger.Debug("cover-art: removed stale %s", name)
+				}
+			}
+		}
+	}
 	return nil
 }

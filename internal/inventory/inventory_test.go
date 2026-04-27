@@ -315,12 +315,13 @@ func TestCoverArtPath_NoExtensionInURL(t *testing.T) {
 	}
 }
 
-func TestCoverArtPath_BracketTagsStripped(t *testing.T) {
+func TestCoverArtPath_FullStemPreserved(t *testing.T) {
+	// NextUI looks up cover art by the full ROM stem (including [v1.2]).
 	got := inventory.CoverArtPath(
 		"https://img.itch.zone/abc/cover.jpg",
 		"/roms/Game Boy Color (GBC)/Kero Kero Cowboy [v1.2].gbc",
 	)
-	want := "/roms/Game Boy Color (GBC)/.media/Kero Kero Cowboy.jpg"
+	want := "/roms/Game Boy Color (GBC)/.media/Kero Kero Cowboy [v1.2].jpg"
 	if got != want {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}

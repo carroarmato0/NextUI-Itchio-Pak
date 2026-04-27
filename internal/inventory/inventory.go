@@ -5,17 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
-
-// bracketTagRegex matches [...] and (...) annotation tags in ROM filenames,
-// mirroring the stripping NextUI applies when deriving display titles.
-var bracketTagRegex = regexp.MustCompile(`\s*[\[(][^\]\)]*[\]\)]`)
 
 type DownloadedFile struct {
 	Filename     string    `json:"filename"`
@@ -201,16 +196,15 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 
 // CoverArtPath returns the filesystem path for the cover art of a downloaded ROM,
 // mirroring the naming convention used by itchio.DownloadCoverArt.
-// Cover art is always stored as .jpg; bracket/paren tags ([v1.2], (USA)) are
-// stripped from the stem to match NextUI's display-name convention.
+// Cover art is always stored as .jpg using the exact ROM filename stem so it
+// matches NextUI's cover art lookup (which uses the full filename including
+// bracket/paren tags like [v1.2]).
 // Returns "" if either argument is empty.
 func CoverArtPath(coverURL, romDestPath string) string {
 	if coverURL == "" || romDestPath == "" {
 		return ""
 	}
-	stem := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
-	clean := bracketTagRegex.ReplaceAllString(stem, "")
-	base := strings.TrimSpace(clean)
+	base := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
 	dir := filepath.Dir(romDestPath)
 	return filepath.Join(dir, ".media", base+".jpg")
 }

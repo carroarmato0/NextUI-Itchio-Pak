@@ -158,10 +158,10 @@ func TestDownloadCoverArtPNGConvertedToJPEG(t *testing.T) {
 	}
 }
 
-// TestDownloadCoverArtBracketTagsStripped verifies that [...] and (...) tags
-// are stripped from the ROM filename when deriving the cover art name, so it
-// matches NextUI's display-name convention.
-func TestDownloadCoverArtBracketTagsStripped(t *testing.T) {
+// TestDownloadCoverArtFullStemPreserved verifies that bracket/paren tags in the
+// ROM filename are kept in the cover art name. NextUI looks up art by the full
+// ROM stem (including [v1.2] etc.), even though it strips them for display.
+func TestDownloadCoverArtFullStemPreserved(t *testing.T) {
 	imgBytes := minimalJPEG()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
@@ -177,19 +177,21 @@ func TestDownloadCoverArtBracketTagsStripped(t *testing.T) {
 		t.Fatalf("DownloadCoverArt: %v", err)
 	}
 
-	// Must strip "[v1.2]" → "Kero Kero Cowboy.jpg"
-	artPath := filepath.Join(dir, ".media", "Kero Kero Cowboy.jpg")
+	// Full stem must be preserved: "Kero Kero Cowboy [v1.2].jpg"
+	artPath := filepath.Join(dir, ".media", "Kero Kero Cowboy [v1.2].jpg")
 	if _, err := os.Stat(artPath); os.IsNotExist(err) {
-		t.Fatalf("expected art at %q (brackets stripped), not found", artPath)
+		t.Fatalf("expected art at %q (full stem), not found", artPath)
 	}
-	// The bracketed name must NOT exist
-	if _, err := os.Stat(filepath.Join(dir, ".media", "Kero Kero Cowboy [v1.2].jpg")); !os.IsNotExist(err) {
-		t.Errorf("bracketed filename should not exist; brackets must be stripped")
+	// Stripped name must NOT exist
+	if _, err := os.Stat(filepath.Join(dir, ".media", "Kero Kero Cowboy.jpg")); !os.IsNotExist(err) {
+		t.Errorf("stripped filename should not exist; full stem must be preserved")
 	}
 }
 
-// TestDownloadCoverArtParenTagsStripped verifies (Region) paren tags are stripped.
-func TestDownloadCoverArtParenTagsStripped(t *testing.T) {
+// TestDownloadCoverArtStaleFilesCleaned verifies that an old art file with the
+// same stem but a different extension (e.g. a stale .gif) is removed when the
+// new .jpg is saved.
+func TestDownloadCoverArtStaleFilesCleaned(t *testing.T) {
 	imgBytes := minimalJPEG()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(imgBytes)
@@ -198,14 +200,27 @@ func TestDownloadCoverArtParenTagsStripped(t *testing.T) {
 
 	c := itchio.NewClientWithBase(srv.URL)
 	dir := t.TempDir()
-	romPath := filepath.Join(dir, "Some Game (USA).gb")
+	mediaDir := filepath.Join(dir, ".media")
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a stale .gif left over from a previous download.
+	staleGIF := filepath.Join(mediaDir, "Opossum Country.gif")
+	if err := os.WriteFile(staleGIF, []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
+	romPath := filepath.Join(dir, "Opossum Country.gbc")
 	if err := c.DownloadCoverArt(srv.URL+"/cover.jpg", romPath); err != nil {
 		t.Fatalf("DownloadCoverArt: %v", err)
 	}
 
-	artPath := filepath.Join(dir, ".media", "Some Game.jpg")
-	if _, err := os.Stat(artPath); os.IsNotExist(err) {
-		t.Fatalf("expected art at %q (parens stripped), not found", artPath)
+	// New .jpg must exist.
+	if _, err := os.Stat(filepath.Join(mediaDir, "Opossum Country.jpg")); os.IsNotExist(err) {
+		t.Fatalf("expected Opossum Country.jpg to exist after download")
+	}
+	// Stale .gif must be gone.
+	if _, err := os.Stat(staleGIF); !os.IsNotExist(err) {
+		t.Errorf("stale Opossum Country.gif should have been removed")
 	}
 }
