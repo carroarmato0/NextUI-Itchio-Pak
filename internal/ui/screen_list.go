@@ -64,6 +64,10 @@ type ListScreen struct {
 	// jumpToEnd signals that the next loadPage call should place the cursor on
 	// the last item rather than the first. Set when navigating to a previous page.
 	jumpToEnd bool
+
+	// Sort/filter state
+	sortMode  itchio.SortMode
+	viewGames []itchio.Game // sorted/filtered view; paging operates on this
 }
 
 func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string, inv *inventory.Inventory, inventoryPath string) *ListScreen {
@@ -77,6 +81,7 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 		inv:           inv,
 		inventoryPath: inventoryPath,
 	}
+	s.sortMode = itchio.SortMode(cfg.SortMode)
 
 	gameCache, err := itchio.LoadGamesCache(cachePath)
 	if err == nil && len(gameCache.Games) > 0 {
@@ -85,9 +90,7 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 			len(gameCache.Games), cachePath, time.Since(gameCache.Meta.FetchedAt).Round(time.Second))
 		s.cachedGames = gameCache.Games
 		s.cacheReady = true
-		s.totalGames = len(gameCache.Games)
-		s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
-		s.games = pageSlice(gameCache.Games, 1)
+		s.rebuildView()
 		// Refresh in background if stale.
 		go s.refreshCacheIfStale(gameCache.Meta.FetchedAt)
 	} else {
@@ -116,8 +119,8 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 func (s *ListScreen) loadPage(page int, query string) {
 	if s.cacheReady && query == "" {
 		// Serve from local cache — no network, instant.
-		logger.Debug("cache: serving page %d from cache (%d games)", page, len(s.cachedGames))
-		s.games = pageSlice(s.cachedGames, page)
+		logger.Debug("cache: serving page %d from view (%d games)", page, len(s.viewGames))
+		s.games = pageSlice(s.viewGames, page)
 		s.placeCursor()
 		s.titleScrollX = 0
 		s.titleScrollAt = time.Now()
@@ -203,7 +206,23 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	headerH := int32(72)
 	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
 	_, fontH := r.TextSize("Ag")
-	r.DrawText("Itch.io — GB Studio Games", 12, (headerH-fontH)/2, colorText, colorText, colorText)
+	headerTextY := (headerH - fontH) / 2
+	r.DrawText("Itch.io — GB Studio Games", 12, headerTextY, colorText, colorText, colorText)
+	if s.cacheReady {
+		badge := itchio.SortModeBadge(s.sortMode)
+		bw, _ := r.TextSize(badge)
+		bx := r.W - bw - 12
+		var badgeR, badgeG, badgeB uint8
+		switch s.sortMode {
+		case itchio.SortModeFree:
+			badgeR, badgeG, badgeB = 80, 200, 80
+		case itchio.SortModePaid:
+			badgeR, badgeG, badgeB = 220, 180, 60
+		default:
+			badgeR, badgeG, badgeB = 80, 200, 220
+		}
+		r.DrawText(badge, bx, headerTextY, badgeR, badgeG, badgeB)
+	}
 	// Thin separator line below header
 	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
 
@@ -234,6 +253,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	rowH := fontH + 12 // measured font height + padding
 	footerH := int32(40)
 	visibleRows := (r.H - contentTop - footerH) / rowH
+
+	if len(s.viewGames) == 0 && s.cacheReady {
+		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, 140, 140, 140)
+		r.DrawTextCentered("Press SELECT to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
+		ftrY := r.DrawFooterBar(footerH)
+		r.DrawSmallText("SELECT:sort  B:exit  Start:settings", 10, ftrY, 140, 140, 140)
+		r.Present()
+		return
+	}
 
 	startIdx := 0
 	if s.cursor >= int(visibleRows) {
@@ -418,7 +446,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	} else {
 		countInfo = fmt.Sprintf("%d games", len(s.games))
 	}
-	footer := fmt.Sprintf("%s · %s  |  A:select  L/R:page  B:exit  Start:settings", pageInfo, countInfo)
+	var hints string
+	if s.cacheReady {
+		hints = "A:select  L/R:page  SELECT:sort  B:exit  Start:settings"
+	} else {
+		hints = "A:select  L/R:page  B:exit  Start:settings"
+	}
+	footer := fmt.Sprintf("%s · %s  |  %s", pageInfo, countInfo, hints)
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawSmallText(footer, 10, ftrY, 140, 140, 140)
 	r.Present()
@@ -530,6 +564,16 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
+		case sdl.CONTROLLER_BUTTON_BACK:
+			if !s.cacheReady {
+				return s
+			}
+			s.sortMode = itchio.NextSortMode(s.sortMode)
+			logger.Debug("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
+			s.rebuildView()
+			s.cfg.SortMode = string(s.sortMode)
+			go s.cfg.Save(s.cfgPath)
+			return s
 		}
 	case *sdl.QuitEvent:
 		return nil
@@ -577,6 +621,22 @@ func truncateBoldToWidth(r *renderer.Renderer, text string, maxW int32) string {
 	return strings.TrimRight(string(runes), " ") + "…"
 }
 
+// rebuildView regenerates viewGames from cachedGames using the current sortMode,
+// then resets paging to page 1.
+func (s *ListScreen) rebuildView() {
+	downloaded := make(map[string]bool)
+	for _, g := range s.cachedGames {
+		if s.inv.IsPresent(g.URL) {
+			downloaded[g.URL] = true
+		}
+	}
+	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded)
+	s.totalGames = len(s.viewGames)
+	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
+	s.page = 1
+	s.loadPage(1, "")
+}
+
 // pageSlice returns the sub-slice of games for the given 1-based page number,
 // using the global PerPage constant. The returned slice shares backing memory
 // with games — callers must not mutate it.
@@ -614,13 +674,7 @@ func (s *ListScreen) buildCache() {
 	// the next page navigation will source from the cache.
 	s.cachedGames = games
 	s.cacheReady = true
-	s.totalGames = len(games)
-	s.totalPages = (len(games) + itchio.PerPage - 1) / itchio.PerPage
-	if s.page > s.totalPages {
-		logger.Info("cache: current page %d exceeds new total %d, jumping to last page", s.page, s.totalPages)
-		s.page = s.totalPages
-		s.loadPage(s.page, "")
-	}
+	s.rebuildView()
 }
 
 // refreshCacheIfStale triggers a full re-fetch if the cache is older than cacheTTL.
@@ -642,12 +696,6 @@ func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
 		s.cachedGames = games
 		s.cacheReady = true
-		s.totalGames = len(games)
-		s.totalPages = (len(games) + itchio.PerPage - 1) / itchio.PerPage
-		if s.page > s.totalPages {
-			logger.Info("cache: current page %d exceeds new total %d, jumping to last page", s.page, s.totalPages)
-			s.page = s.totalPages
-			s.loadPage(s.page, "")
-		}
+		s.rebuildView()
 	})
 }
