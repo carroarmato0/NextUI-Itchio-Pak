@@ -254,82 +254,37 @@ func TestFetchAuthUploads_BundlePurchase(t *testing.T) {
 	}
 }
 
-func TestFetchAuthUploads_UnknownExt(t *testing.T) {
+// TestFetchAuthUploads_BundleKeyOnly verifies that when owned-keys returns only a
+// numeric bundle key ID (no downloads_url, no key string), FetchAuthUploads returns
+// a user-facing error explaining that bundle downloads are not supported.
+func TestFetchAuthUploads_BundleKeyOnly(t *testing.T) {
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer testkey" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
+		// Bundle purchase: numeric ID only, no downloads_url, no key string.
 		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
-	})
-
-	// Simple API path: key in URL, download_key_id as query param.
-	mux.HandleFunc("/api/1/testkey/game/777/uploads", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("download_key_id") != "42" {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uploads":[
-			{"id":1,"filename":"game.gbc"},
-			{"id":2,"filename":"manual.pdf"},
-			{"id":3,"filename":"Glory Hunters 2.0"}
-		]}`))
 	})
 
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("testkey", "777", "")
-	if err != nil {
-		t.Fatalf("FetchAuthUploads: %v", err)
+	_, _, err := c.FetchAuthUploads("testkey", "777", "")
+	if err == nil {
+		t.Fatal("expected error for bundle-key-only purchase, got nil")
 	}
-	if keyID != "42" {
-		t.Errorf("keyID = %q, want 42", keyID)
-	}
-	// manual.pdf dropped; game.gbc (known) + Glory Hunters 2.0 (unknown) kept
-	if len(uploads) != 2 {
-		t.Fatalf("expected 2 uploads, got %d", len(uploads))
-	}
-
-	gbc := uploads[0]
-	if gbc.Filename != "game.gbc" {
-		t.Errorf("uploads[0].Filename = %q, want game.gbc", gbc.Filename)
-	}
-	if gbc.NeedsFormat {
-		t.Errorf("uploads[0].NeedsFormat = true, want false for .gbc file")
-	}
-
-	unknown := uploads[1]
-	if unknown.Filename != "Glory Hunters 2.0" {
-		t.Errorf("uploads[1].Filename = %q, want 'Glory Hunters 2.0'", unknown.Filename)
-	}
-	if !unknown.NeedsFormat {
-		t.Errorf("uploads[1].NeedsFormat = false, want true for unknown ext")
-	}
-	if unknown.UploadID != "3" {
-		t.Errorf("uploads[1].UploadID = %q, want 3", unknown.UploadID)
-	}
-
-	for _, u := range uploads {
-		if u.Filename == "manual.pdf" {
-			t.Errorf("manual.pdf should have been dropped (skippable ext)")
-		}
+	if !strings.Contains(strings.ToLower(err.Error()), "bundle") {
+		t.Errorf("error should mention bundle, got: %v", err)
 	}
 }
 
-func TestFetchAuthUploads_NotOwned500(t *testing.T) {
+// TestFetchAuthUploads_NoOwnedKeys verifies that when owned-keys returns an empty
+// array, FetchAuthUploads returns an error indicating the game is not owned.
+func TestFetchAuthUploads_NoOwnedKeys(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"owned_keys":[{"id":99}]}`))
-	})
-	mux.HandleFunc("/api/1/testkey/game/999/uploads", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"errors":["There was a server error"]}`, http.StatusInternalServerError)
+		w.Write([]byte(`{"owned_keys":[]}`))
 	})
 
 	srv := httptest.NewServer(mux)
@@ -338,134 +293,139 @@ func TestFetchAuthUploads_NotOwned500(t *testing.T) {
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
 	_, _, err := c.FetchAuthUploads("testkey", "999", "")
 	if err == nil {
-		t.Fatal("expected error for non-owned game, got nil")
+		t.Fatal("expected error for game with no owned keys, got nil")
 	}
 	if !strings.Contains(err.Error(), "not owned") && !strings.Contains(err.Error(), "invalid") {
 		t.Errorf("error should mention ownership/invalid key, got: %v", err)
 	}
 }
 
-func TestFetchAuthUploads_ZipTreatedAsKnown(t *testing.T) {
+// TestFetchAuthUploads_SignedPageResolverURL verifies that the signed-page path
+// builds a correct resolver URL embedding the download key and CSRF token.
+func TestFetchAuthUploads_SignedPageResolverURL(t *testing.T) {
+	var srvURL string
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"owned_keys": []map[string]interface{}{
+				{"id": 0, "downloads_url": srvURL + "/game/download/MYKEY"},
+			},
+		})
 	})
-	mux.HandleFunc("/api/1/testkey/game/555/uploads", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uploads":[
-			{"id":1,"filename":"game.gbc"},
-			{"id":2,"filename":"Glory Hunters 2.0.zip"},
-			{"id":3,"filename":"Glory Hunters 1.3 ROM Files.zip"},
-			{"id":4,"filename":"Glory Hunters 2.0"},
-			{"id":5,"filename":"manual.pdf"}
-		]}`))
+	mux.HandleFunc("/game/download/MYKEY", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><meta name="csrf_token" value="CSRF1"/></head><body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column"><div class="upload_name"><strong class="name" title="rom.gbc">rom.gbc</strong></div></div>
+    <div class="actions"><a class="button download_btn" data-upload_id="9001">Download</a></div>
+  </div>
+</div></body></html>`))
 	})
 
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
+	srvURL = srv.URL
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, _, err := c.FetchAuthUploads("testkey", "555", "")
+	uploads, keyID, err := c.FetchAuthUploads("myapikey", "555", "")
 	if err != nil {
 		t.Fatalf("FetchAuthUploads: %v", err)
 	}
-	// pdf dropped; gbc + 2×zip (known) + extensionless (NeedsFormat) = 4
-	if len(uploads) != 4 {
-		t.Fatalf("expected 4 uploads, got %d", len(uploads))
+	if keyID != "" {
+		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
 	}
-
-	for _, u := range uploads {
-		if u.Filename == "manual.pdf" {
-			t.Errorf("manual.pdf should have been dropped")
-		}
+	if len(uploads) != 1 {
+		t.Fatalf("expected 1 upload, got %d", len(uploads))
 	}
-
-	byName := make(map[string]itchio.Upload)
-	for _, u := range uploads {
-		byName[u.Filename] = u
+	u := uploads[0]
+	if u.Filename != "rom.gbc" {
+		t.Errorf("Filename = %q, want rom.gbc", u.Filename)
 	}
-
-	if byName["game.gbc"].NeedsFormat {
-		t.Errorf("game.gbc should not need format")
+	if u.UploadID != "9001" {
+		t.Errorf("UploadID = %q, want 9001", u.UploadID)
 	}
-	if byName["Glory Hunters 2.0.zip"].NeedsFormat {
-		t.Errorf("Glory Hunters 2.0.zip should not need format (zip is a known extension)")
+	if !strings.Contains(u.URL, "key=MYKEY") {
+		t.Errorf("resolver URL should contain key=MYKEY, got %q", u.URL)
 	}
-	if byName["Glory Hunters 1.3 ROM Files.zip"].NeedsFormat {
-		t.Errorf("Glory Hunters 1.3 ROM Files.zip should not need format")
-	}
-	if !byName["Glory Hunters 2.0"].NeedsFormat {
-		t.Errorf("Glory Hunters 2.0 (no extension) should need format")
+	if !strings.Contains(u.URL, "csrf=CSRF1") {
+		t.Errorf("resolver URL should contain csrf=CSRF1, got %q", u.URL)
 	}
 }
 
-func TestFetchAuthUploads_EmptyObjectResponse(t *testing.T) {
+// TestFetchAuthUploads_BundleKeyOnlyNoGameURL verifies that a bundle-key-only
+// purchase without a gameURL also returns the bundle error (path 2b requires gameURL).
+func TestFetchAuthUploads_BundleKeyOnlyNoGameURL(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"owned_keys":[{"id":77}]}`))
-	})
-	mux.HandleFunc("/api/1/testkey/game/888/uploads", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uploads":{}}`))
+		// key string present but no gameURL supplied → must NOT try the signed page.
+		w.Write([]byte(`{"owned_keys":[{"id":77,"key":"SOMEKEY"}]}`))
 	})
 
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, _, err := c.FetchAuthUploads("testkey", "888", "")
-	if err != nil {
-		t.Fatalf("expected no error for empty uploads object, got: %v", err)
+	// gameURL intentionally empty — path 2b should be skipped, hitting bundle error.
+	_, _, err := c.FetchAuthUploads("testkey", "888", "")
+	if err == nil {
+		t.Fatal("expected error when key string present but gameURL empty, got nil")
 	}
-	if len(uploads) != 0 {
-		t.Errorf("expected 0 uploads, got %d", len(uploads))
+	if !strings.Contains(strings.ToLower(err.Error()), "bundle") {
+		t.Errorf("error should mention bundle, got: %v", err)
 	}
 }
 
+// TestFetchAuthUploads verifies the primary success path: owned-keys returns a
+// downloads_url, which is used to fetch the signed download page and build resolver URLs.
 func TestFetchAuthUploads(t *testing.T) {
-	// Intercept both api.itch.io (owned-keys) and itch.io (uploads).
-	// We override the client's base and also serve the owned-keys path on the
-	// same test server to avoid network calls.
+	var srvURL string
 	mux := http.NewServeMux()
 
-	// Butler-style owned-keys endpoint (normally on api.itch.io).
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer mykey" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"owned_keys":[{"id":999}]}`))
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"owned_keys": []map[string]interface{}{
+				{"id": 0, "downloads_url": srvURL + "/game/download/DLTOKEN"},
+			},
+		})
 	})
 
-	// Simple API uploads endpoint: key is in URL path, download_key_id as query param.
-	mux.HandleFunc("/api/1/mykey/game/12345/uploads", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("download_key_id") != "999" {
-			http.Error(w, "bad key", http.StatusForbidden)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"uploads":[{"id":777,"filename":"game.gbc"},{"id":888,"filename":"manual.pdf"}]}`))
+	mux.HandleFunc("/game/download/DLTOKEN", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><meta name="csrf_token" value="CSRF99"/></head><body>
+<div class="upload_list_widget">
+  <div class="upload">
+    <div class="info_column"><div class="upload_name"><strong class="name" title="game.gbc">game.gbc</strong></div></div>
+    <div class="actions"><a class="button download_btn" data-upload_id="777">Download</a></div>
+  </div>
+</div></body></html>`))
 	})
 
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
+	srvURL = srv.URL
 
 	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
 	uploads, keyID, err := c.FetchAuthUploads("mykey", "12345", "")
 	if err != nil {
 		t.Fatalf("FetchAuthUploads: %v", err)
 	}
-	if keyID != "999" {
-		t.Errorf("expected keyID=999, got %q", keyID)
+	if keyID != "" {
+		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
 	}
-	// Only .gbc should be returned — .pdf must be filtered out.
 	if len(uploads) != 1 {
 		t.Fatalf("expected 1 upload, got %d", len(uploads))
 	}
 	if uploads[0].Filename != "game.gbc" || uploads[0].UploadID != "777" {
 		t.Errorf("unexpected upload: %+v", uploads[0])
+	}
+	if uploads[0].URL == "" {
+		t.Error("resolver URL should be set")
 	}
 }

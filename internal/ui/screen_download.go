@@ -53,18 +53,14 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			atomic.StoreInt64(&s.total, total)
 		}
 
-		isBearer := upload.DownloadKeyID == "bearer"
-		isAuth := upload.DownloadKeyID != "" && !isBearer
-		logger.Info("download: starting %q file=%s dest=%s auth=%v bearer=%v",
-			game.Title, upload.Filename, dest, isAuth, isBearer)
+		isAuth := upload.DownloadKeyID != ""
+		logger.Info("download: starting %q file=%s dest=%s auth=%v",
+			game.Title, upload.Filename, dest, isAuth)
 
 		var err error
-		switch {
-		case isBearer:
-			err = client.DownloadAuthBearer(cfg.APIKey, upload.UploadID, dest, progress)
-		case isAuth:
+		if isAuth {
 			err = client.DownloadAuthUpload(cfg.APIKey, upload.UploadID, upload.DownloadKeyID, dest, progress)
-		default:
+		} else {
 			itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
 			err = client.DownloadFree(game.URL, itchUpload, dest, progress)
 		}

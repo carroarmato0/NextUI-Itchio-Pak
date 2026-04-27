@@ -10,9 +10,13 @@ import (
 	utls "github.com/refraction-networking/utls"
 )
 
-// userAgent is sent on every outbound request to avoid Cloudflare bot-protection
-// responses (which would return HTML instead of the expected XML/JSON payloads).
-const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+const (
+	// userAgent is sent on every outbound request to avoid Cloudflare bot-protection
+	// responses (which would return HTML instead of the expected XML/JSON payloads).
+	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+	apiItchIO = "https://api.itch.io"
+)
 
 // uaTransport injects browser-compatible headers on every outbound request
 // that does not already have them, then delegates to the wrapped RoundTripper.
