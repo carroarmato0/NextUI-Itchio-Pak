@@ -68,17 +68,13 @@ func (c *Client) FetchOwnedKeys(apiKey, gameID string) ([]OwnedKey, error) {
 			return nil, fmt.Errorf("fetch owned keys (page %d): %w", page, err)
 		}
 
-		var pageResult struct {
-			PerPage   int `json:"per_page"`
-			OwnedKeys []struct {
-				ID         int64  `json:"id"`
-				GameID     int64  `json:"game_id"`
-				PurchaseID int64  `json:"purchase_id"`
-				Downloads  int    `json:"downloads"`
-				CreatedAt  string `json:"created_at"`
-			} `json:"owned_keys"`
+		// itch.io returns {"owned_keys":{}} (object, not array) on the last page.
+		// Use RawMessage so we can detect this before attempting slice decode.
+		var envelope struct {
+			PerPage   int             `json:"per_page"`
+			OwnedKeys json.RawMessage `json:"owned_keys"`
 		}
-		decodeErr := json.NewDecoder(resp.Body).Decode(&pageResult)
+		decodeErr := json.NewDecoder(resp.Body).Decode(&envelope)
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
@@ -89,15 +85,30 @@ func (c *Client) FetchOwnedKeys(apiKey, gameID string) ([]OwnedKey, error) {
 			return nil, fmt.Errorf("decode owned keys (page %d): %w", page, decodeErr)
 		}
 
-		logger.Debug("auth: owned-keys page %d — %d entries", page, len(pageResult.OwnedKeys))
-		for _, k := range pageResult.OwnedKeys {
+		if len(envelope.OwnedKeys) == 0 || envelope.OwnedKeys[0] != '[' {
+			break // empty object {} — no more pages
+		}
+
+		var keyItems []struct {
+			ID         int64  `json:"id"`
+			GameID     int64  `json:"game_id"`
+			PurchaseID int64  `json:"purchase_id"`
+			Downloads  int    `json:"downloads"`
+			CreatedAt  string `json:"created_at"`
+		}
+		if err := json.Unmarshal(envelope.OwnedKeys, &keyItems); err != nil {
+			return nil, fmt.Errorf("decode owned keys (page %d): %w", page, err)
+		}
+
+		logger.Debug("auth: owned-keys page %d — %d entries", page, len(keyItems))
+		for _, k := range keyItems {
 			all = append(all, rawOwnedKey{
 				ID: k.ID, GameID: k.GameID, PurchaseID: k.PurchaseID,
 				Downloads: k.Downloads, CreatedAt: k.CreatedAt,
 			})
 		}
 
-		if len(pageResult.OwnedKeys) < pageResult.PerPage || pageResult.PerPage == 0 {
+		if len(keyItems) < envelope.PerPage || envelope.PerPage == 0 {
 			break // last page
 		}
 	}

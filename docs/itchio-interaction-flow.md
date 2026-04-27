@@ -190,29 +190,50 @@ taken automatically when all three conditions are true:
 - `cfg.APIKey != ""`
 - `detail.GameID != ""`
 
-### Step 1 — GET buyer's download key ID
+### Step 1 — Page through all owned keys and find the matching one
 
 ```
-GET https://api.itch.io/profile/owned-keys?game_id={GAME_ID}
+GET https://api.itch.io/profile/owned-keys?page={N}
 Authorization: Bearer {API_KEY}
 ```
 
-Response (JSON):
+The endpoint returns up to 50 keys per page. The code pages through all pages
+until it finds the target `game_id` or exhausts the list. Filtering is done
+client-side; passing `game_id` as a query parameter has no effect server-side.
+
+Normal page response (JSON):
 
 ```json
 {
+  "page": 1,
+  "per_page": 50,
   "owned_keys": [
-    { "id": 153412711, "game_id": 4228927, "purchase_id": 35928998, ... }
+    { "id": 153412711, "game_id": 4228927, "purchase_id": 35928998,
+      "downloads": 1, "created_at": "2026-04-26T13:38:12.000000000Z",
+      "game": { ... } }
   ]
 }
 ```
+
+**Last-page quirk:** when there are no more keys, `owned_keys` is an **empty
+object** (`{}`), not an empty array (`[]`):
+
+```json
+{ "page": 2, "per_page": 50, "owned_keys": {} }
+```
+
+The code uses `json.RawMessage` to capture the raw `owned_keys` value and
+checks that the first byte is `[` before attempting to unmarshal it as a slice.
+Decoding `{}` directly into a `[]struct` field causes Go's JSON decoder to
+return an `UnmarshalTypeError`, which would discard all keys collected from
+earlier pages.
 
 The `id` field is the buyer's **download key ID** — a numeric identifier tied
 to their purchase. This is distinct from the API key. It is required to
 authenticate upload listing and CDN URL resolution in subsequent steps.
 
-If `owned_keys` is empty, the game is not owned by this user and an error
-is surfaced.
+If no matching `game_id` is found across all pages, the game is not owned by
+this user and an error is surfaced.
 
 **Why `api.itch.io` and not `itch.io/api/1/KEY/game/GAME_ID/download_keys`?**
 The v1 `download_keys` endpoint is a **creator** endpoint — it lists keys a

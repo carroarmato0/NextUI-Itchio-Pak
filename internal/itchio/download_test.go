@@ -227,6 +227,38 @@ func TestFetchOwnedKeys_NotOwned(t *testing.T) {
 	}
 }
 
+// TestFetchOwnedKeys_LastPageEmptyObject verifies that FetchOwnedKeys handles
+// the itch.io quirk where the last page returns {"owned_keys":{}} (an object)
+// instead of an empty array.  Without the RawMessage guard the JSON decoder
+// returns an UnmarshalTypeError and the function discards all keys collected
+// from earlier pages.
+func TestFetchOwnedKeys_LastPageEmptyObject(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		page := r.URL.Query().Get("page")
+		if page == "1" {
+			w.Write(ownedKeysPage(50, []map[string]interface{}{
+				{"id": 42, "game_id": 1206111, "purchase_id": 9, "downloads": 2, "created_at": "2026-04-24T19:31:40.000000000Z"},
+			}))
+		} else {
+			// Real itch.io response when there are no more keys.
+			fmt.Fprint(w, `{"page":2,"per_page":50,"owned_keys":{}}`)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	keys, err := c.FetchOwnedKeys("key", "1206111")
+	if err != nil {
+		t.Fatalf("FetchOwnedKeys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].ID != 42 {
+		t.Errorf("expected key id=42, got %v", keys)
+	}
+}
+
 // TestFetchOwnedKeys_Pagination verifies that FetchOwnedKeys pages through
 // multiple pages to find a key that only appears on page 2.
 func TestFetchOwnedKeys_Pagination(t *testing.T) {
