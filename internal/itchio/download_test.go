@@ -2,6 +2,7 @@ package itchio_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -112,320 +113,257 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	}
 }
 
-// TestFetchAuthUploads_BundlePurchaseKeyString verifies that when owned-keys
-// returns no downloads_url but includes a key string, we construct the signed
-// page URL from gameURL+key and use the signed-page path.
-func TestFetchAuthUploads_BundlePurchaseKeyString(t *testing.T) {
-	var srvURL string
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer bk" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		// downloads_url absent; key string present (bundle purchase pattern).
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"owned_keys": []map[string]interface{}{
-				{"id": 99, "key": "BUNDLEKEYSTRING", "downloads_url": ""},
-			},
-		})
+// ownedKeysPage builds the JSON response body for a page of owned keys.
+func ownedKeysPage(perPage int, keys []map[string]interface{}) []byte {
+	b, _ := json.Marshal(map[string]interface{}{
+		"per_page":   perPage,
+		"owned_keys": keys,
 	})
-
-	// Signed page constructed from gameURL + key string.
-	mux.HandleFunc("/game/download/BUNDLEKEYSTRING", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="BKCSRF"/></head><body>
-<div class="upload_list_widget">
-  <div class="upload">
-    <div class="info_column">
-      <div class="upload_name">
-        <strong class="name" title="bundle-ks.gbc">bundle-ks.gbc</strong>
-      </div>
-    </div>
-    <div class="actions">
-      <a class="button download_btn" href="javascript:void(0);" data-upload_id="66666">Download</a>
-    </div>
-  </div>
-</div>
-</body></html>`))
-	})
-
-	// uploads endpoint must NOT be called.
-	mux.HandleFunc("/api/1/bk/game/444/uploads", func(w http.ResponseWriter, r *http.Request) {
-		t.Error("uploads endpoint should not be called when key string is present")
-		http.Error(w, "server error", http.StatusInternalServerError)
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	srvURL = srv.URL
-
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("bk", "444", srvURL+"/game")
-	if err != nil {
-		t.Fatalf("FetchAuthUploads: %v", err)
-	}
-	if keyID != "" {
-		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
-	}
-	if len(uploads) != 1 {
-		t.Fatalf("expected 1 upload, got %d", len(uploads))
-	}
-	if uploads[0].Filename != "bundle-ks.gbc" {
-		t.Errorf("Filename = %q, want bundle-ks.gbc", uploads[0].Filename)
-	}
-	if uploads[0].URL == "" {
-		t.Error("URL should be set for signed-page path")
-	}
+	return b
 }
 
-// TestFetchAuthUploads_BundlePurchase verifies that when owned-keys returns a
-// downloads_url (signed page URL), we use the signed-page path rather than the
-// butler uploads endpoint. This is the correct path for bundle purchases.
-func TestFetchAuthUploads_BundlePurchase(t *testing.T) {
-	var srvURL string
+// TestFetchOwnedKeys_SinglePurchase verifies that a single matching key is
+// returned when owned-keys contains exactly one entry for the target game.
+func TestFetchOwnedKeys_SinglePurchase(t *testing.T) {
 	mux := http.NewServeMux()
-
-	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer bundlekey" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		// downloads_url present — no numeric id needed.
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"owned_keys": []map[string]interface{}{
-				{"id": 0, "downloads_url": srvURL + "/game/download/SIGNEDTOKEN"},
-			},
-		})
-	})
-
-	// Signed download page for the bundle purchase.
-	mux.HandleFunc("/game/download/SIGNEDTOKEN", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="BCSRF"/></head><body>
-<div class="upload_list_widget">
-  <div class="upload">
-    <div class="info_column">
-      <div class="upload_name">
-        <strong class="name" title="bundle-game.gbc">bundle-game.gbc</strong>
-      </div>
-    </div>
-    <div class="actions">
-      <a class="button download_btn" href="javascript:void(0);" data-upload_id="55555">Download</a>
-    </div>
-  </div>
-</div>
-</body></html>`))
-	})
-
-	// uploads endpoint must NOT be called when downloads_url is present.
-	mux.HandleFunc("/api/1/bundlekey/game/321/uploads", func(w http.ResponseWriter, r *http.Request) {
-		t.Error("uploads endpoint should not be called when downloads_url is present")
-		http.Error(w, "server error", http.StatusInternalServerError)
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	srvURL = srv.URL
-
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("bundlekey", "321", "")
-	if err != nil {
-		t.Fatalf("FetchAuthUploads: %v", err)
-	}
-	if keyID != "" {
-		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
-	}
-	if len(uploads) != 1 {
-		t.Fatalf("expected 1 upload, got %d", len(uploads))
-	}
-	if uploads[0].Filename != "bundle-game.gbc" {
-		t.Errorf("Filename = %q, want bundle-game.gbc", uploads[0].Filename)
-	}
-	if uploads[0].UploadID != "55555" {
-		t.Errorf("UploadID = %q, want 55555", uploads[0].UploadID)
-	}
-	if uploads[0].URL == "" {
-		t.Error("URL should be set for signed-page path")
-	}
-	if uploads[0].NeedsFormat {
-		t.Error("NeedsFormat should be false for .gbc file")
-	}
-}
-
-// TestFetchAuthUploads_BundleKeyOnly verifies that when owned-keys returns only a
-// numeric bundle key ID (no downloads_url, no key string), FetchAuthUploads returns
-// a user-facing error explaining that bundle downloads are not supported.
-func TestFetchAuthUploads_BundleKeyOnly(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		// Bundle purchase: numeric ID only, no downloads_url, no key string.
-		w.Write([]byte(`{"owned_keys":[{"id":42}]}`))
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	_, _, err := c.FetchAuthUploads("testkey", "777", "")
-	if err == nil {
-		t.Fatal("expected error for bundle-key-only purchase, got nil")
-	}
-	if !strings.Contains(strings.ToLower(err.Error()), "bundle") {
-		t.Errorf("error should mention bundle, got: %v", err)
-	}
-}
-
-// TestFetchAuthUploads_NoOwnedKeys verifies that when owned-keys returns an empty
-// array, FetchAuthUploads returns an error indicating the game is not owned.
-func TestFetchAuthUploads_NoOwnedKeys(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"owned_keys":[]}`))
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	_, _, err := c.FetchAuthUploads("testkey", "999", "")
-	if err == nil {
-		t.Fatal("expected error for game with no owned keys, got nil")
-	}
-	if !strings.Contains(err.Error(), "not owned") && !strings.Contains(err.Error(), "invalid") {
-		t.Errorf("error should mention ownership/invalid key, got: %v", err)
-	}
-}
-
-// TestFetchAuthUploads_SignedPageResolverURL verifies that the signed-page path
-// builds a correct resolver URL embedding the download key and CSRF token.
-func TestFetchAuthUploads_SignedPageResolverURL(t *testing.T) {
-	var srvURL string
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"owned_keys": []map[string]interface{}{
-				{"id": 0, "downloads_url": srvURL + "/game/download/MYKEY"},
-			},
-		})
-	})
-	mux.HandleFunc("/game/download/MYKEY", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="CSRF1"/></head><body>
-<div class="upload_list_widget">
-  <div class="upload">
-    <div class="info_column"><div class="upload_name"><strong class="name" title="rom.gbc">rom.gbc</strong></div></div>
-    <div class="actions"><a class="button download_btn" data-upload_id="9001">Download</a></div>
-  </div>
-</div></body></html>`))
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	srvURL = srv.URL
-
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("myapikey", "555", "")
-	if err != nil {
-		t.Fatalf("FetchAuthUploads: %v", err)
-	}
-	if keyID != "" {
-		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
-	}
-	if len(uploads) != 1 {
-		t.Fatalf("expected 1 upload, got %d", len(uploads))
-	}
-	u := uploads[0]
-	if u.Filename != "rom.gbc" {
-		t.Errorf("Filename = %q, want rom.gbc", u.Filename)
-	}
-	if u.UploadID != "9001" {
-		t.Errorf("UploadID = %q, want 9001", u.UploadID)
-	}
-	if !strings.Contains(u.URL, "key=MYKEY") {
-		t.Errorf("resolver URL should contain key=MYKEY, got %q", u.URL)
-	}
-	if !strings.Contains(u.URL, "csrf=CSRF1") {
-		t.Errorf("resolver URL should contain csrf=CSRF1, got %q", u.URL)
-	}
-}
-
-// TestFetchAuthUploads_BundleKeyOnlyNoGameURL verifies that a bundle-key-only
-// purchase without a gameURL also returns the bundle error (path 2b requires gameURL).
-func TestFetchAuthUploads_BundleKeyOnlyNoGameURL(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		// key string present but no gameURL supplied → must NOT try the signed page.
-		w.Write([]byte(`{"owned_keys":[{"id":77,"key":"SOMEKEY"}]}`))
-	})
-
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	// gameURL intentionally empty — path 2b should be skipped, hitting bundle error.
-	_, _, err := c.FetchAuthUploads("testkey", "888", "")
-	if err == nil {
-		t.Fatal("expected error when key string present but gameURL empty, got nil")
-	}
-	if !strings.Contains(strings.ToLower(err.Error()), "bundle") {
-		t.Errorf("error should mention bundle, got: %v", err)
-	}
-}
-
-// TestFetchAuthUploads verifies the primary success path: owned-keys returns a
-// downloads_url, which is used to fetch the signed download page and build resolver URLs.
-func TestFetchAuthUploads(t *testing.T) {
-	var srvURL string
-	mux := http.NewServeMux()
-
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer mykey" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Write(ownedKeysPage(50, []map[string]interface{}{
+			{
+				"id": 111, "game_id": 999, "purchase_id": 5001,
+				"downloads": 2, "created_at": "2026-01-15T10:00:00.000000000Z",
+			},
+		}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	keys, err := c.FetchOwnedKeys("mykey", "999")
+	if err != nil {
+		t.Fatalf("FetchOwnedKeys: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(keys))
+	}
+	if keys[0].ID != 111 {
+		t.Errorf("ID = %d, want 111", keys[0].ID)
+	}
+	if keys[0].PurchaseID != 5001 {
+		t.Errorf("PurchaseID = %d, want 5001", keys[0].PurchaseID)
+	}
+	if keys[0].Downloads != 2 {
+		t.Errorf("Downloads = %d, want 2", keys[0].Downloads)
+	}
+	if keys[0].BundleSize != 1 {
+		t.Errorf("BundleSize = %d, want 1 (single game in purchase)", keys[0].BundleSize)
+	}
+}
+
+// TestFetchOwnedKeys_MultiPurchase verifies that multiple keys are returned
+// when a game has been purchased more than once (e.g. individually + bundle),
+// and that BundleSize correctly identifies each purchase type.
+func TestFetchOwnedKeys_MultiPurchase(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// purchase_id=100: only game_id=42 → individual (BundleSize=1)
+		// purchase_id=200: game_id=42 AND game_id=99 → bundle (BundleSize=2)
+		w.Write(ownedKeysPage(50, []map[string]interface{}{
+			{"id": 10, "game_id": 42, "purchase_id": 100, "downloads": 1, "created_at": "2026-01-01T00:00:00.000000000Z"},
+			{"id": 20, "game_id": 42, "purchase_id": 200, "downloads": 0, "created_at": "2026-03-01T00:00:00.000000000Z"},
+			{"id": 30, "game_id": 99, "purchase_id": 200, "downloads": 0, "created_at": "2026-03-01T00:00:00.000000000Z"},
+		}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	keys, err := c.FetchOwnedKeys("key", "42")
+	if err != nil {
+		t.Fatalf("FetchOwnedKeys: %v", err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("expected 2 keys for game_id=42, got %d", len(keys))
+	}
+	if keys[0].ID != 10 || keys[1].ID != 20 {
+		t.Errorf("unexpected key IDs: %d, %d", keys[0].ID, keys[1].ID)
+	}
+	// Individual purchase: purchase_id=100 appears for 1 game only.
+	if keys[0].BundleSize != 1 {
+		t.Errorf("key id=10: BundleSize = %d, want 1 (individual)", keys[0].BundleSize)
+	}
+	// Bundle purchase: purchase_id=200 appears for 2 games.
+	if keys[1].BundleSize != 2 {
+		t.Errorf("key id=20: BundleSize = %d, want 2 (bundle)", keys[1].BundleSize)
+	}
+}
+
+// TestFetchOwnedKeys_NotOwned verifies that an error is returned when no key
+// matches the requested game_id.
+func TestFetchOwnedKeys_NotOwned(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Only contains a different game.
+		w.Write(ownedKeysPage(50, []map[string]interface{}{
+			{"id": 77, "game_id": 9999, "purchase_id": 1, "downloads": 0, "created_at": "2026-01-01T00:00:00.000000000Z"},
+		}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	_, err := c.FetchOwnedKeys("key", "1234")
+	if err == nil {
+		t.Fatal("expected error when game not owned, got nil")
+	}
+	if !strings.Contains(err.Error(), "not owned") {
+		t.Errorf("error should mention 'not owned', got: %v", err)
+	}
+}
+
+// TestFetchOwnedKeys_Pagination verifies that FetchOwnedKeys pages through
+// multiple pages to find a key that only appears on page 2.
+func TestFetchOwnedKeys_Pagination(t *testing.T) {
+	calls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		page := r.URL.Query().Get("page")
+		if page == "1" {
+			// Full page of unrelated games — signals that there is a next page.
+			keys := make([]map[string]interface{}, 50)
+			for i := range keys {
+				keys[i] = map[string]interface{}{
+					"id": i + 1000, "game_id": i + 1, "purchase_id": i + 100,
+					"downloads": 0, "created_at": "2026-01-01T00:00:00.000000000Z",
+				}
+			}
+			w.Write(ownedKeysPage(50, keys))
+		} else {
+			// Page 2: smaller-than-perPage slice containing the target game.
+			w.Write(ownedKeysPage(50, []map[string]interface{}{
+				{"id": 555, "game_id": 7777, "purchase_id": 9, "downloads": 0, "created_at": "2026-04-01T00:00:00.000000000Z"},
+			}))
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	keys, err := c.FetchOwnedKeys("key", "7777")
+	if err != nil {
+		t.Fatalf("FetchOwnedKeys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].ID != 555 {
+		t.Errorf("expected key id=555, got %v", keys)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 pages fetched, got %d", calls)
+	}
+}
+
+// TestFetchUploadsForKey_ROM verifies that .gbc files are included, known
+// non-ROMs are skipped, and unknown extensions are returned with NeedsFormat=true.
+func TestFetchUploadsForKey_ROM(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/1/mykey/game/123/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("download_key_id") != "456" {
+			http.Error(w, "bad download_key_id", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"owned_keys": []map[string]interface{}{
-				{"id": 0, "downloads_url": srvURL + "/game/download/DLTOKEN"},
+			"uploads": []map[string]interface{}{
+				{"id": 1, "filename": "game.gbc"},
+				{"id": 2, "filename": "manual.pdf"},  // skipped
+				{"id": 3, "filename": "game.gb"},
+				{"id": 4, "filename": "patch.ips"},   // NeedsFormat=true
 			},
 		})
 	})
-
-	mux.HandleFunc("/game/download/DLTOKEN", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="CSRF99"/></head><body>
-<div class="upload_list_widget">
-  <div class="upload">
-    <div class="info_column"><div class="upload_name"><strong class="name" title="game.gbc">game.gbc</strong></div></div>
-    <div class="actions"><a class="button download_btn" data-upload_id="777">Download</a></div>
-  </div>
-</div></body></html>`))
-	})
-
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	srvURL = srv.URL
 
-	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
-	uploads, keyID, err := c.FetchAuthUploads("mykey", "12345", "")
+	c := itchio.NewClientWithBase(srv.URL)
+	uploads, err := c.FetchUploadsForKey("mykey", "123", "456")
 	if err != nil {
-		t.Fatalf("FetchAuthUploads: %v", err)
+		t.Fatalf("FetchUploadsForKey: %v", err)
 	}
-	if keyID != "" {
-		t.Errorf("keyID should be empty for signed-page path, got %q", keyID)
+	if len(uploads) != 3 {
+		t.Fatalf("expected 3 uploads (gbc, gb, ips), got %d", len(uploads))
+	}
+	byName := map[string]itchio.Upload{}
+	for _, u := range uploads {
+		byName[u.Filename] = u
+	}
+	if _, ok := byName["game.gbc"]; !ok {
+		t.Error("game.gbc should be included")
+	}
+	if _, ok := byName["game.gb"]; !ok {
+		t.Error("game.gb should be included")
+	}
+	if u, ok := byName["patch.ips"]; !ok || !u.NeedsFormat {
+		t.Error("patch.ips should be included with NeedsFormat=true")
+	}
+	if _, ok := byName["manual.pdf"]; ok {
+		t.Error("manual.pdf should be skipped")
+	}
+}
+
+// TestFetchUploadsForKey_Empty verifies that an empty uploads list is handled
+// without error (empty slice returned, no panic).
+func TestFetchUploadsForKey_Empty(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/1/k/game/1/uploads", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// itch.io returns an object instead of array when uploads list is empty.
+		fmt.Fprint(w, `{"uploads":{}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	uploads, err := c.FetchUploadsForKey("k", "1", "99")
+	if err != nil {
+		t.Fatalf("FetchUploadsForKey: %v", err)
+	}
+	if len(uploads) != 0 {
+		t.Errorf("expected 0 uploads for empty response, got %d", len(uploads))
+	}
+}
+
+// TestFetchUploadsForKey_UploadIDPassedThrough verifies that the numeric upload
+// ID from the API is preserved as a string in Upload.UploadID (needed by
+// DownloadAuthUpload).
+func TestFetchUploadsForKey_UploadIDPassedThrough(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/1/k/game/5/uploads", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"uploads": []map[string]interface{}{
+				{"id": 98765, "filename": "rom.gbc"},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	uploads, err := c.FetchUploadsForKey("k", "5", "1")
+	if err != nil {
+		t.Fatalf("FetchUploadsForKey: %v", err)
 	}
 	if len(uploads) != 1 {
 		t.Fatalf("expected 1 upload, got %d", len(uploads))
 	}
-	if uploads[0].Filename != "game.gbc" || uploads[0].UploadID != "777" {
-		t.Errorf("unexpected upload: %+v", uploads[0])
-	}
-	if uploads[0].URL == "" {
-		t.Error("resolver URL should be set")
+	if uploads[0].UploadID != "98765" {
+		t.Errorf("UploadID = %q, want \"98765\"", uploads[0].UploadID)
 	}
 }

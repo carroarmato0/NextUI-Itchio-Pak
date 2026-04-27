@@ -127,7 +127,7 @@ func (s *DetailScreen) processAutoScroll() {
 	if now.Sub(s.lastRepeat) < repeatInterval {
 		return
 	}
-	s.scrollY += int32(s.heldDir) * scrollStep
+	s.scrollY += int32(s.heldDir) * s.scrollStep()
 	s.clampScroll(s.viewportH)
 	s.lastRepeat = now
 }
@@ -434,7 +434,15 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	}
 }
 
-const scrollStep = 15
+// scrollStep returns ~5 % of the visible content area height per tick so that
+// hold-scroll speed feels consistent across devices with different resolutions
+// (640×480 Miyoo Flip, 1024×768 TrimUI Brick, 1280×720 Smart Pro).
+func (s *DetailScreen) scrollStep() int32 {
+	if s.viewportH <= 0 {
+		return 40 // safe default before first Draw
+	}
+	return s.viewportH / 20
+}
 
 func (s *DetailScreen) clampScroll(contentH int32) {
 	maxScroll := s.contentHeight - contentH
@@ -450,7 +458,7 @@ func (s *DetailScreen) clampScroll(contentH int32) {
 }
 
 func (s *DetailScreen) startScrollHold(dir int) {
-	s.scrollY += int32(dir) * scrollStep
+	s.scrollY += int32(dir) * s.scrollStep()
 	s.clampScroll(s.viewportH)
 	s.heldDir = dir
 	s.heldSince = time.Now()

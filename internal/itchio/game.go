@@ -21,6 +21,7 @@ type GameDetail struct {
 	GameID         string
 	CSRFToken      string
 	PageTags       []string // itch.io tag labels scraped from the game page
+	BundleNames    []string // names of bundles that include this game (from public page)
 }
 
 type Upload struct {
@@ -40,6 +41,8 @@ var (
 	// tag links: <a href="https://itch.io/games/tag-horror">Horror</a>
 	// Capture the slug from the URL (e.g. "horror", "lgbtq") for reliable filter matching.
 	pageTagRegex = regexp.MustCompile(`href="https://itch\.io/games/tag-([^"]+)"`)
+	// bundle_title div: <div class="bundle_title"><a href="...">Bundle Name</a></div>
+	bundleNameRegex = regexp.MustCompile(`(?s)<div\s+class="bundle_title"[^>]*>\s*<a[^>]*>\s*([^<]+?)\s*</a>`)
 )
 
 func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
@@ -88,17 +91,55 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 	}
 	logger.Debug("game: %d page tags: %v", len(detail.PageTags), detail.PageTags)
 
-	// Extract screenshot URLs from screenshot img elements
-	screenshotReg := regexp.MustCompile(`class="[^"]*screenshot[^"]*"[^>]+src="([^"]+)"`)
-	for _, m := range screenshotReg.FindAllStringSubmatch(s, -1) {
-		detail.ScreenshotURLs = append(detail.ScreenshotURLs, m[1])
-	}
+	detail.ScreenshotURLs = extractScreenshotURLs(body)
 	logger.Debug("game: %d screenshots found", len(detail.ScreenshotURLs))
 
 	// Extract game description from formatted_description div
 	detail.Description = extractDescription(s)
 
+	// Extract bundle names from bundle_title divs (present when the game is in a bundle).
+	// The same bundle name can appear multiple times on the page (purchase banner +
+	// related-items section), so deduplicate while preserving order.
+	seen := map[string]bool{}
+	for _, m := range bundleNameRegex.FindAllStringSubmatch(s, -1) {
+		if len(m) > 1 {
+			name := strings.TrimSpace(m[1])
+			if !seen[name] {
+				seen[name] = true
+				detail.BundleNames = append(detail.BundleNames, name)
+			}
+		}
+	}
+	logger.Debug("game: %d bundle name(s): %v", len(detail.BundleNames), detail.BundleNames)
+
 	return detail, nil
+}
+
+// extractScreenshotURLs walks the parsed HTML and returns the src of every
+// <img> element that carries the "screenshot" CSS class. Using the HTML parser
+// makes this order-independent (src may appear before or after class).
+func extractScreenshotURLs(rawHTML []byte) []string {
+	doc, err := html.Parse(bytes.NewReader(rawHTML))
+	if err != nil {
+		return nil
+	}
+	var urls []string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" && nodeHasClass(n, "screenshot") {
+			for _, a := range n.Attr {
+				if a.Key == "src" && a.Val != "" {
+					urls = append(urls, a.Val)
+					break
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return urls
 }
 
 // descriptionRegex matches the formatted_description div and its contents.

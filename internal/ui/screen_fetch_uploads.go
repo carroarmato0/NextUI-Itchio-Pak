@@ -22,6 +22,7 @@ const (
 	fetchLoading fetchState = iota
 	fetchDone
 	fetchError
+	fetchNeedsPurchasePick
 )
 
 // FetchUploadsScreen is a transitional screen shown while the app fetches
@@ -39,6 +40,7 @@ type FetchUploadsScreen struct {
 
 	state         fetchState
 	uploads       []roms.Upload
+	ownedKeys     []itchio.OwnedKey // populated when fetchNeedsPurchasePick
 	err           error
 	isNotOwned    bool // true when error is "game not owned" — triggers auto-modal on prev screen
 	inv           *inventory.Inventory
@@ -71,29 +73,28 @@ func NewFetchUploadsScreen(
 			}(), useAuthPath)
 
 		if useAuthPath {
-			// Paid game owned by the user — use the itch.io API.
-			authUploads, downloadKeyID, authErr := client.FetchAuthUploads(cfg.APIKey, detail.GameID, game.URL)
-			if authErr != nil {
-				s.err = authErr
+			// Paid game — find all purchase keys for this game.
+			ownedKeys, keysErr := client.FetchOwnedKeys(cfg.APIKey, detail.GameID)
+			if keysErr != nil {
+				s.err = keysErr
 				s.state = fetchError
-				s.isNotOwned = strings.Contains(authErr.Error(), "not owned")
+				s.isNotOwned = strings.Contains(keysErr.Error(), "not owned")
+				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+				return
+			}
+
+			// Annotate bundle keys with human-readable bundle names from the game page.
+			if detail != nil && len(detail.BundleNames) > 0 {
+				ownedKeys = itchio.AnnotateBundleNames(ownedKeys, detail.BundleNames)
+			}
+
+			if len(ownedKeys) == 1 {
+				// Only one purchase — fetch uploads immediately, no picker needed.
+				s.applyUploadsForKey(ownedKeys[0])
 			} else {
-				for _, u := range authUploads {
-					s.uploads = append(s.uploads, roms.Upload{
-						Filename:      u.Filename,
-						UploadID:      u.UploadID,
-						URL:           u.URL,
-						DownloadKeyID: downloadKeyID,
-						NeedsFormat:   u.NeedsFormat,
-					})
-				}
-				if len(s.uploads) == 0 {
-					logger.Warn("fetch: no downloadable uploads found for game (auth path)")
-					s.err = fmt.Errorf("no downloadable files found for this game")
-					s.state = fetchError
-				} else {
-					s.state = fetchDone
-				}
+				// Multiple purchases (e.g. individual + bundle) — let user choose.
+				s.ownedKeys = ownedKeys
+				s.state = fetchNeedsPurchasePick
 			}
 		} else {
 			// Free game — use the CSRF scraping path.
@@ -119,10 +120,38 @@ func NewFetchUploadsScreen(
 				}
 			}
 		}
-		// Wake up the SDL event loop so HandleEvent fires immediately.
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 	}()
 	return s
+}
+
+// applyUploadsForKey fetches the upload list for a specific owned key and
+// populates s.uploads. Called either directly (single key) or after the user
+// picks a purchase from PurchasePickerScreen.
+func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
+	downloadKeyID := fmt.Sprintf("%d", key.ID)
+	authUploads, authErr := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, downloadKeyID)
+	if authErr != nil {
+		s.err = authErr
+		s.state = fetchError
+		s.isNotOwned = strings.Contains(authErr.Error(), "not owned")
+		return
+	}
+	for _, u := range authUploads {
+		s.uploads = append(s.uploads, roms.Upload{
+			Filename:      u.Filename,
+			UploadID:      u.UploadID,
+			DownloadKeyID: downloadKeyID,
+			NeedsFormat:   u.NeedsFormat,
+		})
+	}
+	if len(s.uploads) == 0 {
+		logger.Warn("fetch: no downloadable uploads found for game (auth path)")
+		s.err = fmt.Errorf("no downloadable files found for this game")
+		s.state = fetchError
+		return
+	}
+	s.state = fetchDone
 }
 
 func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
@@ -152,7 +181,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 		msg := s.err.Error()
 		r.DrawWrappedText(msg, 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
 
-	case fetchDone:
+	case fetchDone, fetchNeedsPurchasePick:
 		// Handled by transitioning in HandleEvent / next Draw cycle below
 	}
 
@@ -170,6 +199,10 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 	// Transition immediately when fetch completes (triggered by UserEvent).
 	if s.state == fetchDone {
 		return s.nextScreen()
+	}
+	if s.state == fetchNeedsPurchasePick {
+		return NewPurchasePickerScreen(s.client, s.cfg, s.cfgPath, s.cache,
+			s.game, s.detail, s.ownedKeys, s.inv, s.inventoryPath, s.prev)
 	}
 
 	switch ev := e.(type) {
