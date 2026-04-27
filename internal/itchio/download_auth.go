@@ -26,7 +26,8 @@ const apiItchIO = "https://api.itch.io"
 //  2a. downloads_url present → fetchAuthUploadsViaSignedPage
 //  2b. key string present    → construct signed URL from gameURL + key string
 //  2c. neither present (bundle key) → paginate profile/owned-keys to find downloads_url/key
-//  2d. paginated scan fails  → GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=ID
+//  2d. paginated scan also absent  → GET api.itch.io/games/GAME_ID/uploads (Bearer, no key needed)
+//  2e. butler Bearer path fails    → GET itch.io/api/1/KEY/game/GAME_ID/uploads?download_key_id=ID
 func (c *Client) FetchAuthUploads(apiKey, gameID, gameURL string) ([]Upload, string, error) {
 	// Step 1: get download key info from the butler-style API.
 	keysURL := fmt.Sprintf("%s/profile/owned-keys?game_id=%s", c.butler, gameID)
@@ -100,10 +101,25 @@ func (c *Client) FetchAuthUploads(apiKey, gameID, gameURL string) ([]Upload, str
 		return c.fetchAuthUploadsViaSignedPage(signedURL)
 	}
 
+	// 2d. Try the butler API with Bearer auth. This does not require a download key —
+	// it relies solely on the authenticated account owning the game. Works for bundle
+	// purchases where itch.io issues no per-game download key.
+	logger.Debug("auth: trying butler Bearer path for game_id=%s", gameID)
+	butlerUploads, butlerErr := c.fetchAuthUploadsViaButler(apiKey, gameID)
+	if butlerErr == nil && len(butlerUploads) > 0 {
+		logger.Info("auth: butler Bearer path succeeded for game_id=%s (%d uploads)", gameID, len(butlerUploads))
+		return butlerUploads, "bearer", nil
+	}
+	if butlerErr != nil {
+		logger.Warn("auth: butler Bearer path failed: %v", butlerErr)
+	} else {
+		logger.Warn("auth: butler Bearer path returned no uploads for game_id=%s", gameID)
+	}
+
 	downloadKeyID := fmt.Sprintf("%d", key.ID)
 	// downloadKeyID not logged — it ties the request to the user's account.
 
-	// Step 2: list uploads via the simple API. The simple API (itch.io/api/1)
+	// 2e. Last resort: list uploads via the simple API. The simple API (itch.io/api/1)
 	// accepts both direct-purchase keys and bundle keys. The URL contains the API
 	// key; do not log it.
 	uploadsURL := fmt.Sprintf("%s/api/1/%s/game/%s/uploads?download_key_id=%s",
@@ -309,6 +325,120 @@ func (c *Client) findDownloadsURLForGame(apiKey, gameID string) (downloadsURL, k
 	}
 	logger.Warn("auth: paginated scan: game_id=%s not found in owned-keys pages", gameID)
 	return
+}
+
+// fetchAuthUploadsViaButler lists uploads for a game using the butler API with Bearer
+// auth. This works when the user owns the game via a bundle and itch.io issues no
+// per-game download key — account ownership is enough.
+func (c *Client) fetchAuthUploadsViaButler(apiKey, gameID string) ([]Upload, error) {
+	req, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/games/%s/uploads", c.butler, gameID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build butler uploads request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	logger.Debug("auth: butler: GET /games/%s/uploads", gameID)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("butler uploads request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("butler uploads read: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		logger.Warn("auth: butler uploads HTTP %d: %.200s", resp.StatusCode, rawBody)
+		return nil, fmt.Errorf("butler uploads: HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Uploads []struct {
+			ID       int64  `json:"id"`
+			Filename string `json:"filename"`
+		} `json:"uploads"`
+	}
+	if err := json.Unmarshal(rawBody, &result); err != nil {
+		logger.Error("auth: butler uploads decode: %v (body: %.200s)", err, rawBody)
+		return nil, fmt.Errorf("butler uploads decode: %w", err)
+	}
+
+	var uploads []Upload
+	for _, u := range result.Uploads {
+		ext := strings.ToLower(filepath.Ext(u.Filename))
+		uploadIDStr := fmt.Sprintf("%d", u.ID)
+		if ext == ".gb" || ext == ".gbc" || ext == ".zip" {
+			uploads = append(uploads, Upload{
+				Filename: u.Filename,
+				UploadID: uploadIDStr,
+			})
+			logger.Debug("auth: butler: found ROM %s id=%d", u.Filename, u.ID)
+		} else if !isSkippableExt(ext) {
+			uploads = append(uploads, Upload{
+				Filename:    u.Filename,
+				UploadID:    uploadIDStr,
+				NeedsFormat: true,
+			})
+			logger.Debug("auth: butler: found unknown-format %s id=%d", u.Filename, u.ID)
+		} else {
+			logger.Debug("auth: butler: skipping %s (ext=%q)", u.Filename, ext)
+		}
+	}
+
+	knownCount := 0
+	for _, u := range uploads {
+		if !u.NeedsFormat {
+			knownCount++
+		}
+	}
+	logger.Debug("auth: butler: %d known ROM(s), %d unknown-format, %d total uploads",
+		knownCount, len(uploads)-knownCount, len(result.Uploads))
+	return uploads, nil
+}
+
+// DownloadAuthBearer resolves the CDN URL for an upload using the butler API with
+// Bearer auth and streams it to dest. Used when the game was acquired via a bundle
+// and no per-game download key is available.
+func (c *Client) DownloadAuthBearer(apiKey, uploadID, dest string, progress func(int64, int64)) error {
+	req, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/uploads/%s/download", c.butler, uploadID), nil)
+	if err != nil {
+		return fmt.Errorf("build bearer download request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	logger.Debug("auth: bearer: resolving CDN for upload id=%s", uploadID)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("bearer download resolve: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("auth: bearer download HTTP %d", resp.StatusCode)
+		return fmt.Errorf("bearer download resolve: HTTP %d", resp.StatusCode)
+	}
+
+	var result struct {
+		URL    string   `json:"url"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("bearer download decode: %w", err)
+	}
+	if len(result.Errors) > 0 {
+		logger.Error("auth: bearer download error: %s", strings.Join(result.Errors, "; "))
+		return fmt.Errorf("bearer download error: %s", strings.Join(result.Errors, "; "))
+	}
+	if result.URL == "" {
+		logger.Error("auth: bearer download: empty CDN URL")
+		return fmt.Errorf("bearer download: empty CDN URL")
+	}
+
+	logger.Info("auth: bearer: streaming to %s", dest)
+	return c.streamToFile(result.URL, dest, progress)
 }
 
 // DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
