@@ -15,7 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
-    "v1.0.8": "Fix the +50 owned games issue when the API returns an empty page response because there's not 51 games."
+    "v1.0.8": "Fix the +50 owned games issue when the API returns an empty page response because there's not 51 games.",
     "v1.0.7": "Advanced logging, API key testing, game inventory, file management, purchase picker for games bought multiple times (individual and bundle), shows bundle names in picker, faster game detail scrolling. Fix coverart not shown properly.",
     "v1.0.6": "More robust handling of Cloudflare checks, download of cover art, handle game page with .zip filenames.",
     "v1.0.5": "Trasnparant gamelist caching, better scrolling in general, support asian fonts through Noto Sans JP.",
