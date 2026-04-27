@@ -4,18 +4,30 @@ package renderer
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
 )
 
+// fallbackFont pairs main + small TTF fonts for a single fallback script file,
+// together with its parsed cmap ranges for fast glyph lookup.
+type fallbackFont struct {
+	main, small *ttf.Font
+	ranges      []cmapRange
+}
+
 type Renderer struct {
-	Window    *sdl.Window
-	Renderer  *sdl.Renderer
-	Font      *ttf.Font  // main font (~35px at 768)
-	SmallFont *ttf.Font  // hint/footer font (~24px at 768)
-	W, H      int32
+	Window        *sdl.Window
+	Renderer      *sdl.Renderer
+	Font          *ttf.Font   // main font (~35px at 768)
+	SmallFont     *ttf.Font   // hint/footer font (~24px at 768)
+	primaryRanges []cmapRange // codepoints covered by Font, parsed at init
+	fallbacks     []fallbackFont
+	W, H          int32
 }
 
 func New(title string, w, h int) (*Renderer, error) {
@@ -59,13 +71,51 @@ func New(title string, w, h int) (*Renderer, error) {
 		return nil, fmt.Errorf("open small font: %w", err)
 	}
 
-	return &Renderer{
+	r := &Renderer{
 		Window: win, Renderer: ren, Font: font, SmallFont: smallFont,
 		W: int32(w), H: int32(h),
-	}, nil
+		primaryRanges: buildGlyphRanges("assets/font.ttf"),
+	}
+	if r.primaryRanges == nil {
+		logger.Warn("renderer: could not parse primary font cmap; fallback fonts disabled")
+	}
+
+	// Load all assets/font_fallback_*.ttf files alphabetically.
+	// Each covers a different script family (Arabic, Hebrew, Thai, Devanagari…).
+	paths, _ := filepath.Glob("assets/font_fallback_*.ttf")
+	sort.Strings(paths)
+	for _, path := range paths {
+		main, err := ttf.OpenFont(path, fontSize)
+		if err != nil {
+			logger.Warn("renderer: could not open fallback font %s: %v", filepath.Base(path), err)
+			continue
+		}
+		small, err := ttf.OpenFont(path, smallSize)
+		if err != nil {
+			main.Close()
+			logger.Warn("renderer: could not open fallback font (small) %s: %v", filepath.Base(path), err)
+			continue
+		}
+		r.fallbacks = append(r.fallbacks, fallbackFont{
+			main:   main,
+			small:  small,
+			ranges: buildGlyphRanges(path),
+		})
+		logger.Info("renderer: fallback font loaded: %s", filepath.Base(path))
+	}
+
+	return r, nil
 }
 
 func (r *Renderer) Close() {
+	for _, fb := range r.fallbacks {
+		if fb.small != nil {
+			fb.small.Close()
+		}
+		if fb.main != nil {
+			fb.main.Close()
+		}
+	}
 	if r.SmallFont != nil {
 		r.SmallFont.Close()
 	}
@@ -91,38 +141,80 @@ func (r *Renderer) Present() {
 	r.Renderer.Present()
 }
 
+// fontIndex returns 0 if the primary font covers ch, or the 1-based index of
+// the first fallback font that covers it, or 0 if no fallback covers it either
+// (rendering will use the primary font and may show tofu).
+func (r *Renderer) fontIndex(ch rune) int {
+	if r.primaryRanges == nil || inRanges(r.primaryRanges, ch) {
+		return 0
+	}
+	for i, fb := range r.fallbacks {
+		if fb.ranges == nil || inRanges(fb.ranges, ch) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// mainFont returns the main-size font for the given font index.
+func (r *Renderer) mainFont(idx int) *ttf.Font {
+	if idx > 0 && idx-1 < len(r.fallbacks) {
+		return r.fallbacks[idx-1].main
+	}
+	return r.Font
+}
+
+// smallFont returns the small-size font for the given font index.
+func (r *Renderer) smallFont(idx int) *ttf.Font {
+	if idx > 0 && idx-1 < len(r.fallbacks) {
+		return r.fallbacks[idx-1].small
+	}
+	return r.SmallFont
+}
+
 func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
 	r.Renderer.SetDrawColor(red, green, blue, 255)
 	r.Renderer.FillRect(&sdl.Rect{X: x, Y: y, W: w, H: h})
 }
 
 func (r *Renderer) DrawText(text string, x, y int32, red, green, blue uint8) error {
-	text = sanitizeText(text)
-	surface, err := r.Font.RenderUTF8Blended(text, sdl.Color{R: red, G: green, B: blue, A: 255})
-	if err != nil {
-		return err
+	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
+	color := sdl.Color{R: red, G: green, B: blue, A: 255}
+	cx := x
+	for _, run := range runs {
+		font := r.mainFont(run.fontIdx)
+		surface, err := font.RenderUTF8Blended(run.text, color)
+		if err != nil {
+			return err
+		}
+		texture, err := r.Renderer.CreateTextureFromSurface(surface)
+		surface.Free()
+		if err != nil {
+			return err
+		}
+		_, _, tw, th, _ := texture.Query()
+		r.Renderer.Copy(texture, nil, &sdl.Rect{X: cx, Y: y, W: tw, H: th})
+		texture.Destroy()
+		cx += tw
 	}
-	defer surface.Free()
-
-	texture, err := r.Renderer.CreateTextureFromSurface(surface)
-	if err != nil {
-		return err
-	}
-	defer texture.Destroy()
-
-	_, _, tw, th, _ := texture.Query()
-	r.Renderer.Copy(texture, nil, &sdl.Rect{X: x, Y: y, W: tw, H: th})
 	return nil
 }
 
 // TextSize returns the pixel width and height of text without drawing it.
 func (r *Renderer) TextSize(text string) (int32, int32) {
-	text = sanitizeText(text)
-	w, h, err := r.Font.SizeUTF8(text)
-	if err != nil {
-		return 0, 0
+	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
+	var totalW, maxH int32
+	for _, run := range runs {
+		w, h, err := r.mainFont(run.fontIdx).SizeUTF8(run.text)
+		if err != nil {
+			continue
+		}
+		totalW += int32(w)
+		if int32(h) > maxH {
+			maxH = int32(h)
+		}
 	}
-	return int32(w), int32(h)
+	return totalW, maxH
 }
 
 // DrawBoldText renders text using SDL_ttf bold style synthesis.
@@ -168,6 +260,7 @@ func (r *Renderer) ClearClipRect() {
 
 // WrapText breaks text into lines that fit within maxWidth pixels.
 func (r *Renderer) WrapText(text string, maxWidth int32) []string {
+	// Sanitize once up front so measurements (via TextSize) match rendering.
 	text = sanitizeText(text)
 	var lines []string
 	for _, paragraph := range splitLines(text) {
@@ -213,30 +306,43 @@ func splitWords(s string) []string {
 
 // DrawSmallText draws text using the small hint font.
 func (r *Renderer) DrawSmallText(text string, x, y int32, red, green, blue uint8) error {
-	text = sanitizeText(text)
-	surface, err := r.SmallFont.RenderUTF8Blended(text, sdl.Color{R: red, G: green, B: blue, A: 255})
-	if err != nil {
-		return err
+	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
+	color := sdl.Color{R: red, G: green, B: blue, A: 255}
+	cx := x
+	for _, run := range runs {
+		font := r.smallFont(run.fontIdx)
+		surface, err := font.RenderUTF8Blended(run.text, color)
+		if err != nil {
+			return err
+		}
+		texture, err := r.Renderer.CreateTextureFromSurface(surface)
+		surface.Free()
+		if err != nil {
+			return err
+		}
+		_, _, tw, th, _ := texture.Query()
+		r.Renderer.Copy(texture, nil, &sdl.Rect{X: cx, Y: y, W: tw, H: th})
+		texture.Destroy()
+		cx += tw
 	}
-	defer surface.Free()
-	texture, err := r.Renderer.CreateTextureFromSurface(surface)
-	if err != nil {
-		return err
-	}
-	defer texture.Destroy()
-	_, _, tw, th, _ := texture.Query()
-	r.Renderer.Copy(texture, nil, &sdl.Rect{X: x, Y: y, W: tw, H: th})
 	return nil
 }
 
 // SmallTextSize returns the pixel width and height of text in the small font.
 func (r *Renderer) SmallTextSize(text string) (int32, int32) {
-	text = sanitizeText(text)
-	w, h, err := r.SmallFont.SizeUTF8(text)
-	if err != nil {
-		return 0, 0
+	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
+	var totalW, maxH int32
+	for _, run := range runs {
+		w, h, err := r.smallFont(run.fontIdx).SizeUTF8(run.text)
+		if err != nil {
+			continue
+		}
+		totalW += int32(w)
+		if int32(h) > maxH {
+			maxH = int32(h)
+		}
 	}
-	return int32(w), int32(h)
+	return totalW, maxH
 }
 
 // DrawHeaderBar draws the standard dark header bar, separator, and returns the

@@ -1,6 +1,6 @@
 {
   "name": "Itch-io",
-  "version": "v1.0.9",
+  "version": "v1.0.10",
   "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
@@ -15,6 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
+    "v1.0.10": "Add support for Arabic, Hebrew, Thai, Devanagari, Greek, and many more non-CJK fonts.",
     "v1.0.9": "Implement basic sorting in Game List",
     "v1.0.8": "Fix the +50 owned games issue when the API returns an empty page response because there's not 51 games.",
     "v1.0.7": "Advanced logging, API key testing, game inventory, file management, purchase picker for games bought multiple times (individual and bundle), shows bundle names in picker, faster game detail scrolling. Fix coverart not shown properly.",
