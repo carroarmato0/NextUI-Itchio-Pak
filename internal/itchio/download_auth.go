@@ -124,7 +124,7 @@ func (c *Client) FetchOwnedKeys(apiKey, gameID string) ([]OwnedKey, error) {
 	}
 
 	if len(matches) == 0 {
-		return nil, fmt.Errorf("game not owned or API key invalid (game_id=%s not found in owned keys)", gameID)
+		return nil, fmt.Errorf("Game not owned or API key invalid (game_id=%s not found in owned keys)", gameID)
 	}
 	logger.Debug("auth: found %d owned key(s) for game_id=%s", len(matches), gameID)
 	return matches, nil
@@ -139,7 +139,10 @@ func AnnotateBundleNames(keys []OwnedKey, bundleNames []string) []OwnedKey {
 		return keys
 	}
 	// Collect indices of bundle keys in ascending CreatedAt order.
-	type indexedKey struct{ idx int; t time.Time }
+	type indexedKey struct {
+		idx int
+		t   time.Time
+	}
 	var bundleIdxs []indexedKey
 	for i, k := range keys {
 		if k.BundleSize > 1 {
@@ -182,7 +185,7 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 		logger.Warn("auth: upload list HTTP %d — key may not grant access to this game", resp.StatusCode)
-		return nil, fmt.Errorf("game not owned or API key does not grant access to this game's downloads")
+		return nil, fmt.Errorf("Game not owned or API key does not grant access to this game's downloads")
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("auth: upload list HTTP %d", resp.StatusCode)
