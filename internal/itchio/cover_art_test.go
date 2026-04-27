@@ -69,14 +69,14 @@ func TestDownloadCoverArtHTTP404(t *testing.T) {
 	dir := t.TempDir()
 	romPath := filepath.Join(dir, "game.gbc")
 
-	if err := c.DownloadCoverArt(srv.URL+"/cover.jpg", romPath); err == nil {
+	if err := c.DownloadCoverArt(srv.URL+"/cover.png", romPath); err == nil {
 		t.Fatal("expected error for HTTP 404, got nil")
 	} else if !strings.Contains(err.Error(), "404") {
 		t.Errorf("expected error to mention 404, got: %v", err)
 	}
 }
 
-// TestDownloadCoverArtSuccess verifies a JPEG is saved as .jpg with correct name.
+// TestDownloadCoverArtSuccess verifies a JPEG source is saved as .png with correct name.
 func TestDownloadCoverArtSuccess(t *testing.T) {
 	imgBytes := minimalJPEG()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -89,11 +89,11 @@ func TestDownloadCoverArtSuccess(t *testing.T) {
 	dir := t.TempDir()
 	romPath := filepath.Join(dir, "Wario Land II.gbc")
 
-	if err := c.DownloadCoverArt(srv.URL+"/cover.jpg", romPath); err != nil {
+	if err := c.DownloadCoverArt(srv.URL+"/cover.png", romPath); err != nil {
 		t.Fatalf("DownloadCoverArt: %v", err)
 	}
 
-	artPath := filepath.Join(dir, ".media", "Wario Land II.jpg")
+	artPath := filepath.Join(dir, ".media", "Wario Land II.png")
 	fi, err := os.Stat(artPath)
 	if os.IsNotExist(err) {
 		t.Fatalf("expected art file at %s, not found", artPath)
@@ -103,9 +103,9 @@ func TestDownloadCoverArtSuccess(t *testing.T) {
 	}
 }
 
-// TestDownloadCoverArtGIFConvertedToJPEG verifies that a GIF source is decoded
-// and re-encoded as JPEG (so NextUI can display it).
-func TestDownloadCoverArtGIFConvertedToJPEG(t *testing.T) {
+// TestDownloadCoverArtGIFConvertedToPNG verifies that a GIF source is decoded
+// and re-encoded as PNG (the only format NextUI displays for cover art).
+func TestDownloadCoverArtGIFConvertedToPNG(t *testing.T) {
 	gifBytes := minimalGIF()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/gif")
@@ -121,22 +121,22 @@ func TestDownloadCoverArtGIFConvertedToJPEG(t *testing.T) {
 		t.Fatalf("DownloadCoverArt (gif): %v", err)
 	}
 
-	// Must be saved as .jpg, not .gif
-	artPath := filepath.Join(dir, ".media", "Opossum Country.jpg")
+	// Must be saved as .png, not .gif
+	artPath := filepath.Join(dir, ".media", "Opossum Country.png")
 	fi, err := os.Stat(artPath)
 	if os.IsNotExist(err) {
-		t.Fatalf("expected .jpg at %s (gif should be converted), not found", artPath)
+		t.Fatalf("expected .png at %s (gif should be converted), not found", artPath)
 	}
 	if fi.Size() == 0 {
 		t.Errorf("art file at %s is empty", artPath)
 	}
 	if _, gifErr := os.Stat(filepath.Join(dir, ".media", "Opossum Country.gif")); !os.IsNotExist(gifErr) {
-		t.Errorf(".gif file must not be saved; only .jpg should exist")
+		t.Errorf(".gif file must not be saved; only .png should exist")
 	}
 }
 
-// TestDownloadCoverArtPNGConvertedToJPEG verifies PNG is also re-encoded as JPEG.
-func TestDownloadCoverArtPNGConvertedToJPEG(t *testing.T) {
+// TestDownloadCoverArtPNGRoundTrip verifies PNG source is saved as PNG.
+func TestDownloadCoverArtPNGRoundTrip(t *testing.T) {
 	pngBytes := minimalPNG()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
@@ -152,9 +152,9 @@ func TestDownloadCoverArtPNGConvertedToJPEG(t *testing.T) {
 		t.Fatalf("DownloadCoverArt (png): %v", err)
 	}
 
-	artPath := filepath.Join(dir, ".media", "game.jpg")
+	artPath := filepath.Join(dir, ".media", "game.png")
 	if _, err := os.Stat(artPath); os.IsNotExist(err) {
-		t.Fatalf("expected .jpg at %s (png should be converted), not found", artPath)
+		t.Fatalf("expected .png at %s (png should be converted), not found", artPath)
 	}
 }
 
@@ -173,24 +173,24 @@ func TestDownloadCoverArtFullStemPreserved(t *testing.T) {
 	dir := t.TempDir()
 	romPath := filepath.Join(dir, "Kero Kero Cowboy [v1.2].gbc")
 
-	if err := c.DownloadCoverArt(srv.URL+"/cover.jpg", romPath); err != nil {
+	if err := c.DownloadCoverArt(srv.URL+"/cover.png", romPath); err != nil {
 		t.Fatalf("DownloadCoverArt: %v", err)
 	}
 
-	// Full stem must be preserved: "Kero Kero Cowboy [v1.2].jpg"
-	artPath := filepath.Join(dir, ".media", "Kero Kero Cowboy [v1.2].jpg")
+	// Full stem must be preserved: "Kero Kero Cowboy [v1.2].png"
+	artPath := filepath.Join(dir, ".media", "Kero Kero Cowboy [v1.2].png")
 	if _, err := os.Stat(artPath); os.IsNotExist(err) {
 		t.Fatalf("expected art at %q (full stem), not found", artPath)
 	}
 	// Stripped name must NOT exist
-	if _, err := os.Stat(filepath.Join(dir, ".media", "Kero Kero Cowboy.jpg")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, ".media", "Kero Kero Cowboy.png")); !os.IsNotExist(err) {
 		t.Errorf("stripped filename should not exist; full stem must be preserved")
 	}
 }
 
 // TestDownloadCoverArtStaleFilesCleaned verifies that an old art file with the
 // same stem but a different extension (e.g. a stale .gif) is removed when the
-// new .jpg is saved.
+// new .png is saved.
 func TestDownloadCoverArtStaleFilesCleaned(t *testing.T) {
 	imgBytes := minimalJPEG()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -211,13 +211,13 @@ func TestDownloadCoverArtStaleFilesCleaned(t *testing.T) {
 	}
 
 	romPath := filepath.Join(dir, "Opossum Country.gbc")
-	if err := c.DownloadCoverArt(srv.URL+"/cover.jpg", romPath); err != nil {
+	if err := c.DownloadCoverArt(srv.URL+"/cover.png", romPath); err != nil {
 		t.Fatalf("DownloadCoverArt: %v", err)
 	}
 
-	// New .jpg must exist.
-	if _, err := os.Stat(filepath.Join(mediaDir, "Opossum Country.jpg")); os.IsNotExist(err) {
-		t.Fatalf("expected Opossum Country.jpg to exist after download")
+	// New .png must exist.
+	if _, err := os.Stat(filepath.Join(mediaDir, "Opossum Country.png")); os.IsNotExist(err) {
+		t.Fatalf("expected Opossum Country.png to exist after download")
 	}
 	// Stale .gif must be gone.
 	if _, err := os.Stat(staleGIF); !os.IsNotExist(err) {

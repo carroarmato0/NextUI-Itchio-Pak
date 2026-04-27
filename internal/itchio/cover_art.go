@@ -6,8 +6,8 @@ import (
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
-	"image/jpeg"
 	_ "image/png"
+	"image/png"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,10 +23,10 @@ func coverArtBasename(romDestPath string) string {
 	return strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
 }
 
-// DownloadCoverArt fetches the cover image at coverURL and saves it as a JPEG
+// DownloadCoverArt fetches the cover image at coverURL and saves it as a PNG
 // into the .media/ subdirectory of the ROM's directory. The filename is the
-// exact ROM stem (matching NextUI's art lookup convention) with a .jpg extension.
-// GIF, PNG, and other formats are all re-encoded as JPEG. Any stale art files
+// exact ROM stem (matching NextUI's art lookup convention) with a .png extension.
+// GIF, JPEG, and other formats are all re-encoded as PNG. Any stale art files
 // with the same stem but a different extension are removed. Returns nil for an
 // empty coverURL.
 func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
@@ -42,7 +42,7 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 	}
 
 	base := coverArtBasename(romDestPath)
-	artPath := filepath.Join(mediaDir, base+".jpg")
+	artPath := filepath.Join(mediaDir, base+".png")
 
 	logger.Info("cover-art: downloading for %s", filepath.Base(romDestPath))
 
@@ -80,9 +80,9 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 		os.Remove(tmpPath) // no-op after successful rename
 	}()
 
-	if err := jpeg.Encode(tmp, img, &jpeg.Options{Quality: 90}); err != nil {
-		logger.Error("cover-art: encode jpeg: %v", err)
-		return fmt.Errorf("cover-art: encode jpeg: %w", err)
+	if err := png.Encode(tmp, img); err != nil {
+		logger.Error("cover-art: encode png: %v", err)
+		return fmt.Errorf("cover-art: encode png: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		logger.Error("cover-art: close temp %s: %v", tmpPath, err)

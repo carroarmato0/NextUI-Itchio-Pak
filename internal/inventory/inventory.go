@@ -206,5 +206,5 @@ func CoverArtPath(coverURL, romDestPath string) string {
 	}
 	base := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
 	dir := filepath.Dir(romDestPath)
-	return filepath.Join(dir, ".media", base+".jpg")
+	return filepath.Join(dir, ".media", base+".png")
 }

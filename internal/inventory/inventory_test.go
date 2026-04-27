@@ -289,8 +289,8 @@ func TestCoverArtPath_WithPNGCover(t *testing.T) {
 		"https://img.itch.zone/abc/cover.png",
 		"/mnt/SDCARD/Roms/Game Boy (GB)/my-game.gb",
 	)
-	// Cover art is always stored as .jpg regardless of source format.
-	want := "/mnt/SDCARD/Roms/Game Boy (GB)/.media/my-game.jpg"
+	// Cover art is always stored as .png regardless of source format.
+	want := "/mnt/SDCARD/Roms/Game Boy (GB)/.media/my-game.png"
 	if got != want {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}
@@ -308,8 +308,8 @@ func TestCoverArtPath_NoExtensionInURL(t *testing.T) {
 		"https://img.itch.zone/abc/coverimage",
 		"/roms/game.gb",
 	)
-	// Always .jpg regardless of whether source URL has an extension.
-	want := "/roms/.media/game.jpg"
+	// Always .png regardless of whether source URL has an extension.
+	want := "/roms/.media/game.png"
 	if got != want {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}
@@ -318,10 +318,10 @@ func TestCoverArtPath_NoExtensionInURL(t *testing.T) {
 func TestCoverArtPath_FullStemPreserved(t *testing.T) {
 	// NextUI looks up cover art by the full ROM stem (including [v1.2]).
 	got := inventory.CoverArtPath(
-		"https://img.itch.zone/abc/cover.jpg",
+		"https://img.itch.zone/abc/cover.png",
 		"/roms/Game Boy Color (GBC)/Kero Kero Cowboy [v1.2].gbc",
 	)
-	want := "/roms/Game Boy Color (GBC)/.media/Kero Kero Cowboy [v1.2].jpg"
+	want := "/roms/Game Boy Color (GBC)/.media/Kero Kero Cowboy [v1.2].png"
 	if got != want {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}
