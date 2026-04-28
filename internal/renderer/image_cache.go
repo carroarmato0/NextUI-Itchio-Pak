@@ -70,15 +70,32 @@ func NewImageCache(maxEntries int) *ImageCache {
 // When nil is returned a background fetch is started; call Get again on the
 // next Draw cycle to pick up the result once it arrives.
 // Must be called from the SDL main thread.
-func (c *ImageCache) Get(_ *Renderer, url string) *sdl.Texture {
+func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
 	c.mu.Lock()
 	if el, ok := c.items[url]; ok {
 		c.lru.MoveToFront(el)
 		entry := el.Value.(*cacheEntry)
 		if entry.anim != nil {
 			if idx, advanced := entry.anim.advance(time.Now()); advanced {
-				if err := entry.texture.Update(nil, unsafe.Pointer(&entry.anim.frames[idx][0]), entry.anim.pitch); err != nil {
-					log.Printf("image cache: texture update frame %d: %v", idx, err)
+				framePix := entry.anim.frames[idx]
+				surface, surfErr := sdl.CreateRGBSurfaceFrom(
+					unsafe.Pointer(&framePix[0]),
+					entry.anim.w, entry.anim.h,
+					32, entry.anim.pitch,
+					0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
+				)
+				if surfErr != nil {
+					log.Printf("image cache: advance frame %d surface: %v", idx, surfErr)
+				} else {
+					newTex, texErr := r.Renderer.CreateTextureFromSurface(surface)
+					surface.Free()
+					runtime.KeepAlive(framePix)
+					if texErr != nil {
+						log.Printf("image cache: advance frame %d texture: %v", idx, texErr)
+					} else {
+						entry.texture.Destroy()
+						entry.texture = newTex
+					}
 				}
 			}
 		}
@@ -126,50 +143,27 @@ func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
 		return
 	}
 
-	var tex *sdl.Texture
-	var err error
+	surface, surfErr := sdl.CreateRGBSurfaceFrom(
+		unsafe.Pointer(&raw.pix[0]),
+		raw.w, raw.h,
+		32, raw.pitch,
+		0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
+	)
+	if surfErr != nil {
+		log.Printf("image cache: create surface: %v", surfErr)
+		return
+	}
+	tex, err := r.Renderer.CreateTextureFromSurface(surface)
+	surface.Free()
+	runtime.KeepAlive(raw.pix)
+	if err != nil {
+		log.Printf("image cache: create texture from surface: %v", err)
+		return
+	}
 
 	if raw.anim != nil {
-		// Streaming texture: supports in-place pixel updates via texture.Update().
-		// SDL_PIXELFORMAT_ABGR8888 = RGBA in memory order on little-endian (matches image.RGBA.Pix).
-		tex, err = r.Renderer.CreateTexture(
-			sdl.PIXELFORMAT_ABGR8888,
-			sdl.TEXTUREACCESS_STREAMING,
-			raw.w, raw.h,
-		)
-		if err != nil {
-			log.Printf("image cache: create streaming texture: %v", err)
-			return
-		}
-		if err = tex.SetBlendMode(sdl.BLENDMODE_BLEND); err != nil {
-			log.Printf("image cache: set blend mode: %v", err)
-			tex.Destroy()
-			return
-		}
-		if err = tex.Update(nil, unsafe.Pointer(&raw.pix[0]), raw.pitch); err != nil {
-			log.Printf("image cache: texture update (frame 0): %v", err)
-			tex.Destroy()
-			return
-		}
-	} else {
-		// Static image: existing surface-based path.
-		surface, surfErr := sdl.CreateRGBSurfaceFrom(
-			unsafe.Pointer(&raw.pix[0]),
-			raw.w, raw.h,
-			32, raw.pitch,
-			0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
-		)
-		if surfErr != nil {
-			log.Printf("image cache: create surface: %v", surfErr)
-			return
-		}
-		tex, err = r.Renderer.CreateTextureFromSurface(surface)
-		surface.Free()
-		runtime.KeepAlive(raw.pix)
-		if err != nil {
-			log.Printf("image cache: create texture from surface: %v", err)
-			return
-		}
+		// Initialize nextAt so frame 0 is displayed for its full delay before advancing.
+		raw.anim.nextAt = time.Now().Add(raw.anim.delays[0])
 	}
 
 	c.mu.Lock()

@@ -252,6 +252,79 @@ func TestDownloadCoverArtAnimatedGIFComposited(t *testing.T) {
 	}
 }
 
+// gifHighBrightnessLowVariance returns a 2-frame animated GIF where frame 1 is
+// uniform gray (high brightness, zero colour variance) and frame 2 has one red
+// and one blue pixel (lower summed brightness, high colour variance).
+// DisposalNone means each frame is composited on top of the previous canvas;
+// frame 2's canvas result is [red, blue] which has a much higher per-channel
+// variance than frame 1's uniform gray.
+func gifHighBrightnessLowVariance() []byte {
+	palette := color.Palette{
+		color.RGBA{R: 100, G: 100, B: 100, A: 255}, // 0 = gray
+		color.RGBA{R: 255, G: 0, B: 0, A: 255},     // 1 = red
+		color.RGBA{R: 0, G: 0, B: 255, A: 255},     // 2 = blue
+	}
+
+	frame1 := image.NewPaletted(image.Rect(0, 0, 2, 1), palette)
+	frame1.SetColorIndex(0, 0, 0) // gray
+	frame1.SetColorIndex(1, 0, 0) // gray
+
+	frame2 := image.NewPaletted(image.Rect(0, 0, 2, 1), palette)
+	frame2.SetColorIndex(0, 0, 1) // red
+	frame2.SetColorIndex(1, 0, 2) // blue
+
+	g := &gif.GIF{
+		Image:    []*image.Paletted{frame1, frame2},
+		Delay:    []int{10, 10},
+		Disposal: []byte{gif.DisposalNone, gif.DisposalNone},
+		Config:   image.Config{Width: 2, Height: 1},
+	}
+	var buf bytes.Buffer
+	_ = gif.EncodeAll(&buf, g)
+	return buf.Bytes()
+}
+
+// TestDownloadCoverArtBestFrameByVariance verifies that the frame with the
+// highest colour variance is selected, not the one with the highest brightness.
+// A uniform-gray frame has higher total brightness than a red+blue frame, but
+// the red+blue frame has far greater per-channel variance and should be chosen.
+func TestDownloadCoverArtBestFrameByVariance(t *testing.T) {
+	gifBytes := gifHighBrightnessLowVariance()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/gif")
+		w.Write(gifBytes)
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "Colour Test.gb")
+
+	if err := c.DownloadCoverArt(srv.URL+"/cover.gif", romPath); err != nil {
+		t.Fatalf("DownloadCoverArt: %v", err)
+	}
+
+	artPath := filepath.Join(dir, ".media", "Colour Test.png")
+	f, err := os.Open(artPath)
+	if err != nil {
+		t.Fatalf("open saved PNG: %v", err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("decode saved PNG: %v", err)
+	}
+
+	// Pixel (0,0) of the high-variance frame is red (G≈0).
+	// The high-brightness frame is gray (G≈25700 in 16-bit range).
+	// If brightness metric was used, green channel would be high.
+	_, green, _, _ := img.At(0, 0).RGBA()
+	if green > 0x2000 {
+		t.Errorf("pixel (0,0) green channel = 0x%04x; expected < 0x2000 (red pixel from high-variance frame); brightness metric selected wrong (gray) frame", green)
+	}
+}
+
 // TestDownloadCoverArtStaleFilesCleaned verifies that an old art file with the
 // same stem but a different extension (e.g. a stale .gif) is removed when the
 // new .png is saved.

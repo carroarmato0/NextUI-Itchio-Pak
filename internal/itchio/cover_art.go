@@ -20,8 +20,9 @@ import (
 
 // compositeGIFFrames renders an animated GIF using the standard GIF compositing
 // algorithm (disposal methods, frame offsets, background colour) and returns the
-// single rendered frame that has the highest total brightness. That frame is
-// typically the most visually complete, making it the best static thumbnail.
+// single rendered frame that has the highest per-channel colour variance. That
+// frame tends to be the most visually rich, avoiding uniform/beige frames that
+// score high on brightness but show little meaningful content.
 func compositeGIFFrames(g *gif.GIF) image.Image {
 	w, h := g.Config.Width, g.Config.Height
 	if w == 0 || h == 0 {
@@ -40,8 +41,8 @@ func compositeGIFFrames(g *gif.GIF) image.Image {
 	draw.Draw(canvas, bounds, bgFill, image.Point{}, draw.Src)
 
 	var (
-		bestCanvas *image.RGBA
-		bestSum    uint64
+		bestCanvas    *image.RGBA
+		bestVariance  float64
 	)
 
 	for i, frame := range g.Image {
@@ -59,9 +60,9 @@ func compositeGIFFrames(g *gif.GIF) image.Image {
 
 		draw.Draw(canvas, frame.Bounds(), frame, frame.Bounds().Min, draw.Over)
 
-		// Track the brightest rendered frame for use as the static thumbnail.
-		if sum := gifFrameBrightness(canvas); bestCanvas == nil || sum > bestSum {
-			bestSum = sum
+		// Track the most colour-varied rendered frame for use as the static thumbnail.
+		if v := gifFrameColorVariance(canvas); bestCanvas == nil || v > bestVariance {
+			bestVariance = v
 			bestCanvas = image.NewRGBA(bounds)
 			draw.Draw(bestCanvas, bounds, canvas, image.Point{}, draw.Src)
 		}
@@ -83,14 +84,30 @@ func compositeGIFFrames(g *gif.GIF) image.Image {
 	return canvas
 }
 
-// gifFrameBrightness sums all RGB channel values for the canvas, used to pick
-// the most visually complete frame from an animated GIF.
-func gifFrameBrightness(img *image.RGBA) uint64 {
-	var sum uint64
-	for i := 0; i < len(img.Pix); i += 4 {
-		sum += uint64(img.Pix[i]) + uint64(img.Pix[i+1]) + uint64(img.Pix[i+2])
+// gifFrameColorVariance returns the total per-channel variance of the rendered
+// frame. Frames with more colour variation score higher, so animated GIFs with
+// uniform/beige frames are not mistakenly chosen over richer ones.
+func gifFrameColorVariance(img *image.RGBA) float64 {
+	pixels := len(img.Pix) / 4
+	if pixels == 0 {
+		return 0
 	}
-	return sum
+	var sumR, sumG, sumB float64
+	for i := 0; i < len(img.Pix); i += 4 {
+		sumR += float64(img.Pix[i])
+		sumG += float64(img.Pix[i+1])
+		sumB += float64(img.Pix[i+2])
+	}
+	n := float64(pixels)
+	meanR, meanG, meanB := sumR/n, sumG/n, sumB/n
+	var v float64
+	for i := 0; i < len(img.Pix); i += 4 {
+		dr := float64(img.Pix[i]) - meanR
+		dg := float64(img.Pix[i+1]) - meanG
+		db := float64(img.Pix[i+2]) - meanB
+		v += dr*dr + dg*dg + db*db
+	}
+	return v
 }
 
 // coverArtBasename returns the exact ROM filename stem (no extension).
