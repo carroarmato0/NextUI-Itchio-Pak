@@ -150,7 +150,8 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				aR, aG, aB = 100, 100, 100
 			}
 			_, fh := r.TextSize("Ag")
-			r.DrawSmallText(annotation, ax, y+(fh-0)/2, aR, aG, aB)
+			_, sh := r.SmallTextSize(annotation)
+			r.DrawSmallText(annotation, ax, y+(fh-sh)/2, aR, aG, aB)
 		}
 	}
 
