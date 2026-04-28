@@ -3,12 +3,14 @@
 package renderer
 
 import (
+	"bytes"
 	"container/list"
 	"fmt"
 	"image"
-	_ "image/gif"
+	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"log"
 	"net/http"
 	"runtime"
@@ -17,6 +19,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/veandco/go-sdl2/sdl"
 	"golang.org/x/image/draw"
 )
@@ -24,14 +27,16 @@ import (
 type cacheEntry struct {
 	key     string
 	texture *sdl.Texture
+	anim    *gifAnim // nil for static images
 }
 
 // rawImage holds decoded pixel data ready to be uploaded to a GPU texture.
 type rawImage struct {
 	url   string
-	pix   []uint8
+	pix   []uint8  // frame 0 pixel data (or only frame for static images)
 	w, h  int32
 	pitch int
+	anim  *gifAnim // non-nil when source is an animated GIF
 }
 
 type ImageCache struct {
@@ -194,11 +199,33 @@ func (c *ImageCache) fetchRaw(url string) (rawImage, error) {
 		return rawImage{}, fmt.Errorf("fetch image: HTTP %d", resp.StatusCode)
 	}
 
-	img, _, err := image.Decode(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return rawImage{}, fmt.Errorf("fetch image: read body: %w", err)
+	}
+
+	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return rawImage{}, fmt.Errorf("decode image: %w", err)
 	}
 
+	// Detect animated GIF: re-decode with gif.DecodeAll and render all frames.
+	if format == "gif" {
+		if g, err2 := gif.DecodeAll(bytes.NewReader(data)); err2 == nil && len(g.Image) > 1 {
+			logger.Debug("image cache: animated GIF %s (%d frames)", url, len(g.Image))
+			anim := renderGIFFrames(g)
+			return rawImage{
+				url:   url,
+				pix:   anim.frames[0],
+				w:     anim.w,
+				h:     anim.h,
+				pitch: anim.pitch,
+				anim:  anim,
+			}, nil
+		}
+	}
+
+	// Static image path (unchanged).
 	img = resizeMax(img, 640)
 	bounds := img.Bounds()
 	rgba := image.NewRGBA(bounds)
