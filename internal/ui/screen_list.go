@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
@@ -69,6 +70,9 @@ type ListScreen struct {
 	inv           *inventory.Inventory
 	inventoryPath string
 	updateSvc     UpdateServicer
+
+	// cacheBuilding is set while buildCache / refreshCacheIfStale runs.
+	cacheBuilding atomic.Bool
 
 	// jumpToEnd signals that the next loadPage call should place the cursor on
 	// the last item rather than the first. Set when navigating to a previous page.
@@ -853,6 +857,12 @@ func (s *ListScreen) rebuildView() {
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }
 
+// IsBusy implements BusyChecker. Returns true while the background game-list
+// fetch/write goroutine is running.
+func (s *ListScreen) IsBusy() bool {
+	return s.cacheBuilding.Load()
+}
+
 // pageSlice returns the sub-slice of games for the given 1-based page number,
 // using the global PerPage constant. The returned slice shares backing memory
 // with games — callers must not mutate it.
@@ -871,6 +881,8 @@ func pageSlice(games []itchio.Game, page int) []itchio.Game {
 // buildCache fetches the complete game list and writes it to disk.
 // Called as a goroutine. On success, future page turns use the local cache.
 func (s *ListScreen) buildCache() {
+	s.cacheBuilding.Store(true)
+	defer s.cacheBuilding.Store(false)
 	logger.Info("cache: starting background full fetch")
 	// context.Background() is intentional: this goroutine is not cancellable on
 	// app exit. A future improvement could thread an app-level context here.
