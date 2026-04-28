@@ -93,6 +93,9 @@ func TestGIFAnimFrameAdvance(t *testing.T) {
 	a := &gifAnim{
 		frames: [][]uint8{make([]uint8, 4), make([]uint8, 4), make([]uint8, 4)},
 		delays: []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 150 * time.Millisecond},
+		w:      1,
+		h:      1,
+		pitch:  4,
 		cur:    0,
 		nextAt: base,
 	}
@@ -140,6 +143,9 @@ func TestGIFAnimAdvanceSingleFrame(t *testing.T) {
 	a := &gifAnim{
 		frames: [][]uint8{make([]uint8, 4)},
 		delays: []time.Duration{100 * time.Millisecond},
+		w:      1,
+		h:      1,
+		pitch:  4,
 		cur:    0,
 		nextAt: time.Now().Add(-time.Second),
 	}

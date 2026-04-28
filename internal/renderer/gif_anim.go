@@ -10,7 +10,10 @@ import (
 	"golang.org/x/image/draw"
 )
 
-const maxGIFFrames = 64
+const (
+	maxGIFFrames        = 64
+	gifZeroDelayDefault = 100 * time.Millisecond
+)
 
 // gifAnim holds the pre-rendered RGBA frames for one animated GIF.
 type gifAnim struct {
@@ -39,6 +42,9 @@ func (a *gifAnim) advance(now time.Time) (int, bool) {
 // silently dropped. All frames are scaled to at most 640 px wide (same factor
 // for every frame so dimensions are consistent).
 func renderGIFFrames(g *gif.GIF) *gifAnim {
+	if len(g.Image) == 0 {
+		return &gifAnim{}
+	}
 	srcW, srcH := g.Config.Width, g.Config.Height
 	if srcW == 0 || srcH == 0 {
 		b := g.Image[0].Bounds()
@@ -86,12 +92,11 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 
 		stdraw.Draw(canvas, frame.Bounds(), frame, frame.Bounds().Min, stdraw.Over)
 
-		// Scale and capture pixel data for this frame.
 		dst := image.NewRGBA(dstBounds)
 		if srcW == dstW {
 			stdraw.Draw(dst, dstBounds, canvas, image.Point{}, stdraw.Src)
 		} else {
-			draw.BiLinear.Scale(dst, dstBounds, canvas, srcBounds, draw.Over, nil)
+			draw.BiLinear.Scale(dst, dstBounds, canvas, srcBounds, draw.Src, nil)
 		}
 		pix := make([]uint8, len(dst.Pix))
 		copy(pix, dst.Pix)
@@ -102,7 +107,7 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 			d = g.Delay[i]
 		}
 		if d == 0 {
-			delays[i] = 100 * time.Millisecond
+			delays[i] = gifZeroDelayDefault
 		} else {
 			delays[i] = time.Duration(d) * 10 * time.Millisecond
 		}
