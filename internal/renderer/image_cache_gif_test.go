@@ -139,6 +139,32 @@ func TestGIFAnimFrameAdvance(t *testing.T) {
 	}
 }
 
+// TestRenderGIFFramesSamplingPreservesDuration verifies that when a GIF exceeds
+// the frame cap the total animation duration (sum of all source delays) is
+// preserved in the stored frames, so the animation doesn't loop too early.
+func TestRenderGIFFramesSamplingPreservesDuration(t *testing.T) {
+	const totalSrc = maxGIFFrames * 4 // well above cap
+	delays := make([]int, totalSrc)
+	for i := range delays {
+		delays[i] = 10 // 10cs = 100ms each → total 10cs*4*maxGIFFrames
+	}
+	g := makeTestGIF(totalSrc, delays)
+	anim := renderGIFFrames(g)
+
+	if len(anim.frames) != maxGIFFrames {
+		t.Fatalf("expected %d stored frames, got %d", maxGIFFrames, len(anim.frames))
+	}
+
+	var totalStored time.Duration
+	for _, d := range anim.delays {
+		totalStored += d
+	}
+	wantTotal := time.Duration(totalSrc) * 100 * time.Millisecond // 10cs * 10ms/cs = 100ms per frame
+	if totalStored != wantTotal {
+		t.Errorf("total stored duration = %v, want %v (full animation duration must be preserved)", totalStored, wantTotal)
+	}
+}
+
 func TestGIFAnimAdvanceSingleFrame(t *testing.T) {
 	a := &gifAnim{
 		frames: [][]uint8{make([]uint8, 4)},

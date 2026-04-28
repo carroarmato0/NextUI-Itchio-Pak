@@ -38,13 +38,16 @@ func (a *gifAnim) advance(now time.Time) (int, bool) {
 
 // renderGIFFrames renders every frame of g using the standard GIF compositing
 // algorithm (disposal methods, frame offsets, background colour) and returns a
-// gifAnim with one RGBA pixel slice per frame. Frames beyond maxGIFFrames are
-// silently dropped. All frames are scaled to at most 640 px wide (same factor
-// for every frame so dimensions are consistent).
+// gifAnim with up to maxGIFFrames RGBA pixel slices. When the GIF has more
+// frames than the cap, frames are sampled evenly across the full animation so
+// the complete duration is preserved rather than truncating at frame N. The
+// delay of each stored frame is the sum of the delays of all source frames it
+// covers. All frames are scaled to at most 640 px wide.
 func renderGIFFrames(g *gif.GIF) *gifAnim {
 	if len(g.Image) == 0 {
 		return &gifAnim{}
 	}
+	total := len(g.Image)
 	srcW, srcH := g.Config.Width, g.Config.Height
 	if srcW == 0 || srcH == 0 {
 		b := g.Image[0].Bounds()
@@ -52,7 +55,6 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 	}
 	srcBounds := image.Rect(0, 0, srcW, srcH)
 
-	// Compute destination size (applied identically to every frame).
 	dstW, dstH := srcW, srcH
 	if srcW > 640 {
 		dstH = srcH * 640 / srcW
@@ -69,15 +71,42 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 	canvas := image.NewRGBA(srcBounds)
 	stdraw.Draw(canvas, srcBounds, bgFill, image.Point{}, stdraw.Src)
 
-	limit := len(g.Image)
-	if limit > maxGIFFrames {
-		limit = maxGIFFrames
+	stored := total
+	if stored > maxGIFFrames {
+		stored = maxGIFFrames
 	}
 
-	frames := make([][]uint8, limit)
-	delays := make([]time.Duration, limit)
+	// Pre-compute which source frame index maps to each stored slot, and the
+	// accumulated delay for that slot (sum of all source-frame delays it covers).
+	sampleSrc := make([]int, stored)    // source frame index to snapshot
+	delays := make([]time.Duration, stored)
+	for k := 0; k < stored; k++ {
+		sampleSrc[k] = k * total / stored
+	}
+	sampleSet := make(map[int]int, stored) // source idx → stored slot
+	for k, idx := range sampleSrc {
+		sampleSet[idx] = k
+	}
+	for k := 0; k < stored; k++ {
+		start := sampleSrc[k]
+		end := total
+		if k+1 < stored {
+			end = sampleSrc[k+1]
+		}
+		acc := 0
+		for j := start; j < end && j < len(g.Delay); j++ {
+			acc += g.Delay[j]
+		}
+		if acc == 0 {
+			delays[k] = gifZeroDelayDefault
+		} else {
+			delays[k] = time.Duration(acc) * 10 * time.Millisecond
+		}
+	}
 
-	for i := 0; i < limit; i++ {
+	frames := make([][]uint8, stored)
+
+	for i := 0; i < total; i++ {
 		frame := g.Image[i]
 		disposal := byte(gif.DisposalNone)
 		if i < len(g.Disposal) {
@@ -92,24 +121,16 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 
 		stdraw.Draw(canvas, frame.Bounds(), frame, frame.Bounds().Min, stdraw.Over)
 
-		dst := image.NewRGBA(dstBounds)
-		if srcW == dstW {
-			stdraw.Draw(dst, dstBounds, canvas, image.Point{}, stdraw.Src)
-		} else {
-			draw.BiLinear.Scale(dst, dstBounds, canvas, srcBounds, draw.Src, nil)
-		}
-		pix := make([]uint8, len(dst.Pix))
-		copy(pix, dst.Pix)
-		frames[i] = pix
-
-		d := 0
-		if i < len(g.Delay) {
-			d = g.Delay[i]
-		}
-		if d == 0 {
-			delays[i] = gifZeroDelayDefault
-		} else {
-			delays[i] = time.Duration(d) * 10 * time.Millisecond
+		if slot, ok := sampleSet[i]; ok {
+			dst := image.NewRGBA(dstBounds)
+			if srcW == dstW {
+				stdraw.Draw(dst, dstBounds, canvas, image.Point{}, stdraw.Src)
+			} else {
+				draw.BiLinear.Scale(dst, dstBounds, canvas, srcBounds, draw.Src, nil)
+			}
+			pix := make([]uint8, len(dst.Pix))
+			copy(pix, dst.Pix)
+			frames[slot] = pix
 		}
 
 		switch disposal {
