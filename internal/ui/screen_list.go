@@ -465,6 +465,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			wrappedLines := r.WrapText(tagLine, rightW)
 			wrappedH := int32(len(wrappedLines)) * lineGap
 			availH := r.H - footerH - metaY
+			if availH <= 0 {
+				availH = 0
+			}
 			if wrappedH <= availH {
 				for _, line := range wrappedLines {
 					r.DrawText(line, rightX, metaY, 120, 180, 220)
