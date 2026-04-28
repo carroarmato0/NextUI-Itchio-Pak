@@ -308,6 +308,20 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
+	// In [DL] mode, compute where group transitions occur for separator lines.
+	dlSepAfterUpdates := -1
+	if s.sortMode == itchio.SortModeDL && len(s.games) > 0 {
+		lastUpdateIdx := -1
+		for i, g := range s.games {
+			if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
+				lastUpdateIdx = i
+			}
+		}
+		if lastUpdateIdx >= 0 && lastUpdateIdx < len(s.games)-1 {
+			dlSepAfterUpdates = lastUpdateIdx
+		}
+	}
+
 	for i, g := range s.games {
 		if i < startIdx {
 			continue
@@ -322,19 +336,28 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawRect(0, rowTop, leftW, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
 
-		// Determine download status for this row.
+		// Determine download/update status for this row.
+		isPendingUpdate := s.inv.HasPendingUpdates(g.URL)
+		isRemovedGame := s.inv.IsRemoved(g.URL)
 		isPresent := s.inv.IsPresent(g.URL)
 
-		// Badge: floppy disk if downloaded, otherwise price.
+		// Badge: update/removed/downloaded state or price.
 		var badgeLabel string
 		var badgeR, badgeG, badgeB uint8
-		if isPresent {
+		switch {
+		case isPendingUpdate:
+			badgeLabel = "[UP]"
+			badgeR, badgeG, badgeB = 240, 160, 40
+		case isRemovedGame:
+			badgeLabel = "[!]"
+			badgeR, badgeG, badgeB = 200, 60, 60
+		case isPresent:
 			badgeLabel = "[DL]"
 			badgeR, badgeG, badgeB = 80, 200, 220
-		} else if g.IsFree {
+		case g.IsFree:
 			badgeLabel = "Free"
 			badgeR, badgeG, badgeB = 80, 200, 80
-		} else {
+		default:
 			badgeLabel = fmt.Sprintf("$%.2f", g.Price)
 			badgeR, badgeG, badgeB = 220, 180, 60
 		}
@@ -344,8 +367,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Title area is left of the badge.
 		titleAreaW := badgeX - 14
 
+		isDownloaded := isPresent || isPendingUpdate || isRemovedGame
 		if i == s.cursor {
-			if isPresent {
+			if isDownloaded {
 				titleW, _ := r.BoldTextSize(g.Title)
 				if titleW <= titleAreaW {
 					s.titleScrollX = 0
@@ -385,7 +409,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				}
 			}
 		} else {
-			if isPresent {
+			if isDownloaded {
 				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
 			} else {
 				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
@@ -394,6 +418,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 		// Badge always rendered on top of title.
 		r.DrawText(badgeLabel, badgeX, y, badgeR, badgeG, badgeB)
+
+		// Section separator after last [UP]/[!] group row in [DL] mode.
+		if i == dlSepAfterUpdates {
+			sepY := rowTop + rowH
+			r.DrawRect(0, sepY, leftW, 1, 50, 50, 50)
+			r.DrawSmallText("— downloaded —", 10, sepY+2, 80, 80, 80)
+		}
 	}
 
 	// Right panel: cover art (or placeholder) + metadata
@@ -423,6 +454,33 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				imgX := rightX + (boxW-dw)/2
 				imgY := metaY + (boxH-dh)/2
 				r.DrawTextureAt(tex, imgX, imgY, dw, dh)
+				// Pill badge overlay — drawn after texture so it appears above animated GIFs.
+				if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
+					var pillLabel string
+					var pillR, pillG, pillB uint8
+					var shadowR, shadowG, shadowB uint8
+					var textR, textG, textB uint8
+					if s.inv.HasPendingUpdates(g.URL) {
+						pillLabel = "UPDATE"
+						pillR, pillG, pillB = 240, 160, 40
+						shadowR, shadowG, shadowB = 160, 96, 16
+						textR, textG, textB = 20, 20, 20
+					} else {
+						pillLabel = "REMOVED"
+						pillR, pillG, pillB = 200, 60, 60
+						shadowR, shadowG, shadowB = 122, 16, 16
+						textR, textG, textB = 255, 255, 255
+					}
+					lw, lh := r.SmallTextSize(pillLabel)
+					pad := int32(4)
+					pillW := lw + pad*2
+					pillH := lh + pad
+					pillX := imgX + dw - pillW - 5
+					pillY := imgY + 5
+					r.DrawRect(pillX+1, pillY+1, pillW, pillH, shadowR, shadowG, shadowB)
+					r.DrawRect(pillX, pillY, pillW, pillH, pillR, pillG, pillB)
+					r.DrawSmallText(pillLabel, pillX+pad, pillY+pad/2, textR, textG, textB)
+				}
 			} else if s.cache.Failed(g.CoverURL) {
 				r.DrawText("No Image", rightX+boxW/2-40, metaY+boxH/2-10, 80, 80, 80)
 			} else {
