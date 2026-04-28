@@ -68,6 +68,7 @@ type ListScreen struct {
 
 	inv           *inventory.Inventory
 	inventoryPath string
+	updateSvc     UpdateServicer
 
 	// jumpToEnd signals that the next loadPage call should place the cursor on
 	// the last item rather than the first. Set when navigating to a previous page.
@@ -677,7 +678,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc)
 		case sdl.K_x:
 			if s.cursor < len(s.games) {
 				g := s.games[s.cursor]
@@ -748,7 +749,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc)
 		case sdl.CONTROLLER_BUTTON_BACK:
 			if !s.cacheReady {
 				return s

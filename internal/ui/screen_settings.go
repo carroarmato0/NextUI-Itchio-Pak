@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -13,6 +14,14 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+// UpdateServicer is satisfied by *inventory.UpdateService; defined here to avoid
+// importing the inventory package from the UI layer.
+type UpdateServicer interface {
+	TriggerNow()
+	IsRunning() bool
+	LatestCheckedAt() time.Time
+}
+
 type settingsItem int
 
 const (
@@ -22,6 +31,7 @@ const (
 	sItemLogLevel
 	sItemClearCache
 	sItemRefreshCache
+	sItemUpdateInventory
 	sItemContentModeration
 	sItemAbout
 	sItemCount
@@ -34,14 +44,15 @@ type SettingsScreen struct {
 	cursor         settingsItem
 	prev           Screen
 	onRefreshGames func(Screen) Screen // nil if not available
+	updateSvc      UpdateServicer
 
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
 }
 
-func NewSettingsScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen) *SettingsScreen {
-	s := &SettingsScreen{client: client, cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames}
+func NewSettingsScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen, updateSvc UpdateServicer) *SettingsScreen {
+	s := &SettingsScreen{client: client, cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames, updateSvc: updateSvc}
 	// Start a one-shot background validation the first time Settings is opened
 	// this session. MarkAPIKeyCheckStarted is a CAS gate so subsequent opens
 	// are a no-op.
@@ -98,6 +109,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		"Log Level: " + logLevelLabel,
 		"Clear Image Cache",
 		"Refresh Game List",
+		"Update Inventory",
 		"Content Moderation >",
 		"About",
 	}
@@ -124,6 +136,21 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			} else {
 				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
 			}
+		}
+
+		// Update Inventory row: right-aligned timestamp/running annotation.
+		if settingsItem(i) == sItemUpdateInventory && s.updateSvc != nil {
+			annotation := updateInventoryAnnotation(s.updateSvc)
+			aw, _ := r.SmallTextSize(annotation)
+			ax := r.W - aw - 20
+			var aR, aG, aB uint8
+			if s.updateSvc.IsRunning() {
+				aR, aG, aB = 240, 160, 40
+			} else {
+				aR, aG, aB = 100, 100, 100
+			}
+			_, fh := r.TextSize("Ag")
+			r.DrawSmallText(annotation, ax, y+(fh-0)/2, aR, aG, aB)
 		}
 	}
 
@@ -227,6 +254,29 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
+// updateInventoryAnnotation returns a short right-aligned label for the
+// "Update Inventory" settings row.
+func updateInventoryAnnotation(svc UpdateServicer) string {
+	if svc.IsRunning() {
+		return "checking…"
+	}
+	t := svc.LatestCheckedAt()
+	if t.IsZero() {
+		return "never"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "last: just now"
+	case d < time.Hour:
+		return fmt.Sprintf("last: %dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("last: %dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("last: %dd ago", int(d.Hours()/24))
+	}
+}
+
 func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
 	case sItemROMMode:
@@ -257,6 +307,11 @@ func (s *SettingsScreen) activate() Screen {
 	case sItemRefreshCache:
 		if s.onRefreshGames != nil {
 			return s.onRefreshGames(s)
+		}
+	case sItemUpdateInventory:
+		if s.updateSvc != nil {
+			s.updateSvc.TriggerNow()
+			logger.Info("settings: Update Inventory triggered manually")
 		}
 	case sItemContentModeration:
 		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
