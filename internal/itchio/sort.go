@@ -56,8 +56,9 @@ func NextSortMode(current SortMode) SortMode {
 
 // ApplySort returns a new slice derived from games according to mode.
 // downloaded maps game URLs to true when present in the inventory.
+// pendingUpdates and removed map URLs to true for [UP]/[!] grouping in DL mode.
 // games is never mutated.
-func ApplySort(games []Game, mode SortMode, downloaded map[string]bool) []Game {
+func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed map[string]bool) []Game {
 	switch mode {
 	case SortModeAZ:
 		out := make([]Game, len(games))
@@ -91,12 +92,26 @@ func ApplySort(games []Game, mode SortMode, downloaded map[string]bool) []Game {
 		return out
 
 	case SortModeDL:
-		out := make([]Game, 0)
+		// Collect downloaded games then sort into three groups:
+		// 1 — pending updates, 2 — removed from store, 3 — up-to-date
+		var g1, g2, g3 []Game
 		for _, g := range games {
-			if downloaded[g.URL] {
-				out = append(out, g)
+			if !downloaded[g.URL] {
+				continue
+			}
+			switch {
+			case pendingUpdates[g.URL]:
+				g1 = append(g1, g)
+			case removed[g.URL]:
+				g2 = append(g2, g)
+			default:
+				g3 = append(g3, g)
 			}
 		}
+		out := make([]Game, 0, len(g1)+len(g2)+len(g3))
+		out = append(out, g1...)
+		out = append(out, g2...)
+		out = append(out, g3...)
 		return out
 
 	case SortModeFree:

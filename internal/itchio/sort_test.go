@@ -23,7 +23,7 @@ func testGames() []itchio.Game {
 
 func TestApplySort_RSS(t *testing.T) {
 	games := testGames()
-	result := itchio.ApplySort(games, itchio.SortModeRSS, nil)
+	result := itchio.ApplySort(games, itchio.SortModeRSS, nil, nil, nil)
 	if len(result) != 3 {
 		t.Fatalf("want 3 games, got %d", len(result))
 	}
@@ -38,7 +38,7 @@ func TestApplySort_RSS(t *testing.T) {
 }
 
 func TestApplySort_AZ(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeAZ, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeAZ, nil, nil, nil)
 	want := []string{"Apple", "Banana", "Cherry"}
 	if !equalTitles(result, want) {
 		t.Errorf("AZ: got %v, want %v", titles(result), want)
@@ -46,7 +46,7 @@ func TestApplySort_AZ(t *testing.T) {
 }
 
 func TestApplySort_ZA(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeZA, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeZA, nil, nil, nil)
 	want := []string{"Cherry", "Banana", "Apple"}
 	if !equalTitles(result, want) {
 		t.Errorf("ZA: got %v, want %v", titles(result), want)
@@ -59,7 +59,7 @@ func TestApplySort_AZ_CaseInsensitive(t *testing.T) {
 		{Title: "Apple"},
 		{Title: "mango"},
 	}
-	result := itchio.ApplySort(games, itchio.SortModeAZ, nil)
+	result := itchio.ApplySort(games, itchio.SortModeAZ, nil, nil, nil)
 	want := []string{"Apple", "mango", "zebra"}
 	if !equalTitles(result, want) {
 		t.Errorf("AZ case-insensitive: got %v, want %v", titles(result), want)
@@ -68,7 +68,7 @@ func TestApplySort_AZ_CaseInsensitive(t *testing.T) {
 
 func TestApplySort_New(t *testing.T) {
 	// Banana=2022 (newest), Cherry=2021, Apple=zero (sorts to end).
-	result := itchio.ApplySort(testGames(), itchio.SortModeNew, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeNew, nil, nil, nil)
 	want := []string{"Banana", "Cherry", "Apple"}
 	if !equalTitles(result, want) {
 		t.Errorf("NEW: got %v, want %v", titles(result), want)
@@ -80,7 +80,7 @@ func TestApplySort_New_AllZero(t *testing.T) {
 		{Title: "A", PublishedAt: time.Time{}},
 		{Title: "B", PublishedAt: time.Time{}},
 	}
-	result := itchio.ApplySort(games, itchio.SortModeNew, nil)
+	result := itchio.ApplySort(games, itchio.SortModeNew, nil, nil, nil)
 	if len(result) != 2 {
 		t.Fatalf("want 2 games, got %d", len(result))
 	}
@@ -90,11 +90,70 @@ func TestApplySort_New_AllZero(t *testing.T) {
 	}
 }
 
+func TestApplySort_DL_PendingUpdatesFirst(t *testing.T) {
+	games := testGames()
+	downloaded := map[string]bool{
+		"https://a.itch.io/banana": true,
+		"https://b.itch.io/apple":  true,
+		"https://c.itch.io/cherry": true,
+	}
+	pendingUpdates := map[string]bool{
+		"https://b.itch.io/apple": true,
+	}
+	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, pendingUpdates, nil)
+	if len(result) != 3 {
+		t.Fatalf("DL grouping: want 3 games, got %d", len(result))
+	}
+	if result[0].Title != "Apple" {
+		t.Errorf("DL grouping: [UP] game should be first, got %q", result[0].Title)
+	}
+}
+
+func TestApplySort_DL_RemovedSecond(t *testing.T) {
+	games := testGames()
+	downloaded := map[string]bool{
+		"https://a.itch.io/banana": true,
+		"https://b.itch.io/apple":  true,
+		"https://c.itch.io/cherry": true,
+	}
+	removed := map[string]bool{
+		"https://c.itch.io/cherry": true,
+	}
+	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, nil, removed)
+	if len(result) != 3 {
+		t.Fatalf("want 3 games, got %d", len(result))
+	}
+	if result[0].Title != "Cherry" {
+		t.Errorf("DL grouping: [!] game should be first when no [UP] games, got %q", result[0].Title)
+	}
+}
+
+func TestApplySort_DL_UpdateBeforeRemoved(t *testing.T) {
+	games := testGames()
+	downloaded := map[string]bool{
+		"https://a.itch.io/banana": true,
+		"https://b.itch.io/apple":  true,
+		"https://c.itch.io/cherry": true,
+	}
+	pendingUpdates := map[string]bool{"https://b.itch.io/apple": true}
+	removed := map[string]bool{"https://c.itch.io/cherry": true}
+	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, pendingUpdates, removed)
+	if result[0].Title != "Apple" {
+		t.Errorf("want [UP] Apple first, got %q", result[0].Title)
+	}
+	if result[1].Title != "Cherry" {
+		t.Errorf("want [!] Cherry second, got %q", result[1].Title)
+	}
+	if result[2].Title != "Banana" {
+		t.Errorf("want [DL] Banana third, got %q", result[2].Title)
+	}
+}
+
 func TestApplySort_DL(t *testing.T) {
 	downloaded := map[string]bool{
 		"https://a.itch.io/banana": true,
 	}
-	result := itchio.ApplySort(testGames(), itchio.SortModeDL, downloaded)
+	result := itchio.ApplySort(testGames(), itchio.SortModeDL, downloaded, nil, nil)
 	if len(result) != 1 {
 		t.Fatalf("DL: want 1 game, got %d", len(result))
 	}
@@ -104,21 +163,21 @@ func TestApplySort_DL(t *testing.T) {
 }
 
 func TestApplySort_DL_EmptyDownloaded(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeDL, map[string]bool{})
+	result := itchio.ApplySort(testGames(), itchio.SortModeDL, map[string]bool{}, nil, nil)
 	if len(result) != 0 {
 		t.Errorf("DL with empty downloaded: want 0 games, got %d", len(result))
 	}
 }
 
 func TestApplySort_DL_NilDownloaded(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeDL, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeDL, nil, nil, nil)
 	if len(result) != 0 {
 		t.Errorf("DL with nil downloaded: want 0 games, got %d", len(result))
 	}
 }
 
 func TestApplySort_Free(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeFree, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeFree, nil, nil, nil)
 	if len(result) != 2 {
 		t.Fatalf("FREE: want 2 games, got %d", len(result))
 	}
@@ -130,7 +189,7 @@ func TestApplySort_Free(t *testing.T) {
 }
 
 func TestApplySort_Paid(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModePaid, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModePaid, nil, nil, nil)
 	if len(result) != 1 {
 		t.Fatalf("PAID: want 1 game, got %d", len(result))
 	}
@@ -142,7 +201,7 @@ func TestApplySort_Paid(t *testing.T) {
 func TestApplySort_ReturnsNewSlice(t *testing.T) {
 	games := testGames()
 	for _, mode := range itchio.SortModes {
-		result := itchio.ApplySort(games, mode, nil)
+		result := itchio.ApplySort(games, mode, nil, nil, nil)
 		if result == nil {
 			t.Errorf("mode %q: ApplySort returned nil", mode)
 		}

@@ -708,12 +708,20 @@ func truncateBoldToWidth(r *renderer.Renderer, text string, maxW int32) string {
 // then resets paging to page 1.
 func (s *ListScreen) rebuildView() {
 	downloaded := make(map[string]bool)
+	pendingUpdates := make(map[string]bool)
+	removed := make(map[string]bool)
 	for _, g := range s.cachedGames {
 		if s.inv.IsPresent(g.URL) {
 			downloaded[g.URL] = true
 		}
+		if s.inv.HasPendingUpdates(g.URL) {
+			pendingUpdates[g.URL] = true
+		}
+		if s.inv.IsRemoved(g.URL) {
+			removed[g.URL] = true
+		}
 	}
-	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded)
+	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed)
 	s.totalGames = len(s.viewGames)
 	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
 	s.page = 1
