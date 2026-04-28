@@ -152,12 +152,14 @@ func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
 			0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
 		)
 		if surfErr != nil {
+			log.Printf("image cache: create surface: %v", surfErr)
 			return
 		}
 		tex, err = r.Renderer.CreateTextureFromSurface(surface)
 		surface.Free()
 		runtime.KeepAlive(raw.pix)
 		if err != nil {
+			log.Printf("image cache: create texture from surface: %v", err)
 			return
 		}
 	}
