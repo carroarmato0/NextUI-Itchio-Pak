@@ -158,3 +158,8 @@ func (s *CacheRefreshScreen) HandleEvent(e sdl.Event) Screen {
 	}
 	return s
 }
+
+// IsBusy implements BusyChecker. Returns true while the cache fetch is running.
+func (s *CacheRefreshScreen) IsBusy() bool {
+	return refreshCacheState(atomic.LoadInt32((*int32)(&s.state))) == refreshCacheLoading
+}
