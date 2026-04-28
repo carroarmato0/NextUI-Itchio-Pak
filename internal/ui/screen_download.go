@@ -79,6 +79,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 				Title:    game.Title,
 				Author:   game.Author,
 				CoverURL: game.CoverURL,
+				IsFree:   game.IsFree,
 			}, inventory.DownloadedFile{
 				Filename:     upload.Filename,
 				DestPath:     dest,

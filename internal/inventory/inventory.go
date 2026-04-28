@@ -18,13 +18,25 @@ type DownloadedFile struct {
 	DownloadedAt time.Time `json:"downloaded_at"`
 }
 
+type UpstreamFile struct {
+	Filename string    `json:"filename"`
+	UploadID string    `json:"upload_id"`
+	SeenAt   time.Time `json:"seen_at"`
+}
+
 type Entry struct {
-	GameURL    string           `json:"game_url"`
-	Title      string           `json:"title"`
-	Author     string           `json:"author"`
-	CoverURL   string           `json:"cover_url"`
-	Files      []DownloadedFile `json:"files"`
-	VerifiedAt time.Time        `json:"verified_at,omitempty"`
+	GameURL            string         `json:"game_url"`
+	Title              string         `json:"title"`
+	Author             string         `json:"author"`
+	CoverURL           string         `json:"cover_url"`
+	Files              []DownloadedFile `json:"files"`
+	VerifiedAt         time.Time      `json:"verified_at,omitempty"`
+	IsFree             bool           `json:"is_free,omitempty"`
+	KnownUpstreamFiles []UpstreamFile `json:"known_upstream_files,omitempty"`
+	UpdateCheckedAt    time.Time      `json:"update_checked_at,omitempty"`
+	UpdateDismissedAt  time.Time      `json:"update_dismissed_at,omitempty"`
+	GameRemovedAt      time.Time      `json:"game_removed_at,omitempty"`
+	RemovalDismissedAt time.Time      `json:"removal_dismissed_at,omitempty"`
 }
 
 type Inventory struct {
@@ -88,6 +100,7 @@ func (inv *Inventory) Add(gameURL string, e Entry, file DownloadedFile) {
 			Title:    e.Title,
 			Author:   e.Author,
 			CoverURL: e.CoverURL,
+			IsFree:   e.IsFree,
 		}
 		inv.Entries[gameURL] = entry
 		existing = entry
@@ -192,6 +205,117 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 		}
 	}
 	return removed
+}
+
+// HasPendingUpdates returns true when any UpstreamFile for gameURL has a
+// filename not in the downloaded set and was seen after UpdateDismissedAt.
+func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return false
+	}
+	downloaded := make(map[string]bool, len(e.Files))
+	for _, f := range e.Files {
+		downloaded[f.Filename] = true
+	}
+	for _, u := range e.KnownUpstreamFiles {
+		if !downloaded[u.Filename] && u.SeenAt.After(e.UpdateDismissedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsRemoved returns true when the game was detected as 404 upstream and the
+// user has not yet dismissed the warning (or the warning reappeared after a
+// subsequent removal).
+func (inv *Inventory) IsRemoved(gameURL string) bool {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return false
+	}
+	return !e.GameRemovedAt.IsZero() &&
+		(e.RemovalDismissedAt.IsZero() || e.GameRemovedAt.After(e.RemovalDismissedAt))
+}
+
+// DismissUpdate sets UpdateDismissedAt to now, suppressing [UP] for all
+// upstream files seen before this moment.
+func (inv *Inventory) DismissUpdate(gameURL string) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return
+	}
+	e.UpdateDismissedAt = time.Now()
+}
+
+// DismissRemoval sets RemovalDismissedAt to now, suppressing [!] until the
+// game is re-detected as removed after reappearing upstream.
+func (inv *Inventory) DismissRemoval(gameURL string) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return
+	}
+	e.RemovalDismissedAt = time.Now()
+}
+
+// MarkRemoved sets GameRemovedAt to now only on the first detection
+// (idempotent: does nothing if GameRemovedAt is already set).
+func (inv *Inventory) MarkRemoved(gameURL string) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok || !e.GameRemovedAt.IsZero() {
+		return
+	}
+	e.GameRemovedAt = time.Now()
+}
+
+// MarkReachable clears GameRemovedAt and RemovalDismissedAt, returning the
+// entry to a clean slate when a previously-removed game becomes reachable again.
+func (inv *Inventory) MarkReachable(gameURL string) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return
+	}
+	e.GameRemovedAt = time.Time{}
+	e.RemovalDismissedAt = time.Time{}
+}
+
+// SetUpstreamFiles replaces KnownUpstreamFiles for gameURL and sets
+// UpdateCheckedAt to now. Call this after each successful file-list scrape.
+func (inv *Inventory) SetUpstreamFiles(gameURL string, files []UpstreamFile) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return
+	}
+	e.KnownUpstreamFiles = files
+	e.UpdateCheckedAt = time.Now()
+}
+
+// LatestCheckedAt returns the most recent UpdateCheckedAt across all entries,
+// or the zero time if no checks have run.
+func (inv *Inventory) LatestCheckedAt() time.Time {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	var latest time.Time
+	for _, e := range inv.Entries {
+		if e.UpdateCheckedAt.After(latest) {
+			latest = e.UpdateCheckedAt
+		}
+	}
+	return latest
 }
 
 // CoverArtPath returns the filesystem path for the cover art of a downloaded ROM,

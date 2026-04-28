@@ -326,3 +326,162 @@ func TestCoverArtPath_FullStemPreserved(t *testing.T) {
 		t.Errorf("CoverArtPath = %q, want %q", got, want)
 	}
 }
+
+// ── HasPendingUpdates ────────────────────────────────────────────────────────
+
+func TestHasPendingUpdates_NoEntry(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	if inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want false for missing entry")
+	}
+}
+
+func TestHasPendingUpdates_NoUpstreamFiles(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	if inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want false when no upstream files recorded")
+	}
+}
+
+func TestHasPendingUpdates_AllDownloaded(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	inv.SetUpstreamFiles("https://dev.itch.io/game",
+		[]inventory.UpstreamFile{{Filename: "g.gb", UploadID: "1", SeenAt: time.Now()}})
+	if inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want false when all upstream files are downloaded")
+	}
+}
+
+func TestHasPendingUpdates_NewFile(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "g.gb", UploadID: "1", SeenAt: time.Now()},
+		{Filename: "g-v2.gb", UploadID: "2", SeenAt: time.Now()},
+	})
+	if !inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want true when upstream has file not in downloaded set")
+	}
+}
+
+func TestHasPendingUpdates_DismissedFile(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	seenAt := time.Now().Add(-time.Hour)
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "g.gb", UploadID: "1", SeenAt: seenAt},
+		{Filename: "g-v2.gb", UploadID: "2", SeenAt: seenAt},
+	})
+	inv.DismissUpdate("https://dev.itch.io/game")
+	if inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want false after dismiss")
+	}
+}
+
+func TestHasPendingUpdates_NewFileAfterDismiss(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	oldSeenAt := time.Now().Add(-time.Hour)
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "g-v2.gb", UploadID: "2", SeenAt: oldSeenAt},
+	})
+	inv.DismissUpdate("https://dev.itch.io/game")
+
+	newSeenAt := time.Now().Add(time.Hour)
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "g-v2.gb", UploadID: "2", SeenAt: oldSeenAt},
+		{Filename: "g-v3.gb", UploadID: "3", SeenAt: newSeenAt},
+	})
+	if !inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want true when new file appears after dismiss")
+	}
+}
+
+// ── IsRemoved ────────────────────────────────────────────────────────────────
+
+func TestIsRemoved_NoEntry(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	if inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: want false for missing entry")
+	}
+}
+
+func TestIsRemoved_NotRemoved(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	if inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: want false when GameRemovedAt is zero")
+	}
+}
+
+func TestIsRemoved_Removed(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	inv.MarkRemoved("https://dev.itch.io/game")
+	if !inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: want true after MarkRemoved")
+	}
+}
+
+func TestIsRemoved_DismissedRemoval(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	inv.MarkRemoved("https://dev.itch.io/game")
+	inv.DismissRemoval("https://dev.itch.io/game")
+	if inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: want false after DismissRemoval")
+	}
+}
+
+func TestIsRemoved_MarkRemovedIdempotent(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	inv.MarkRemoved("https://dev.itch.io/game")
+	inv.DismissRemoval("https://dev.itch.io/game")
+	inv.MarkRemoved("https://dev.itch.io/game")
+	if inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: MarkRemoved must be idempotent; badge must stay suppressed after dismiss")
+	}
+}
+
+func TestMarkRemovedThenReachable_ClearsBoth(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	inv.MarkRemoved("https://dev.itch.io/game")
+	inv.MarkReachable("https://dev.itch.io/game")
+	if inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: want false after MarkReachable")
+	}
+	inv.MarkRemoved("https://dev.itch.io/game")
+	if !inv.IsRemoved("https://dev.itch.io/game") {
+		t.Error("IsRemoved: want true after fresh MarkRemoved post-MarkReachable")
+	}
+}
+
+// ── IsFree persistence ───────────────────────────────────────────────────────
+
+func TestAdd_PreservesIsFree(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game",
+		inventory.Entry{Title: "G", IsFree: true},
+		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	e, ok := inv.Lookup("https://dev.itch.io/game")
+	if !ok {
+		t.Fatal("entry not found")
+	}
+	if !e.IsFree {
+		t.Error("IsFree should be true after Add with IsFree:true")
+	}
+}
