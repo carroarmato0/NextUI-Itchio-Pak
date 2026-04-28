@@ -26,8 +26,8 @@ required.
 |---|---|---|
 | TrimUI Brick | `tg5040` | Tested |
 | TrimUI Smart Pro | `tg5040` | Tested |
-| TrimUI Smart Pro S | `tg5050` | Not working |
-| Miyoo Flip | `my355` | No working |
+| TrimUI Smart Pro S | `tg5050` | Tested |
+| Miyoo Flip | `my355` | Tested |
 
 ---
 
@@ -35,19 +35,37 @@ required.
 
 ### Game browsing
 - Scrollable list of GB Studio games from itch.io's "made-with-gb-studio" category
-- Live cover art thumbnails alongside the list (LRU image cache, loaded in background)
+- Live cover art thumbnails alongside the list with support for animated GIF cover art
 - Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; L/R shoulder buttons jump pages directly
 - On first launch the list loads live from the network while a full cache is built in the background
 - On subsequent launches the full game list loads instantly from the on-device cache
 - Cache auto-refreshes after 24 hours; manual refresh available in Settings
 - Total game count displayed in the header
+- Games already downloaded to the device are marked with a `[DL]` badge
+
+### Sorting and filtering
+Press **Select** from the game list to cycle through sort and filter modes. The active mode is shown as a badge in the top-right corner of the header:
+
+| Badge | Description |
+|---|---|
+| `[RSS]` | Feed order — newest from itch.io (default) |
+| `[A-Z]` | Alphabetical ascending |
+| `[Z-A]` | Alphabetical descending |
+| `[NEW]` | By publication date, newest first |
+| `[DL]` | Downloaded only — hides games not yet on device |
+| `[FREE]` | Free games only |
+| `[PAID]` | Paid games only |
+
+The selected sort mode is saved automatically and restored on the next launch.
 
 ### Game detail
-- Cover art and screenshot gallery (L/R to browse)
+- Cover art and screenshot gallery (L/R to browse); animated GIF cover art plays inline
 - Game title, author, price or "Free" badge
 - Scrollable description (plain text, converted from the game's HTML)
 - QR code for every game — scan to open the itch.io page in a browser
 - Download button (A) — disabled for paid games when no API key is set
+- Downloaded files are listed with their on-device paths; press **Y** to manage or delete them
+- Game titles and descriptions in non-Latin scripts render correctly — the bundled font set covers Arabic, Cyrillic, Devanagari, Hebrew, Japanese/CJK, and Thai automatically, with no configuration required
 
 ### Downloading
 - Download free games without an itch.io account
@@ -59,6 +77,14 @@ required.
   - `.gbc` → `Roms/Game Boy Color (GBC)/`
 - When **ROM Location** is set to `ask`, a directory browser lets you choose the destination folder before each download; the last chosen path is remembered per file type
 - On download failure, a QR code is shown so you can try from a browser
+- **Bundle purchases** — if you own a game both individually and as part of one or more itch.io bundles, a purchase picker lists each transaction (labelled `Individual purchase` or `Bundle: <name>`) so you can choose which to download from
+
+### Game management
+- Downloaded games are tracked in an on-device inventory
+- From the game detail screen, press **Y** to delete downloaded ROMs:
+  - Single-file games show a confirmation prompt with the filename and path
+  - Multi-file games open a **Manage Downloads** screen where you can delete files individually or all at once with **Delete all**
+- After deletion the `[DL]` badge is removed and the Download button becomes available again
 
 ### Content filters
 - **Adult Content**, **Heavy Themes**, and **Substance Use** are **on by default**.
@@ -96,6 +122,8 @@ required.
 | L / R shoulder | Previous/next screenshot in detail view |
 | A | Select / confirm / download |
 | B | Back |
+| Y | Manage / delete downloaded ROMs (game detail screen) |
+| Select | Cycle sort mode (game list) |
 | Start | Open Settings from any screen |
 
 ---
@@ -291,6 +319,13 @@ in the Settings screen on the device.
 
 - **No in-app keyboard for API key entry.** The API key must be set by editing
   `config.json` directly (see [itch.io API Key](#itch-io-api-key-paid-games)).
+
+- **Animated GIF thumbnail conversion is best-effort.** When a game's cover art
+  is an animated GIF, a static PNG thumbnail is derived from it automatically
+  using a colour-variance heuristic (the frame with the most colour diversity is
+  chosen). The result depends on how the game developer structured the GIF — a
+  GIF that opens on a black frame, uses unusual disposal methods, or has few
+  visually distinct frames may still produce a poor thumbnail.
 
 - **`.pocket` and other non-ROM files** are filtered out — only `.gb` and
   `.gbc` files are shown.
