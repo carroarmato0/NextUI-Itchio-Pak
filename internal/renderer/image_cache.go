@@ -71,11 +71,13 @@ func NewImageCache(maxEntries int) *ImageCache {
 // next Draw cycle to pick up the result once it arrives.
 // Must be called from the SDL main thread.
 func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
+	logger.Debug("image cache: get url=%q", url)
 	c.mu.Lock()
 	if el, ok := c.items[url]; ok {
 		c.lru.MoveToFront(el)
 		entry := el.Value.(*cacheEntry)
 		if entry.anim != nil {
+			logger.Debug("image cache: anim cur=%d frames=%d nextAt=%v", entry.anim.cur, len(entry.anim.frames), entry.anim.nextAt)
 			if idx, advanced := entry.anim.advance(time.Now()); advanced {
 				framePix := entry.anim.frames[idx]
 				surface, surfErr := sdl.CreateRGBSurfaceFrom(
