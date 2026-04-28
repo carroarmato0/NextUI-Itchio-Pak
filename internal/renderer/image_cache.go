@@ -109,6 +109,7 @@ func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
 	}
 	if _, pending := c.fetching[url]; !pending {
 		c.fetching[url] = struct{}{}
+		logger.Debug("image cache: queuing fetch %s", url)
 		c.mu.Unlock()
 		go c.fetchInBackground(url)
 	} else {
@@ -164,6 +165,9 @@ func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
 	if raw.anim != nil {
 		// Initialize nextAt so frame 0 is displayed for its full delay before advancing.
 		raw.anim.nextAt = time.Now().Add(raw.anim.delays[0])
+		logger.Debug("image cache: uploaded animated %s (%d frames, %dx%d)", raw.url, len(raw.anim.frames), raw.w, raw.h)
+	} else {
+		logger.Debug("image cache: uploaded static %s (%dx%d)", raw.url, raw.w, raw.h)
 	}
 
 	c.mu.Lock()
