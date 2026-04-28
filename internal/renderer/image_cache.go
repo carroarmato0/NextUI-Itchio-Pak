@@ -117,20 +117,49 @@ func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
 	if len(raw.pix) == 0 || raw.w <= 0 || raw.h <= 0 {
 		return
 	}
-	surface, err := sdl.CreateRGBSurfaceFrom(
-		unsafe.Pointer(&raw.pix[0]),
-		raw.w, raw.h,
-		32, raw.pitch,
-		0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
-	)
-	if err != nil {
-		return
-	}
-	tex, err := r.Renderer.CreateTextureFromSurface(surface)
-	surface.Free()
-	runtime.KeepAlive(raw.pix)
-	if err != nil {
-		return
+
+	var tex *sdl.Texture
+	var err error
+
+	if raw.anim != nil {
+		// Streaming texture: supports in-place pixel updates via texture.Update().
+		// SDL_PIXELFORMAT_ABGR8888 = RGBA in memory order on little-endian (matches image.RGBA.Pix).
+		tex, err = r.Renderer.CreateTexture(
+			sdl.PIXELFORMAT_ABGR8888,
+			sdl.TEXTUREACCESS_STREAMING,
+			raw.w, raw.h,
+		)
+		if err != nil {
+			log.Printf("image cache: create streaming texture: %v", err)
+			return
+		}
+		if err = tex.SetBlendMode(sdl.BLENDMODE_BLEND); err != nil {
+			log.Printf("image cache: set blend mode: %v", err)
+			tex.Destroy()
+			return
+		}
+		if err = tex.Update(nil, unsafe.Pointer(&raw.pix[0]), raw.pitch); err != nil {
+			log.Printf("image cache: texture update (frame 0): %v", err)
+			tex.Destroy()
+			return
+		}
+	} else {
+		// Static image: existing surface-based path.
+		surface, surfErr := sdl.CreateRGBSurfaceFrom(
+			unsafe.Pointer(&raw.pix[0]),
+			raw.w, raw.h,
+			32, raw.pitch,
+			0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
+		)
+		if surfErr != nil {
+			return
+		}
+		tex, err = r.Renderer.CreateTextureFromSurface(surface)
+		surface.Free()
+		runtime.KeepAlive(raw.pix)
+		if err != nil {
+			return
+		}
 	}
 
 	c.mu.Lock()
@@ -139,7 +168,7 @@ func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
 		tex.Destroy()
 		return
 	}
-	entry := &cacheEntry{key: raw.url, texture: tex}
+	entry := &cacheEntry{key: raw.url, texture: tex, anim: raw.anim}
 	el := c.lru.PushFront(entry)
 	c.items[raw.url] = el
 	for c.lru.Len() > c.max {
