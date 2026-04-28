@@ -74,7 +74,15 @@ func (c *ImageCache) Get(_ *Renderer, url string) *sdl.Texture {
 	c.mu.Lock()
 	if el, ok := c.items[url]; ok {
 		c.lru.MoveToFront(el)
-		tex := el.Value.(*cacheEntry).texture
+		entry := el.Value.(*cacheEntry)
+		if entry.anim != nil {
+			if idx, advanced := entry.anim.advance(time.Now()); advanced {
+				if err := entry.texture.Update(nil, unsafe.Pointer(&entry.anim.frames[idx][0]), entry.anim.pitch); err != nil {
+					log.Printf("image cache: texture update frame %d: %v", idx, err)
+				}
+			}
+		}
+		tex := entry.texture
 		c.mu.Unlock()
 		return tex
 	}
