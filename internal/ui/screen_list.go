@@ -565,6 +565,28 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	} else {
 		countInfo = fmt.Sprintf("%d games", len(s.games))
 	}
+	// Contextual dismiss hint for [UP]/[!] games.
+	var dismissHint string
+	var dismissHintR, dismissHintG, dismissHintB uint8
+	if s.cursor < len(s.games) {
+		g := s.games[s.cursor]
+		if s.inv.HasPendingUpdates(g.URL) {
+			dismissHintR, dismissHintG, dismissHintB = 240, 160, 40
+			if r.W <= narrowScreenW {
+				dismissHint = "X:dismiss"
+			} else {
+				dismissHint = "X:dismiss update"
+			}
+		} else if s.inv.IsRemoved(g.URL) {
+			dismissHintR, dismissHintG, dismissHintB = 200, 60, 60
+			if r.W <= narrowScreenW {
+				dismissHint = "X:dismiss"
+			} else {
+				dismissHint = "X:dismiss warning"
+			}
+		}
+	}
+
 	var hints string
 	if r.W <= narrowScreenW {
 		if s.cacheReady {
@@ -582,6 +604,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	footer := fmt.Sprintf("%s · %s  |  %s", pageInfo, countInfo, hints)
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawSmallText(footer, 10, ftrY, 140, 140, 140)
+	if dismissHint != "" {
+		dhW, _ := r.SmallTextSize(dismissHint)
+		r.DrawSmallText(dismissHint, r.W-dhW-10, ftrY, dismissHintR, dismissHintG, dismissHintB)
+	}
 	r.Present()
 }
 
@@ -652,6 +678,24 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen)
+		case sdl.K_x:
+			if s.cursor < len(s.games) {
+				g := s.games[s.cursor]
+				if s.inv.HasPendingUpdates(g.URL) {
+					s.inv.DismissUpdate(g.URL)
+					if err := s.inv.Save(s.inventoryPath); err != nil {
+						logger.Warn("inventory: save after dismiss: %v", err)
+					}
+					s.rebuildView()
+				} else if s.inv.IsRemoved(g.URL) {
+					s.inv.DismissRemoval(g.URL)
+					if err := s.inv.Save(s.inventoryPath); err != nil {
+						logger.Warn("inventory: save after dismiss: %v", err)
+					}
+					s.rebuildView()
+				}
+			}
+			return s
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -714,6 +758,26 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			s.rebuildView()
 			s.cfg.SortMode = string(s.sortMode)
 			go s.cfg.Save(s.cfgPath)
+			return s
+		case sdl.CONTROLLER_BUTTON_X:
+			if s.cursor < len(s.games) {
+				g := s.games[s.cursor]
+				if s.inv.HasPendingUpdates(g.URL) {
+					s.inv.DismissUpdate(g.URL)
+					logger.Info("update-svc: update dismissed for game=%q", g.Title)
+					if err := s.inv.Save(s.inventoryPath); err != nil {
+						logger.Warn("inventory: save after dismiss: %v", err)
+					}
+					s.rebuildView()
+				} else if s.inv.IsRemoved(g.URL) {
+					s.inv.DismissRemoval(g.URL)
+					logger.Info("update-svc: removal dismissed for game=%q", g.Title)
+					if err := s.inv.Save(s.inventoryPath); err != nil {
+						logger.Warn("inventory: save after dismiss: %v", err)
+					}
+					s.rebuildView()
+				}
+			}
 			return s
 		}
 	case *sdl.QuitEvent:
