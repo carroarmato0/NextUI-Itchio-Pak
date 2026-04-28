@@ -42,6 +42,8 @@ required.
 - Cache auto-refreshes after 24 hours; manual refresh available in Settings
 - Total game count displayed in the header
 - Games already downloaded to the device are marked with a `[DL]` badge
+- When a background check detects a new upstream file for a downloaded game, its badge changes to `[UP]` — press **X** from the game list to dismiss the notification
+- If a downloaded game has been removed from itch.io (HTTP 404/410), its badge changes to `[!]` — press **X** to dismiss
 
 ### Sorting and filtering
 Press **Select** from the game list to cycle through sort and filter modes. The active mode is shown as a badge in the top-right corner of the header:
@@ -52,7 +54,7 @@ Press **Select** from the game list to cycle through sort and filter modes. The 
 | `[A-Z]` | Alphabetical ascending |
 | `[Z-A]` | Alphabetical descending |
 | `[NEW]` | By publication date, newest first |
-| `[DL]` | Downloaded only — hides games not yet on device |
+| `[DL]` | Downloaded only — hides games not yet on device; pending-update games (`[UP]`) are grouped first, removed games (`[!]`) second, then the rest |
 | `[FREE]` | Free games only |
 | `[PAID]` | Paid games only |
 
@@ -107,6 +109,7 @@ The selected sort mode is saved automatically and restored on the next launch.
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Refresh Game List** — re-fetches the full game list from itch.io with a live progress screen showing how many games have been retrieved; the cache is updated on completion
+- **Update Inventory** — manually triggers a background check for new upstream files, removed games, and missing cover art across all inventory entries; the right side of the row shows when the last check ran (`just now`, `Xm ago`, `Xh ago`, or `Xd ago`) or `never` if no check has run yet
 - **Content Moderation** — configure per-category content filters
 - **About** — app description, version, and QR code linking to the project page
 
@@ -123,6 +126,7 @@ The selected sort mode is saved automatically and restored on the next launch.
 | A | Select / confirm / download |
 | B | Back |
 | Y | Manage / delete downloaded ROMs (game detail screen) |
+| X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
 | Select | Cycle sort mode (game list) |
 | Start | Open Settings from any screen |
 
