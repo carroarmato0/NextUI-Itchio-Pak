@@ -568,7 +568,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_x:
 			return s.triggerDelete()
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil)
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -608,7 +608,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil)
 		}
 	case *sdl.QuitEvent:
 		return nil
