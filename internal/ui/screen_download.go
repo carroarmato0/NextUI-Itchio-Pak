@@ -204,6 +204,11 @@ func (s *DownloadScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
+// IsBusy implements BusyChecker. Returns true while a download is in flight.
+func (s *DownloadScreen) IsBusy() bool {
+	return s.state == dlDownloading
+}
+
 func humanBytes(n int64) string {
 	switch {
 	case n >= 1024*1024:
