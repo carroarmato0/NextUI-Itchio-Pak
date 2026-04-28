@@ -205,6 +205,36 @@ are preparing an SD card that will be used across multiple device types.
       <sub>Content Warning — shown instead of detail view when a filter triggers</sub>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/adult_filter.png" alt="Adult content filter" width="480"/><br/>
+      <sub>Adult Content filter — per-tag toggles</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/heavy_filter.png" alt="Heavy themes filter" width="480"/><br/>
+      <sub>Heavy Themes filter — per-tag toggles</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/queer_filter.png" alt="Queer content filter" width="480"/><br/>
+      <sub>Queer Content filter — per-tag toggles</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/bundle.png" alt="Bundle purchase picker" width="480"/><br/>
+      <sub>Bundle purchase picker — choose which transaction to download from</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/delete-select.png" alt="Manage downloads" width="480"/><br/>
+      <sub>Manage Downloads — select a file to delete</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/delete.png" alt="Delete confirmation" width="480"/><br/>
+      <sub>Delete confirmation — shown before removing a ROM from the device</sub>
+    </td>
+  </tr>
 </table>
 
 ---
