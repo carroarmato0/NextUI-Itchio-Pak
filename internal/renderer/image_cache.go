@@ -222,6 +222,7 @@ func isDecodingError(msg string) bool {
 }
 
 func (c *ImageCache) fetchRaw(url string) (rawImage, error) {
+	logger.Debug("image cache: fetch %s", url)
 	resp, err := c.client.Get(url)
 	if err != nil {
 		return rawImage{}, fmt.Errorf("fetch image: %w", err)
@@ -241,6 +242,7 @@ func (c *ImageCache) fetchRaw(url string) (rawImage, error) {
 	if err != nil {
 		return rawImage{}, fmt.Errorf("decode image: %w", err)
 	}
+	logger.Debug("image cache: decoded %s as %s (%d bytes)", url, format, len(data))
 
 	// Detect animated GIF: re-decode with gif.DecodeAll and render all frames.
 	if format == "gif" {
@@ -258,7 +260,8 @@ func (c *ImageCache) fetchRaw(url string) (rawImage, error) {
 		}
 	}
 
-	// Static image path (unchanged).
+	// Static image path.
+	logger.Debug("image cache: static %s", url)
 	img = resizeMax(img, 640)
 	bounds := img.Bounds()
 	rgba := image.NewRGBA(bounds)
