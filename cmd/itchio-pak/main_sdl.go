@@ -78,7 +78,13 @@ func runSDL() {
 
 	client := itchio.NewClient()
 
-	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath)
+	updateSvc := inventory.NewUpdateService(inv, inventoryPath, client, func() {
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+	})
+	updateSvc.Start(nil)
+	defer updateSvc.Stop()
+
+	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc)
 
 	platform := readPlatform()
 	var pressedScancodes map[sdl.Scancode]bool

@@ -79,7 +79,7 @@ type ListScreen struct {
 	viewGames []itchio.Game // sorted/filtered view; paging operates on this
 }
 
-func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string, inv *inventory.Inventory, inventoryPath string) *ListScreen {
+func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string, inv *inventory.Inventory, inventoryPath string, updateSvc UpdateServicer) *ListScreen {
 	s := &ListScreen{
 		client:        client,
 		cfg:           cfg,
@@ -89,6 +89,7 @@ func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, 
 		cachePath:     cachePath,
 		inv:           inv,
 		inventoryPath: inventoryPath,
+		updateSvc:     updateSvc,
 	}
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
@@ -890,6 +891,9 @@ func (s *ListScreen) buildCache() {
 	s.cachedGames = games
 	s.cacheReady = true
 	s.rebuildView()
+	if s.updateSvc != nil {
+		s.updateSvc.TriggerNow()
+	}
 }
 
 // refreshCacheIfStale triggers a full re-fetch if the cache is older than cacheTTL.
@@ -912,5 +916,8 @@ func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 		s.cachedGames = games
 		s.cacheReady = true
 		s.rebuildView()
+		if s.updateSvc != nil {
+			s.updateSvc.TriggerNow()
+		}
 	})
 }
