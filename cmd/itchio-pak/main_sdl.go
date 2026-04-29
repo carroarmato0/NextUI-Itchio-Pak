@@ -4,15 +4,23 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/power"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/ui"
 	"github.com/veandco/go-sdl2/sdl"
+)
+
+const (
+	userEventInventoryUpdate = int32(0) // UpdateService finished a check
+	userEventPowerSleep      = int32(1) // power: short press
+	userEventPowerShutdown   = int32(2) // power: long press
 )
 
 func runSDL() {
@@ -79,12 +87,24 @@ func runSDL() {
 	client := itchio.NewClient()
 
 	updateSvc := inventory.NewUpdateService(inv, inventoryPath, client, func() {
-		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: userEventInventoryUpdate})
 	})
 	updateSvc.Start(nil)
 	defer updateSvc.Stop()
 
+	powerMgr := power.NewManager(func(action power.Action) {
+		code := userEventPowerSleep
+		if action == power.ActionShutdown {
+			code = userEventPowerShutdown
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: code})
+	})
+	powerMgr.Start()
+
 	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc)
+
+	var pendingQuit bool
+	var pendingAction power.Action
 
 	platform := readPlatform()
 	var pressedScancodes map[sdl.Scancode]bool
@@ -97,6 +117,9 @@ func runSDL() {
 		cache.ProcessPending(r)
 
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+			if pendingQuit {
+				continue // drain input while waiting for tasks
+			}
 			if pressedScancodes != nil {
 				if kev, ok := e.(*sdl.KeyboardEvent); ok {
 					sc := kev.Keysym.Scancode
@@ -110,14 +133,82 @@ func runSDL() {
 					}
 				}
 			}
+			// Intercept SDL_QUIT (SIGTERM from NextUI) before screens see it.
+			if _, ok := e.(*sdl.QuitEvent); ok {
+				current = nil
+				break
+			}
+			// Intercept power UserEvents before screens see them.
+			if uev, ok := e.(*sdl.UserEvent); ok {
+				switch uev.Code {
+				case userEventPowerSleep:
+					logger.Info("power: sleep requested, waiting for tasks")
+					pendingQuit = true
+					pendingAction = power.ActionSleep
+					updateSvc.Stop()
+					continue
+				case userEventPowerShutdown:
+					logger.Info("power: shutdown requested, waiting for tasks")
+					pendingQuit = true
+					pendingAction = power.ActionShutdown
+					updateSvc.Stop()
+					continue
+				}
+			}
 			current = current.HandleEvent(e)
 			if current == nil {
 				break
 			}
 		}
 		if current != nil {
-			current.Draw(r)
+			if pendingQuit {
+				var busy bool
+				if bc, ok := current.(ui.BusyChecker); ok {
+					busy = bc.IsBusy()
+				}
+				if !busy && !updateSvc.IsRunning() {
+					if pendingAction == power.ActionShutdown {
+						logger.Info("power: all tasks done, writing /tmp/poweroff")
+						if err := os.WriteFile("/tmp/poweroff", []byte{}, 0644); err != nil {
+							logger.Error("power: /tmp/poweroff: %v", err)
+						}
+						for {
+							sdl.Delay(1000) // wait for system to kill us
+						}
+					}
+					suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
+					if _, err := os.Stat(suspendPath); err != nil {
+						logger.Warn("power: suspend script not found at %s, exiting instead", suspendPath)
+						current = nil
+					} else {
+						logger.Info("power: all tasks done, calling %s", suspendPath)
+						if err := exec.Command(suspendPath).Run(); err != nil {
+							logger.Error("power: suspend: %v", err)
+						}
+						logger.Info("power: resumed from sleep")
+						pendingQuit = false
+						current.Draw(r) // first frame after wake
+					}
+				} else {
+					drawPowerPendingOverlay(r, pendingAction)
+				}
+			} else {
+				current.Draw(r)
+			}
 		}
 		sdl.Delay(16) // ~60 fps
 	}
+}
+
+func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
+	r.Clear(20, 20, 20)
+	subtitle := "Finishing up before sleep…"
+	if action == power.ActionShutdown {
+		subtitle = "Finishing up before shutdown…"
+	}
+	_, mainH := r.TextSize("Ag")
+	mid := r.H / 2
+	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, 220, 220, 220)
+	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, 120, 120, 120)
+	r.Present()
 }
