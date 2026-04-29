@@ -310,8 +310,6 @@ func (s *LocationPickerScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev // cancel, no download
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

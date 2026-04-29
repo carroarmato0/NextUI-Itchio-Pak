@@ -237,8 +237,6 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 				return s.prev
 			}
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

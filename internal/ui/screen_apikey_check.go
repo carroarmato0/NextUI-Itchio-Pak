@@ -101,8 +101,6 @@ func (s *KeyTestScreen) HandleEvent(e sdl.Event) Screen {
 		if ev.Type == sdl.CONTROLLERBUTTONDOWN && s.state != keyTestRunning {
 			return s.prev
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

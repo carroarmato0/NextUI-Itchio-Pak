@@ -96,8 +96,6 @@ func (s *AboutScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_START:
 			return s.prev
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

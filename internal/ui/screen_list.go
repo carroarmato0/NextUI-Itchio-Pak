@@ -786,8 +786,6 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 			return s
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

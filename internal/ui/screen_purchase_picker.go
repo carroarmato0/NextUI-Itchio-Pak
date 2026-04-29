@@ -131,8 +131,6 @@ func (s *PurchasePickerScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

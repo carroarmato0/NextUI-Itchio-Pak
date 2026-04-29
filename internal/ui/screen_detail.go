@@ -523,8 +523,6 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 					s.modal.active = false
 				}
 			}
-		case *sdl.QuitEvent:
-			return nil
 		}
 		return s
 	}
@@ -610,8 +608,6 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil)
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }

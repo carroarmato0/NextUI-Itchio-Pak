@@ -181,8 +181,6 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				s.confirmActive = false
 				s.confirmFileIdx = -1
 			}
-		case *sdl.QuitEvent:
-			return nil
 		}
 		return s
 	}
@@ -234,8 +232,6 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A: // physical B = back
 			return s.prev
 		}
-	case *sdl.QuitEvent:
-		return nil
 	}
 	return s
 }
