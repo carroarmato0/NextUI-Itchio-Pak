@@ -17,6 +17,33 @@ RUNTIME_OVERRIDE=""
 TARGET=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --help|-h)
+            cat <<'EOF'
+Usage: build.sh [--runtime docker|podman] <target>
+
+Targets:
+  native        Build for the host machine (x86_64, runs inside dev container)
+  tg5040        Cross-compile for TrimUI Brick / Smart Pro (ARM64)
+  tg5050        Cross-compile for TrimUI Smart Pro S (ARM64)
+  my355         Cross-compile for Miyoo Flip (ARM64)
+  all           Cross-compile for all three device platforms sequentially
+
+Options:
+  --runtime docker|podman   Override container runtime (default: auto-detect, prefers podman)
+
+Environment:
+  CONTAINER_RUNTIME=docker|podman   Alternative to --runtime
+
+Output: bin/<target>/itchio-pak
+
+Examples:
+  ./scripts/build.sh tg5040
+  ./scripts/build.sh all
+  ./scripts/build.sh --runtime docker tg5050
+  CONTAINER_RUNTIME=docker ./scripts/build.sh native
+EOF
+            exit 0
+            ;;
         --runtime) RUNTIME_OVERRIDE="$2"; shift 2 ;;
         *) TARGET="$1"; shift ;;
     esac
@@ -24,6 +51,7 @@ done
 
 if [ -z "$TARGET" ]; then
     echo "Usage: build.sh [--runtime docker|podman] native|tg5040|tg5050|my355|all" >&2
+    echo "       build.sh --help for full usage" >&2
     exit 1
 fi
 

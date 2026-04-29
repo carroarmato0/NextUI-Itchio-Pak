@@ -19,6 +19,32 @@ check_adb() {
 
 CMD="${1:-}"
 case "$CMD" in
+    --help|-h)
+        cat <<'EOF'
+Usage: debug.sh <command>
+
+Commands:
+  logs         Stream the runtime log from the connected device (Ctrl-C to stop)
+  push         Build for DEPLOY_PLATFORM and push the binary via ADB
+  run          Build, push, then launch the binary directly (shows all stdout/stderr)
+  pull-cache   Pull /tmp/itchio-pak/cache/ to ./debug-cache/
+  pull-log     Pull the runtime log to the current directory
+  shell        Open an interactive ADB shell on the device
+
+Environment:
+  DEPLOY_PLATFORM=tg5040|tg5050|my355   Target platform (default: tg5040)
+
+Log path on device: /mnt/SDCARD/.userdata/<platform>/logs/itchio-pak.log
+
+Examples:
+  ./scripts/debug.sh logs
+  ./scripts/debug.sh push
+  ./scripts/debug.sh run
+  DEPLOY_PLATFORM=my355 ./scripts/debug.sh push
+  ./scripts/debug.sh pull-log && cat itchio-pak.log
+EOF
+        exit 0
+        ;;
     logs)
         check_adb
         echo "==> Streaming log (Ctrl-C to stop)..."

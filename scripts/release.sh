@@ -7,6 +7,24 @@ cd "$SCRIPT_DIR/.."
 # release.sh runs directly on the host.  test.sh and build.sh each manage their
 # own containers internally, so no container wrapping is needed here.
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    cat <<'EOF'
+Usage: release.sh
+
+Run the full test suite, build all platforms, and assemble release artifacts.
+
+Output in dist/:
+  Itch-io.pak.zip   Single-zip for Pak Store; all three lib dirs inside, works on any device
+  Itch-io.pakz      Multi-device bundle for manual SD card install (one dir per platform)
+
+Requires: zip (host), docker or podman (managed internally by test.sh and build.sh)
+
+Examples:
+  ./scripts/release.sh
+EOF
+    exit 0
+fi
+
 if ! command -v zip >/dev/null 2>&1; then
     echo "ERROR: zip is required (install it with your package manager)" >&2
     exit 1

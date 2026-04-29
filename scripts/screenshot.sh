@@ -10,6 +10,26 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    cat <<'EOF'
+Usage: screenshot.sh [output.png]
+
+Capture the current device framebuffer via ADB and save as a PNG.
+Assumes a 1024x768 BGRA framebuffer (tg5040/TrimUI Brick layout).
+
+Arguments:
+  output.png    Destination file (default: screenshot.png)
+
+Requires: adb, ffmpeg
+Device must be connected via USB with ADB enabled (NextUI Settings → Developer → ADB over USB).
+
+Examples:
+  ./scripts/screenshot.sh
+  ./scripts/screenshot.sh docs/screenshots/main.png
+EOF
+    exit 0
+fi
+
 OUT="${1:-screenshot.png}"
 
 echo "==> Capturing framebuffer from device..."
