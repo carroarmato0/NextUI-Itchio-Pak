@@ -103,8 +103,11 @@ func runSDL() {
 
 	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc)
 
-	var pendingQuit bool
-	var pendingAction power.Action
+	// pendingQuit and pendingAction are set together; only read when pendingQuit is true.
+	var (
+		pendingQuit   bool
+		pendingAction = power.ActionSleep
+	)
 
 	platform := readPlatform()
 	var pressedScancodes map[sdl.Scancode]bool
@@ -187,7 +190,6 @@ func runSDL() {
 						}
 						logger.Info("power: resumed from sleep")
 						pendingQuit = false
-						current.Draw(r) // first frame after wake
 					}
 				} else {
 					drawPowerPendingOverlay(r, pendingAction)
