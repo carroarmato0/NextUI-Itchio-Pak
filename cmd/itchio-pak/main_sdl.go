@@ -189,6 +189,7 @@ func runSDL() {
 							logger.Error("power: suspend: %v", err)
 						}
 						logger.Info("power: resumed from sleep")
+						powerMgr.PostWake()
 						pendingQuit = false
 					}
 				} else {

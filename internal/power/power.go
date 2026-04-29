@@ -3,6 +3,7 @@ package power
 import (
 	"fmt"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	evdev "github.com/holoplot/go-evdev"
@@ -27,7 +28,16 @@ const (
 // sleep or shutdown action is detected. notify is called from a background
 // goroutine and must be safe to call concurrently.
 type Manager struct {
-	notify func(Action)
+	notify        func(Action)
+	postWakeUntil atomic.Int64 // unix nanos; goroutine ignores events before this time
+}
+
+// PostWake tells the Manager the device just woke from sleep. Call this
+// immediately after the suspend command returns. Suppresses the buffered
+// wake-up KEY_POWER event that would otherwise trigger an immediate re-sleep.
+func (m *Manager) PostWake() {
+	m.postWakeUntil.Store(time.Now().Add(3 * time.Second).UnixNano())
+	logger.Info("power: post-wake inhibit active for 3s")
 }
 
 // NewManager creates a Manager. notify must not be nil.
@@ -62,7 +72,11 @@ func (m *Manager) run() {
 			logger.Error("power: read error: %v", err)
 			return
 		}
-		if time.Now().Before(cooldownUntil) {
+		now := time.Now()
+		if now.Before(cooldownUntil) {
+			continue
+		}
+		if t := m.postWakeUntil.Load(); t != 0 && now.Before(time.Unix(0, t)) {
 			continue
 		}
 		if event.Type != evdev.EV_KEY || event.Code != evdev.KEY_POWER {
