@@ -115,6 +115,7 @@ func runSDL() {
 		pressedScancodes = make(map[sdl.Scancode]bool)
 	}
 
+loop:
 	for current != nil {
 		// Upload any images that background goroutines finished fetching.
 		cache.ProcessPending(r)
@@ -175,9 +176,7 @@ func runSDL() {
 						if err := os.WriteFile("/tmp/poweroff", []byte{}, 0644); err != nil {
 							logger.Error("power: /tmp/poweroff: %v", err)
 						}
-						for {
-							sdl.Delay(1000) // wait for system to kill us
-						}
+						break loop // exit cleanly; NextUI detects /tmp/poweroff and shuts down
 					}
 					suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
 					if _, err := os.Stat(suspendPath); err != nil {
@@ -190,6 +189,20 @@ func runSDL() {
 						}
 						logger.Info("power: resumed from sleep")
 						powerMgr.PostWake()
+						// Flush any power UserEvents the goroutine queued while
+						// processing the wake-up key press. They arrived before
+						// suspend.Run() returned, so PostWake() alone is too late.
+						for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+							if uev, ok := e.(*sdl.UserEvent); ok &&
+								(uev.Code == userEventPowerSleep || uev.Code == userEventPowerShutdown) {
+								logger.Info("power: discarding buffered wake-up event")
+								continue
+							}
+							current = current.HandleEvent(e)
+							if current == nil {
+								break loop
+							}
+						}
 						pendingQuit = false
 					}
 				} else {
