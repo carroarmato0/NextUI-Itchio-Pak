@@ -102,6 +102,15 @@ The selected sort mode is saved automatically and restored on the next launch.
   your filters.
 - Filters are configured in **Settings** (press Start from any screen).
 
+### Power management
+
+The power button behaves the same way it does with emulators on NextUI:
+
+- **Short press** — device goes to sleep; the Pak stays in memory and resumes exactly where you left it when you wake the device.
+- **Hold 2 seconds** — device shuts down cleanly.
+
+If a background task (ROM download, game list cache build, inventory check) is running when you press the power button, a full-screen **"Please wait"** overlay is shown until the task finishes. The action fires automatically — no confirmation or extra button press needed.
+
 ### Settings
 - **API Key** — shows `FOUND` (green) when an itch.io API key is configured, enabling paid game downloads
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
@@ -129,6 +138,8 @@ The selected sort mode is saved automatically and restored on the next launch.
 | X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
 | Select | Cycle sort mode (game list) |
 | Start | Open Settings from any screen |
+| Power (short press) | Sleep — resumes at the same screen on wake |
+| Power (hold 2 s) | Shutdown — waits for active tasks to finish first |
 
 ---
 
@@ -417,6 +428,7 @@ make debug-logs
 cmd/itchio-pak/       — main binary entry point
 internal/
   itchio/             — itch.io client: RSS feed, page scraping, download flow
+  power/              — power button detection via evdev; sleep/shutdown callback
   renderer/           — SDL2 drawing layer, image cache, QR code generation
   roms/               — ROM type detection, destination folder mapping
   settings/           — JSON config read/write
