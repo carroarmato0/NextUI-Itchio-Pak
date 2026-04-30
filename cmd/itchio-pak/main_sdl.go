@@ -110,9 +110,21 @@ func runSDL() {
 	)
 
 	platform := readPlatform()
-	var pressedScancodes map[sdl.Scancode]bool
 	if platform == "my355" {
-		pressedScancodes = make(map[sdl.Scancode]bool)
+		const joyTypePath = "/sys/class/miyooio_chr_dev/joy_type"
+		logger.Debug("input: checking for my355 joy_type workaround at %s", joyTypePath)
+		if _, err := os.Stat(joyTypePath); err == nil {
+			logger.Info("input: applying my355 joy_type workaround (-1)")
+			if err := os.WriteFile(joyTypePath, []byte("-1"), 0644); err != nil {
+				logger.Error("input: failed to apply joy_type workaround: %v", err)
+			}
+			defer func() {
+				logger.Info("input: restoring my355 joy_type (0)")
+				if err := os.WriteFile(joyTypePath, []byte("0"), 0644); err != nil {
+					logger.Error("input: failed to restore joy_type: %v", err)
+				}
+			}()
+		}
 	}
 
 loop:
@@ -123,40 +135,6 @@ loop:
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
 			if pendingQuit {
 				continue // drain input while waiting for tasks
-			}
-			if pressedScancodes != nil {
-				switch ev := e.(type) {
-				case *sdl.KeyboardEvent:
-					sc := ev.Keysym.Scancode
-					typeName := "KEYUP"
-					if ev.Type == sdl.KEYDOWN {
-						typeName = "KEYDOWN"
-					}
-					logger.Debug("input: KeyboardEvent type=%s scancode=%d sym=%d", typeName, sc, ev.Keysym.Sym)
-					if ev.Type == sdl.KEYDOWN {
-						if pressedScancodes[sc] {
-							logger.Debug("input: dropping duplicate KEYDOWN scancode=%d", sc)
-							continue // duplicate KEYDOWN — drop it
-						}
-						pressedScancodes[sc] = true
-					} else if ev.Type == sdl.KEYUP {
-						delete(pressedScancodes, sc)
-					}
-				case *sdl.ControllerButtonEvent:
-					typeName := "BUTTONUP"
-					if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-						typeName = "BUTTONDOWN"
-					}
-					logger.Debug("input: ControllerButtonEvent type=%s button=%d", typeName, ev.Button)
-					// On my355 every d-pad press fires both a KeyboardEvent (K_UP/DOWN/LEFT/RIGHT)
-					// and a ControllerButtonEvent (DPAD_*). All screens handle the keyboard
-					// path, so drop the redundant controller DPAD events to prevent double input.
-					switch ev.Button {
-					case sdl.CONTROLLER_BUTTON_DPAD_UP, sdl.CONTROLLER_BUTTON_DPAD_DOWN,
-						sdl.CONTROLLER_BUTTON_DPAD_LEFT, sdl.CONTROLLER_BUTTON_DPAD_RIGHT:
-						continue
-					}
-				}
 			}
 			// Intercept SDL_QUIT (SIGTERM from NextUI) before screens see it.
 			if _, ok := e.(*sdl.QuitEvent); ok {
