@@ -15,7 +15,7 @@ bin/
 
 # Native build binary (wherever go build drops it)
 cmd/itchio-pak/itchio-pak
-itchio-pak
+/itchio-pak
 
 # Local tooling
 .superpowers/

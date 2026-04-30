@@ -57,10 +57,19 @@ fi
 
 # Only need a container runtime when launching from the host.
 RUNTIME=""
+GIT_COMMIT="${GIT_COMMIT:-}"
 if [ -z "${IN_CONTAINER:-}" ]; then
     RUNTIME="${RUNTIME_OVERRIDE:-$(detect_runtime)}"
     if [ -z "$RUNTIME" ]; then
         echo "ERROR: docker or podman required" >&2; exit 1
+    fi
+
+    # Extract git commit info on the host.
+    GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    if [ "$GIT_COMMIT" != "unknown" ]; then
+        if ! git diff --quiet 2>/dev/null; then
+            GIT_COMMIT="${GIT_COMMIT}-dirty"
+        fi
     fi
 fi
 
@@ -92,13 +101,15 @@ build_native() {
             -v "$(pwd):/workspace" \
             -w /workspace \
             -e IN_CONTAINER=1 \
+            -e GIT_COMMIT="$GIT_COMMIT" \
             "$DEV_IMAGE" "$0" native
     fi
     VERSION="$(pak_version)"
+    COMMIT="${GIT_COMMIT:-unknown}"
     mkdir -p bin/native
-    go build -ldflags "-X main.version=$VERSION -X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
+    go build -ldflags "-X 'main.version=$VERSION' -X 'main.gitCommit=$COMMIT' -X 'github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION'" \
         -o bin/native/itchio-pak ./cmd/itchio-pak/
-    echo "Built: bin/native/itchio-pak ($VERSION)"
+    echo "Built: bin/native/itchio-pak ($VERSION / $COMMIT)"
 }
 
 build_platform() {
@@ -116,11 +127,12 @@ build_platform() {
     # -tags netgo: use Go's built-in DNS resolver to avoid linking res_search
     #            which requires GLIBC_2.34 (devices ship glibc 2.33).
     VERSION="$(pak_version)"
+    COMMIT="${GIT_COMMIT:-unknown}"
     CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
         go build -a -tags netgo -buildvcs=false \
-        -ldflags "-X main.version=$VERSION -X github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION" \
+        -ldflags "-X 'main.version=$VERSION' -X 'main.gitCommit=$COMMIT' -X 'github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=$VERSION'" \
         -o bin/"$PLATFORM"/itchio-pak ./cmd/itchio-pak/
-    echo "Built: bin/$PLATFORM/itchio-pak ($VERSION)"
+    echo "Built: bin/$PLATFORM/itchio-pak ($VERSION / $COMMIT)"
 
     # Bundle SDL2 .so files from the LoveRetro sysroot.  These are compiled
     # without X11 / PulseAudio / Wayland so they work on embedded devices.
@@ -144,6 +156,7 @@ case "$TARGET" in
                 -v "$(pwd):/workspace" \
                 -w /workspace \
                 -e IN_CONTAINER=1 \
+                -e GIT_COMMIT="$GIT_COMMIT" \
                 "itchio-pak-$TARGET-dev" "$0" "$TARGET"
         fi
         build_platform "$TARGET"
@@ -160,6 +173,7 @@ case "$TARGET" in
                 -v "$(pwd):/workspace" \
                 -w /workspace \
                 -e IN_CONTAINER=1 \
+                -e GIT_COMMIT="$GIT_COMMIT" \
                 "itchio-pak-$p-dev" "$0" "$p"
         done
         ;;

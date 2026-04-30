@@ -17,6 +17,11 @@ import (
 //	-X main.version=vX.Y.Z
 var version = "dev"
 
+// gitCommit is set at build time via -ldflags:
+//
+//	-X main.gitCommit=xxxxxxx
+var gitCommit = "unknown"
+
 func main() {
 	headless := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
 	flag.Parse()
@@ -40,6 +45,7 @@ func main() {
 	}()
 
 	logger.Info("itchio-pak %s starting", version)
+	logger.Info("Git commit: %s", gitCommit)
 
 	if *headless {
 		logger.Info("headless mode: exiting cleanly")
