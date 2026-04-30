@@ -28,6 +28,7 @@ func main() {
 
 	logPath := logFilePath()
 	_ = os.MkdirAll(filepath.Dir(logPath), 0755)
+	rotateLog(logPath)
 	logFile, err := os.OpenFile(logPath,
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err == nil {
