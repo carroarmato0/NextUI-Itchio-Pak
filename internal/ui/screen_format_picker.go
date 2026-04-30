@@ -114,25 +114,27 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	contentTop += smallFH + 10
 
 	rowH := fontH + 20
-	tagW := int32(52)
+	const tagMargin = int32(8)
+	maxTagW, _ := r.SmallTextSize("[GBC]") // widest label — used for a stable filename budget
 
 	for i, u := range s.uploads {
 		y := contentTop + int32(i)*rowH
 		if i == s.cursor {
 			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
 		}
-		name := truncateToWidth(r, u.Filename, r.W-tagW-32)
+		name := truncateToWidth(r, u.Filename, r.W-maxTagW-tagMargin-20-12)
 		r.DrawText(name, 20, y, colorText, colorText, colorText)
 
-		tagX := r.W - tagW - 8
 		f := s.formats[i]
+		lbl := f.label()
+		tagX := r.W - maxTagW - tagMargin
 		switch f {
 		case formatGB:
-			r.DrawSmallText(f.label(), tagX, y+4, 120, 220, 120)
+			r.DrawSmallText(lbl, tagX, y+4, 120, 220, 120)
 		case formatGBC:
-			r.DrawSmallText(f.label(), tagX, y+4, 80, 180, 255)
+			r.DrawSmallText(lbl, tagX, y+4, 80, 180, 255)
 		case formatZIP:
-			r.DrawSmallText(f.label(), tagX, y+4, 220, 180, 80)
+			r.DrawSmallText(lbl, tagX, y+4, 220, 180, 80)
 		}
 	}
 
