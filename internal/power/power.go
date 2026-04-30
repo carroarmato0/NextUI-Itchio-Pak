@@ -2,6 +2,7 @@ package power
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,10 @@ import (
 const (
 	holdThreshold = 2 * time.Second
 	cooldown      = 1 * time.Second
+
+	// powerKeyAlt is the keycode some my355 firmware stacks use for the power
+	// button (rk805 pwrkey) instead of the standard KEY_POWER (116).
+	powerKeyAlt evdev.EvCode = 102
 )
 
 // Action is the power button action to perform.
@@ -55,13 +60,13 @@ func (m *Manager) Start() {
 }
 
 func (m *Manager) run() {
-	dev, err := findPowerDeviceWithPattern("/dev/input/event*")
+	dev, err := openPowerDevice()
 	if err != nil {
 		logger.Warn("power: no power button device found: %v", err)
 		return
 	}
 	defer dev.Close()
-	logger.Info("power: monitoring %s for KEY_POWER events", dev.Path())
+	logger.Info("power: monitoring %s for power key events", dev.Path())
 
 	var pressTime time.Time
 	var cooldownUntil time.Time
@@ -79,13 +84,13 @@ func (m *Manager) run() {
 		if t := m.postWakeUntil.Load(); t != 0 && now.Before(time.Unix(0, t)) {
 			continue
 		}
-		if event.Type != evdev.EV_KEY || event.Code != evdev.KEY_POWER {
+		if event.Type != evdev.EV_KEY || !isPowerKey(event.Code) {
 			continue
 		}
 		switch event.Value {
 		case 1: // key down
 			pressTime = time.Now()
-		case 2: // key held
+		case 2: // key held (autorepeat — not emitted by all drivers)
 			if !pressTime.IsZero() && time.Since(pressTime) >= holdThreshold {
 				logger.Info("power: long press detected — shutdown")
 				m.notify(ActionShutdown)
@@ -97,12 +102,34 @@ func (m *Manager) run() {
 				if time.Since(pressTime) < holdThreshold {
 					logger.Info("power: short press detected — sleep")
 					m.notify(ActionSleep)
+				} else {
+					// Drivers that never emit autorepeat (e.g. my355 rk805 pwrkey)
+					// reach here for long presses.
+					logger.Info("power: long press detected — shutdown")
+					m.notify(ActionShutdown)
 				}
 				pressTime = time.Time{}
 				cooldownUntil = time.Now().Add(cooldown)
 			}
 		}
 	}
+}
+
+// openPowerDevice returns the power button input device for the current platform.
+// The my355 (Miyoo Flip) rk805 pwrkey lives at /dev/input/event2 and may advertise
+// only keycode 102 rather than KEY_POWER, so we open it directly rather than scanning.
+func openPowerDevice() (*evdev.InputDevice, error) {
+	if os.Getenv("PLATFORM") == "my355" {
+		logger.Debug("power: my355 platform — opening /dev/input/event2 directly")
+		return evdev.Open("/dev/input/event2")
+	}
+	return findPowerDeviceWithPattern("/dev/input/event*")
+}
+
+// isPowerKey reports whether code is a power button keycode. Some my355 firmware
+// stacks expose the power button as keycode 102 instead of the standard KEY_POWER.
+func isPowerKey(code evdev.EvCode) bool {
+	return code == evdev.KEY_POWER || code == powerKeyAlt
 }
 
 // findPowerDeviceWithPattern scans devices matching pattern for one with
