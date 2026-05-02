@@ -168,24 +168,29 @@ func (s *LocationPickerScreen) clampScroll(visibleCount int) {
 }
 
 func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	_, mainFH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	footerH := int32(40)
+	ac := r.Theme.Accent
+	hBG := r.Theme.HeaderBG
 
 	// ── Header ──────────────────────────────────────────────────────────────
 	headerH := mainFH + smallFH + 16
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
 
 	// ── Path bar ────────────────────────────────────────────────────────────
 	pathBarY := headerH + 2
 	pathBarH := smallFH + 10
-	r.DrawRect(0, pathBarY, r.W, pathBarH, 25, 25, 25)
+	r.DrawRect(0, pathBarY, r.W, pathBarH, hBG[0], hBG[1], hBG[2])
 	pathText := leftTruncatePath(r, s.currentDir, r.W-24)
 	r.DrawSmallText(pathText, 12, pathBarY+5, 120, 160, 200)
 
@@ -226,17 +231,31 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 			break
 		}
 		selected := s.cursor == i
+		aT := r.Theme.AccentText
+		lt := r.Theme.ListText
 		switch row.kind {
 		case rowUp:
 			if selected {
-				r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+				r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 			}
-			r.DrawSmallText("\u2191  .. (go up)", 20, y+(rowH-smallFH)/2, 100, 140, 180)
+			var tr, tg, tb uint8
+			if selected {
+				tr, tg, tb = aT[0], aT[1], aT[2]
+			} else {
+				tr, tg, tb = 100, 140, 180
+			}
+			r.DrawSmallText("\u2191  .. (go up)", 20, y+(rowH-smallFH)/2, tr, tg, tb)
 		case rowEntry:
 			if selected {
-				r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+				r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 			}
-			r.DrawText("\u25b8 "+row.name, 20, y, colorText, colorText, colorText)
+			var tr, tg, tb uint8
+			if selected {
+				tr, tg, tb = aT[0], aT[1], aT[2]
+			} else {
+				tr, tg, tb = lt[0], lt[1], lt[2]
+			}
+			r.DrawText("\u25b8 "+row.name, 20, y, tr, tg, tb)
 		}
 		listRowsDrawn++
 	}
@@ -249,23 +268,30 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 
 	// ── Footer ───────────────────────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText(s.footerHint(), 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints(s.footerHints(), ftrY)
 	r.Present()
 }
 
-// footerHint returns the context-sensitive button hint line for the footer.
-func (s *LocationPickerScreen) footerHint() string {
-	const sep = "  \u00b7  "
+// footerHints returns context-sensitive FooterHint items for DrawFooterHints.
+func (s *LocationPickerScreen) footerHints() []renderer.FooterHint {
+	hints := []renderer.FooterHint{}
 	switch {
 	case s.cursor == 0 && s.atRoot():
-		return "B: confirm" + sep + "Start: cancel"
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "confirm"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
 	case s.cursor == 0:
-		return "B: confirm" + sep + "A: go up" + sep + "Start: cancel"
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "confirm"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "go up"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
 	case s.atRoot():
-		return "B: enter dir" + sep + "Start: cancel"
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "enter dir"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
 	default:
-		return "B: confirm / enter dir" + sep + "A: go up" + sep + "Start: cancel"
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "confirm/enter"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "go up"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
 	}
+	return hints
 }
 
 func (s *LocationPickerScreen) HandleEvent(e sdl.Event) Screen {
