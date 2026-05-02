@@ -155,18 +155,23 @@ func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 }
 
 func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	footerH := int32(40)
 	_, mainFH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := mainFH + smallFH + 16
 
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	hdr := r.Theme.HeaderBG
+	ac := r.Theme.Accent
+	r.DrawRect(0, 0, r.W, headerH, hdr[0], hdr[1], hdr[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
 	contentH := r.H - headerH - footerH
@@ -174,7 +179,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 
 	switch s.state {
 	case fetchLoading:
-		r.DrawTextCentered("Finding available files...", 0, mid-mainFH/2, r.W, colorText, colorText, colorText)
+		r.DrawTextCentered("Finding available files...", 0, mid-mainFH/2, r.W, mt[0], mt[1], mt[2])
 
 	case fetchError:
 		r.DrawText("Could not fetch files:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
@@ -188,9 +193,11 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 	switch s.state {
 	case fetchLoading:
-		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
+		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	default:
-		r.DrawSmallText("A / B: back", 10, ftrY, 140, 140, 140)
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+		}, ftrY)
 	}
 	r.Present()
 }

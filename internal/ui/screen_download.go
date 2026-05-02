@@ -98,17 +98,22 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 }
 
 func (s *DownloadScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	footerH := int32(40)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	hdr := r.Theme.HeaderBG
+	ac := r.Theme.Accent
+	r.DrawRect(0, 0, r.W, headerH, hdr[0], hdr[1], hdr[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 10
 	contentH := r.H - headerH - footerH
@@ -118,23 +123,23 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 		dl := atomic.LoadInt64(&s.downloaded)
 		tot := atomic.LoadInt64(&s.total)
 		mid := headerH + contentH/2
-		r.DrawSmallText(s.upload.Filename, 20, contentTop+4, 160, 160, 160)
+		r.DrawSmallText(s.upload.Filename, 20, contentTop+4, ht[0], ht[1], ht[2])
 		barW := r.W - 80
 		r.DrawRect(40, mid-10, barW, 20, 60, 60, 60)
 		if tot > 0 {
 			filled := int32(float64(barW) * float64(dl) / float64(tot))
 			r.DrawRect(40, mid-10, filled, 20, 80, 200, 80)
 			r.DrawText(fmt.Sprintf("%d%%  (%s / %s)", dl*100/tot, humanBytes(dl), humanBytes(tot)),
-				40, mid+18, colorText, colorText, colorText)
+				40, mid+18, mt[0], mt[1], mt[2])
 		} else {
 			r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
-			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, colorText, colorText, colorText)
+			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, mt[0], mt[1], mt[2])
 		}
 
 	case dlDone:
 		mid := headerH + contentH/2
 		r.DrawTextCentered("Download complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
-		r.DrawSmallTextCentered(s.upload.Filename, 0, mid+4, r.W, 160, 160, 160)
+		r.DrawSmallTextCentered(s.upload.Filename, 0, mid+4, r.W, ht[0], ht[1], ht[2])
 		r.DrawSmallTextCentered("Saved to: "+s.dest, 0, mid+4+smallFH+4, r.W, 120, 120, 120)
 
 	case dlError:
@@ -162,16 +167,19 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 			qrX := (r.W - qrSize) / 2
 			r.DrawTextureAt(tex, qrX, y, qrSize, qrSize)
 			tex.Destroy()
-			r.DrawSmallTextCentered("Scan to visit game page", 0, y+qrSize+4, r.W, 160, 160, 160)
+			r.DrawSmallTextCentered("Scan to visit game page", 0, y+qrSize+4, r.W, ht[0], ht[1], ht[2])
 		}
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
 	switch s.state {
 	case dlDownloading:
-		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
+		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	default:
-		r.DrawSmallText("A / B: back", 10, ftrY, 140, 140, 140)
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+		}, ftrY)
 	}
 	r.Present()
 }

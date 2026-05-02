@@ -28,23 +28,26 @@ func NewAboutScreen(prev Screen) *AboutScreen {
 }
 
 func (s *AboutScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
 	footerH := int32(40)
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText("About", 20, textY, colorText, colorText, colorText)
+	mt := r.Theme.MainText
+	r.DrawText("About", 20, textY, mt[0], mt[1], mt[2])
 
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 
 	// ── Text block ──────────────────────────────────────────────
 	y := headerH + 20
-	r.DrawTextCentered(appDescLine1, 0, y, r.W, colorText, colorText, colorText)
+	r.DrawTextCentered(appDescLine1, 0, y, r.W, mt[0], mt[1], mt[2])
 	y += fontH + 6
-	r.DrawTextCentered(appDescLine2, 0, y, r.W, colorText, colorText, colorText)
+	r.DrawTextCentered(appDescLine2, 0, y, r.W, mt[0], mt[1], mt[2])
 	y += fontH + 16
-	r.DrawSmallTextCentered("Version "+appVersion, 0, y, r.W, 160, 160, 160)
+	ht := r.Theme.HintText
+	r.DrawSmallTextCentered("Version "+appVersion, 0, y, r.W, ht[0], ht[1], ht[2])
 	y += smallFH + 10
 	r.DrawSmallTextCentered(appNote, 0, y, r.W, 100, 100, 100)
 
@@ -74,7 +77,9 @@ func (s *AboutScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("A: back", 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+	}, ftrY)
 	r.Present()
 }
 

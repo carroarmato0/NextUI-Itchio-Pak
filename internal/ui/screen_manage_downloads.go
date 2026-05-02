@@ -42,31 +42,43 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 	footerH := int32(40)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 
+	hdr := r.Theme.HeaderBG
+	ac := r.Theme.Accent
 	headerH := fontH + smallFH + 16
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	r.DrawRect(0, 0, r.W, headerH, hdr[0], hdr[1], hdr[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, "Manage Downloads — "+entry.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+entry.Author, 12, 8+fontH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+entry.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 10
 	rowH := fontH + 14
 	margin := int32(20)
 
+	lt := r.Theme.ListText
+	at := r.Theme.AccentText
 	for i, f := range entry.Files {
 		y := contentTop + int32(i)*rowH
 		if i == s.cursor && !s.confirmActive {
-			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			nameW, _ := r.TextSize(f.Filename)
+			r.DrawText(f.Filename, margin, y, at[0], at[1], at[2])
+			dirLabel := "→  " + f.DestPath
+			r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
+		} else {
+			nameW, _ := r.TextSize(f.Filename)
+			r.DrawText(f.Filename, margin, y, lt[0], lt[1], lt[2])
+			dirLabel := "→  " + f.DestPath
+			r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
 		}
-		nameW, _ := r.TextSize(f.Filename)
-		r.DrawText(f.Filename, margin, y, colorText, colorText, colorText)
-		dirLabel := "→  " + f.DestPath
-		r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
 	}
 
 	sepY := contentTop + int32(len(entry.Files))*rowH
@@ -74,12 +86,15 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 	deleteAllY := sepY + 8
 	deleteAllIdx := len(entry.Files)
 	if s.cursor == deleteAllIdx && !s.confirmActive {
-		r.DrawRect(0, deleteAllY-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+		r.DrawPill(4, deleteAllY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 	}
 	r.DrawText("Delete all", margin, deleteAllY, 200, 80, 80)
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("B: select  |  A: back", 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "select"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+	}, ftrY)
 
 	if s.confirmActive {
 		s.drawConfirmOverlay(r, entry)

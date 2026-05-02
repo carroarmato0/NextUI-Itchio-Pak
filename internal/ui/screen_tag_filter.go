@@ -187,14 +187,16 @@ func (s *TagFilterScreen) stopHold(dir int) {
 
 func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
 	footerH := int32(40)
 
 	// ── Header bar ────────────────────────────────────────────────────────────
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText(s.title, 20, textY, colorText, colorText, colorText)
+	mt := r.Theme.MainText
+	r.DrawText(s.title, 20, textY, mt[0], mt[1], mt[2])
 
 	// Warning note (small font) just below header
 	_, smallFH := r.SmallTextSize("Ag")
@@ -202,18 +204,25 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("Note: coverage depends on creators' tagging.", 20, noteY, 110, 110, 110)
 
 	// Master toggle row
+	ac := r.Theme.Accent
+	lt := r.Theme.ListText
+	at := r.Theme.AccentText
 	_, fontH := r.TextSize("Ag")
 	rowH := fontH + 14
 	s.rowH = rowH
 	masterY := noteY + smallFH + 10
 	if s.cursor == 0 {
-		r.DrawRect(0, masterY-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+		r.DrawPill(4, masterY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 	}
 	allLabel := "All: Allowed"
 	if s.getEnabled() && s.anyTagEnabled() {
 		allLabel = "All: Filtered"
 	}
-	r.DrawText(allLabel, 20, masterY, colorText, colorText, colorText)
+	if s.cursor == 0 {
+		r.DrawText(allLabel, 20, masterY, at[0], at[1], at[2])
+	} else {
+		r.DrawText(allLabel, 20, masterY, lt[0], lt[1], lt[2])
+	}
 
 	// ── Scrollable tag list ───────────────────────────────────────────────────
 	tagAreaTop := masterY + rowH + 6
@@ -224,20 +233,29 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	r.SetClipRect(0, tagAreaTop, r.W, s.tagAreaH)
 	for i, tag := range s.tags {
 		rowY := tagAreaTop + int32(i)*rowH - s.scrollY
-		if s.cursor == i+1 {
-			r.DrawRect(0, rowY-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+		selected := s.cursor == i+1
+		if selected {
+			r.DrawPill(4, rowY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 		}
 		state := "Allowed"
 		if s.getEnabled() && s.isTagEnabled(tag) {
 			state = "Blocked"
 		}
-		r.DrawText("  "+tag+": "+state, 20, rowY, colorText, colorText, colorText)
+		if selected {
+			r.DrawText("  "+tag+": "+state, 20, rowY, at[0], at[1], at[2])
+		} else {
+			r.DrawText("  "+tag+": "+state, 20, rowY, lt[0], lt[1], lt[2])
+		}
 	}
 	r.ClearClipRect()
 
 	// ── Footer ────────────────────────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("L/R skip · B toggle · A back", 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgePill, Label: "L/R", Text: "skip"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "toggle"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+	}, ftrY)
 	r.Present()
 }
 

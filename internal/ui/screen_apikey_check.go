@@ -50,7 +50,8 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen) 
 }
 
 func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	footerH := int32(40)
 	_, fontH := r.TextSize("Ag")
@@ -58,20 +59,22 @@ func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 
 	headerH := int32(72)
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText("Test API Key", 20, textY, colorText, colorText, colorText)
+	mt := r.Theme.MainText
+	r.DrawText("Test API Key", 20, textY, mt[0], mt[1], mt[2])
 
 	contentTop := headerH + 6
 	contentH := r.H - headerH - footerH
 	mid := contentTop + contentH/2
 
+	ht := r.Theme.HintText
 	switch s.state {
 	case keyTestRunning:
-		r.DrawTextCentered("Testing API key...", 0, mid-fontH/2, r.W, colorText, colorText, colorText)
+		r.DrawTextCentered("Testing API key...", 0, mid-fontH/2, r.W, mt[0], mt[1], mt[2])
 
 	case keyTestOK:
 		r.DrawTextCentered("API key valid", 0, mid-fontH-smallFH*2-12, r.W, 80, 200, 80)
-		r.DrawSmallTextCentered(fmt.Sprintf("Authenticated as: %s", s.username), 0, mid-smallFH-4, r.W, 180, 180, 180)
-		r.DrawSmallTextCentered(fmt.Sprintf("%d owned game(s) found", s.ownedCount), 0, mid+smallFH+4, r.W, 140, 140, 140)
+		r.DrawSmallTextCentered(fmt.Sprintf("Authenticated as: %s", s.username), 0, mid-smallFH-4, r.W, ht[0], ht[1], ht[2])
+		r.DrawSmallTextCentered(fmt.Sprintf("%d owned game(s) found", s.ownedCount), 0, mid+smallFH+4, r.W, ht[0], ht[1], ht[2])
 		r.DrawSmallTextCentered("(full list written to debug log)", 0, mid+smallFH*2+8, r.W, 100, 100, 100)
 
 	case keyTestFail:
@@ -81,9 +84,11 @@ func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	if s.state == keyTestRunning {
-		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
+		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	} else {
-		r.DrawSmallText("B / A: back", 10, ftrY, 140, 140, 140)
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+		}, ftrY)
 	}
 	r.Present()
 }

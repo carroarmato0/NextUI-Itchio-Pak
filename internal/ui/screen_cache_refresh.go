@@ -85,14 +85,16 @@ func NewCacheRefreshScreen(
 }
 
 func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	footerH := int32(40)
 	_, mainFH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := mainFH + smallFH + 16
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText("Refreshing Game List", 20, textY, colorText, colorText, colorText)
+	mt := r.Theme.MainText
+	r.DrawText("Refreshing Game List", 20, textY, mt[0], mt[1], mt[2])
 
 	fontH := mainFH
 	contentTop := headerH + 4
@@ -103,12 +105,12 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	switch state {
 	case refreshCacheLoading:
 		fetched := atomic.LoadInt64(&s.fetched)
-		r.DrawTextCentered("Fetching games...", 0, mid-fontH-4, r.W, colorText, colorText, colorText)
-		r.DrawTextCentered(fmt.Sprintf("%d fetched", fetched), 0, mid+4, r.W, colorText, colorText, colorText)
+		r.DrawTextCentered("Fetching games...", 0, mid-fontH-4, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered(fmt.Sprintf("%d fetched", fetched), 0, mid+4, r.W, mt[0], mt[1], mt[2])
 
 	case refreshCacheDone:
 		r.DrawTextCentered("Done!", 0, mid-fontH-4, r.W, 80, 200, 80)
-		r.DrawTextCentered(fmt.Sprintf("%d games cached.", s.total), 0, mid+4, r.W, colorText, colorText, colorText)
+		r.DrawTextCentered(fmt.Sprintf("%d games cached.", s.total), 0, mid+4, r.W, mt[0], mt[1], mt[2])
 
 	case refreshCacheError:
 		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
@@ -120,12 +122,15 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
+	ht := r.Theme.HintText
 	ftrY := r.DrawFooterBar(footerH)
 	switch state {
 	case refreshCacheLoading:
-		r.DrawSmallText("Please wait...", 10, ftrY, 140, 140, 140)
+		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	default:
-		r.DrawSmallText("A / B: back to settings", 10, ftrY, 140, 140, 140)
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+		}, ftrY)
 	}
 	r.Present()
 }

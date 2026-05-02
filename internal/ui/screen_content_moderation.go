@@ -60,12 +60,14 @@ func (s *ContentModerationScreen) processAutoRepeat() {
 
 func (s *ContentModerationScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
 	footerH := int32(40)
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText("Content Moderation", 20, textY, colorText, colorText, colorText)
+	mt := r.Theme.MainText
+	r.DrawText("Content Moderation", 20, textY, mt[0], mt[1], mt[2])
 
 	f := s.cfg.Filter
 
@@ -96,18 +98,26 @@ func (s *ContentModerationScreen) Draw(r *renderer.Renderer) {
 		substanceLabel,
 	}
 
+	ac := r.Theme.Accent
+	lt := r.Theme.ListText
+	at := r.Theme.AccentText
 	_, fontH := r.TextSize("Ag")
 	rowH := fontH + 14
 	for i, label := range items {
 		y := headerH + 10 + int32(i)*rowH
 		if contentModItem(i) == s.cursor {
-			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			r.DrawText(label, 20, y, at[0], at[1], at[2])
+		} else {
+			r.DrawText(label, 20, y, lt[0], lt[1], lt[2])
 		}
-		r.DrawText(label, 20, y, colorText, colorText, colorText)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("D-pad navigate · B select · A back", 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "select"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+	}, ftrY)
 	r.Present()
 }
 
