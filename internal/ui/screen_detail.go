@@ -150,19 +150,24 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	// ── Header ──────────────────────────────────────────────
 	// Two-line header: main title (large font) + "by author" (small font).
 	_, mainFH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := mainFH + smallFH + 16 // 8px top + 4px gap + 4px bottom
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	hBG := r.Theme.HeaderBG
+	ac := r.Theme.Accent
+	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
 
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
 	footerH := int32(40)
@@ -180,7 +185,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	imgBoxH := contentH * 2 / 3
 
 	if s.loading {
-		r.DrawRect(margin, contentTop, imgBoxW, imgBoxH, colorBG, colorBG, colorBG)
+		r.DrawRect(margin, contentTop, imgBoxW, imgBoxH, bg[0], bg[1], bg[2])
 		if s.game.CoverURL != "" {
 			tex := s.cache.Get(r, s.game.CoverURL)
 			if tex != nil {
@@ -199,24 +204,17 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			}
 		}
 		// QR placeholder so the right column is visible while loading
-		r.DrawRect(margin+imgBoxW+10, contentTop, qrColW, imgBoxH, colorBG, colorBG, colorBG)
-		r.DrawText("Loading...", margin, contentTop+imgBoxH+16, colorText, colorText, colorText)
+		r.DrawRect(margin+imgBoxW+10, contentTop, qrColW, imgBoxH, bg[0], bg[1], bg[2])
+		lt := r.Theme.ListText
+		r.DrawText("Loading...", margin, contentTop+imgBoxH+16, lt[0], lt[1], lt[2])
 		ftrY := r.DrawFooterBar(footerH)
-		if r.W <= narrowScreenW {
-			r.DrawSmallText("B:back  ⚙", 10, ftrY, 140, 140, 140)
-		} else {
-			r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
-		}
+		r.DrawFooterHints(backHints(r.W), ftrY)
 		return
 	}
 	if s.err != nil {
 		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, 200, 50, 50)
 		ftrY := r.DrawFooterBar(footerH)
-		if r.W <= narrowScreenW {
-			r.DrawSmallText("B:back  ⚙", 10, ftrY, 140, 140, 140)
-		} else {
-			r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
-		}
+		r.DrawFooterHints(backHints(r.W), ftrY)
 		return
 	}
 
@@ -235,7 +233,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		tex := s.cache.Get(r, ssURL)
 
 		// Background box for screenshot
-		r.DrawRect(margin, y, imgBoxW, imgBoxH, colorBG, colorBG, colorBG)
+		r.DrawRect(margin, y, imgBoxW, imgBoxH, bg[0], bg[1], bg[2])
 
 		if tex != nil {
 			_, _, tw, th, _ := tex.Query()
@@ -274,15 +272,22 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// ── Action area (full width) ────────────────────────────
 	isPresent := s.inv.IsPresent(s.game.URL)
 
+	drawActionPill := func(label string, pR, pG, pB uint8) {
+		aw, ah := r.TextSize(label)
+		const ap = int32(10)
+		r.DrawPill(margin, y, aw+ap*2, ah+6, pR, pG, pB)
+		r.DrawText(label, margin+ap, y+3, 20, 20, 20)
+		y += ah + 6 + 4
+	}
+
 	if isPresent {
 		if s.game.IsFree {
-			r.DrawText("[ A: Download again ]", margin, y, 80, 200, 80)
+			drawActionPill("A: Download again", 80, 200, 80)
 		} else if s.cfg.APIKey == "" {
-			r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
+			drawActionPill(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), 220, 180, 60)
 		} else {
-			r.DrawText(fmt.Sprintf("[ A: Download again ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+			drawActionPill(fmt.Sprintf("A: Download again  $%.2f", s.game.Price), 80, 200, 80)
 		}
-		y += fontH + 4
 
 		r.DrawText("[DL] On device", margin, y, 80, 200, 220)
 		y += fontH + 4
@@ -300,19 +305,22 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += fontH + 8
 	} else {
 		if s.game.IsFree {
-			r.DrawText("[ A: Download ]", margin, y, 80, 200, 80)
+			drawActionPill("A: Download", 80, 200, 80)
 		} else if s.cfg.APIKey == "" {
-			r.DrawText(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), margin, y, 220, 180, 60)
+			drawActionPill(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), 220, 180, 60)
 		} else {
-			r.DrawText(fmt.Sprintf("[ A: Download ]  $%.2f", s.game.Price), margin, y, 80, 200, 80)
+			drawActionPill(fmt.Sprintf("A: Download  $%.2f", s.game.Price), 80, 200, 80)
 		}
-		y += fontH + 8
+		y += 4
 	}
 
 	// ── Tags ────────────────────────────────────────────────
 	if s.detail != nil && len(s.detail.PageTags) > 0 {
-		tagLine := "Tags: " + strings.Join(s.detail.PageTags, ", ")
-		tagsH := r.DrawWrappedText(tagLine, margin, y, usableW, fontH+4, 120, 180, 220)
+		ac2 := r.Theme.Accent
+		aT2 := r.Theme.AccentText
+		bgPill := [3]uint8{ac2[0] / 3, ac2[1] / 3, ac2[2] / 3}
+		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+4,
+			aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
 		y += tagsH + 8
 	}
 
@@ -331,16 +339,18 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	r.ClearClipRect()
 
 	// ── Footer ──────────────────────────────────────────────
-	scrollHint := ""
-	if s.contentHeight > contentH {
-		scrollHint = "  |  Up/Down:scroll"
-	}
 	ftrY := r.DrawFooterBar(footerH)
-	if r.W <= narrowScreenW {
-		r.DrawSmallText("B:back  L/R  ⚙"+scrollHint, 10, ftrY, 140, 140, 140)
-	} else {
-		r.DrawSmallText("B:back  |  L/R:screenshots  |  Start:settings"+scrollHint, 10, ftrY, 140, 140, 140)
+	hints := []renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+		{Kind: renderer.BadgePill, Label: "L/R", Text: "screenshots"},
 	}
+	if r.W > narrowScreenW {
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "settings"})
+	}
+	if s.contentHeight > contentH {
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "↕", Text: "scroll"})
+	}
+	r.DrawFooterHints(hints, ftrY)
 }
 
 // drawModal renders a centered popup overlay with a title, body, and dismiss hint.
@@ -358,8 +368,9 @@ func (s *DetailScreen) drawModal(r *renderer.Renderer) {
 	// Dark background covers underlying content
 	r.DrawRect(0, 0, r.W, r.H, 10, 10, 15)
 
-	// Border + box background
-	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, 70, 70, 70)
+	// Border (accent-tinted) + box background
+	ac := r.Theme.Accent
+	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, ac[0]/2, ac[1]/2, ac[2]/2)
 	r.DrawRect(boxX, boxY, boxW, boxH, 25, 25, 35)
 
 	y := boxY + pad
@@ -385,7 +396,8 @@ func (s *DetailScreen) drawModal(r *renderer.Renderer) {
 
 // drawAdvisoryOverlay renders the full-screen content warning cover.
 func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
@@ -417,11 +429,7 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 
 	footerH := int32(40)
 	ftrY := r.DrawFooterBar(footerH)
-	if r.W <= narrowScreenW {
-		r.DrawSmallText("B:back  ⚙", 10, ftrY, 140, 140, 140)
-	} else {
-		r.DrawSmallText("B:back  |  Start:settings", 10, ftrY, 140, 140, 140)
-	}
+	r.DrawFooterHints(backHints(r.W), ftrY)
 }
 
 // drawQR renders the QR code centered within the given box.
@@ -675,4 +683,17 @@ func (s *DetailScreen) performSingleFileDelete() {
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Warn("inventory: save after delete failed: %v", err)
 	}
+}
+
+// backHints returns standard "back + settings" footer hints scaled to screen width.
+func backHints(screenW int32) []renderer.FooterHint {
+	hints := []renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+	}
+	if screenW > narrowScreenW {
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "settings"})
+	} else {
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
+	}
+	return hints
 }
