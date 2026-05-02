@@ -96,18 +96,23 @@ func NewFormatPickerScreen(
 }
 
 func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	footerH := int32(40)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	hBG := r.Theme.HeaderBG
+	ac := r.Theme.Accent
+	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 8
 	r.DrawSmallText("No .gb/.gbc detected — choose file and format:", 12, contentTop, 180, 160, 100)
@@ -115,31 +120,51 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 
 	rowH := fontH + 20
 	const tagMargin = int32(8)
+	const badgePad = int32(4)
 	maxTagW, _ := r.SmallTextSize("[GBC]") // widest label — used for a stable filename budget
+	badgeW := maxTagW + badgePad*2
+	badgeH := smallFH + badgePad
 
 	for i, u := range s.uploads {
 		y := contentTop + int32(i)*rowH
 		if i == s.cursor {
-			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 		}
-		name := truncateToWidth(r, u.Filename, r.W-maxTagW-tagMargin-20-12)
-		r.DrawText(name, 20, y, colorText, colorText, colorText)
+		var tr, tg, tb uint8
+		if i == s.cursor {
+			c := r.Theme.AccentText
+			tr, tg, tb = c[0], c[1], c[2]
+		} else {
+			c := r.Theme.ListText
+			tr, tg, tb = c[0], c[1], c[2]
+		}
+		name := truncateToWidth(r, u.Filename, r.W-badgeW-tagMargin-20-12)
+		r.DrawText(name, 20, y, tr, tg, tb)
 
 		f := s.formats[i]
 		lbl := f.label()
-		tagX := r.W - maxTagW - tagMargin
+		tagX := r.W - badgeW - tagMargin
+		badgeY := y + (fontH-badgeH)/2
+		var fR, fG, fB uint8
 		switch f {
 		case formatGB:
-			r.DrawSmallText(lbl, tagX, y+4, 120, 220, 120)
+			fR, fG, fB = 120, 220, 120
 		case formatGBC:
-			r.DrawSmallText(lbl, tagX, y+4, 80, 180, 255)
+			fR, fG, fB = 80, 180, 255
 		case formatZIP:
-			r.DrawSmallText(lbl, tagX, y+4, 220, 180, 80)
+			fR, fG, fB = 220, 180, 80
 		}
+		r.DrawPill(tagX, badgeY, badgeW, badgeH, fR, fG, fB)
+		r.DrawSmallText(lbl, tagX+badgePad, badgeY+badgePad/2, 20, 20, 20)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("Up/Down: select  Left/Right: GB/GBC/ZIP  B: download  A: back", 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgePill, Label: "↕", Text: "select"},
+		{Kind: renderer.BadgePill, Label: "L/R", Text: "format"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "download"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+	}, ftrY)
 	r.Present()
 }
 

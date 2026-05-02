@@ -59,18 +59,23 @@ func NewPurchasePickerScreen(
 }
 
 func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	footerH := int32(40)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
+	hBG := r.Theme.HeaderBG
+	ac := r.Theme.Accent
+	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, colorText, colorText, colorText)
-	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, 140, 140, 140)
+	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	ht := r.Theme.HintText
+	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 10
 	r.DrawSmallText("Multiple purchases found — choose one:", 20, contentTop, 180, 180, 180)
@@ -80,16 +85,27 @@ func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
 	for i, k := range s.ownedKeys {
 		y := contentTop + int32(i)*rowH
 		if i == s.cursor {
-			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		}
+		var tr, tg, tb uint8
+		if i == s.cursor {
+			c := r.Theme.AccentText
+			tr, tg, tb = c[0], c[1], c[2]
+		} else {
+			c := r.Theme.ListText
+			tr, tg, tb = c[0], c[1], c[2]
 		}
 		label := purchaseLabel(k)
-		r.DrawText(label, 20, y, colorText, colorText, colorText)
+		r.DrawText(label, 20, y, tr, tg, tb)
 		dlStr := fmt.Sprintf("Downloaded %d×", k.Downloads)
-		r.DrawSmallText(dlStr, 20, y+fontH+2, 140, 140, 140)
+		r.DrawSmallText(dlStr, 20, y+fontH+2, ht[0], ht[1], ht[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText("B: select  |  A: back", 10, ftrY, 140, 140, 140)
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "select"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+	}, ftrY)
 	r.Present()
 }
 
