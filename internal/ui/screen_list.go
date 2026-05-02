@@ -398,7 +398,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
 		pillW := badgeW + 10 // 5px horizontal padding per side
-		badgeX := leftW - pillW - 8
+		// Increased margin from the right edge of the list (leftW) from 8 to 16.
+		badgeX := leftW - pillW - 16
 
 		// Title area is left of the badge.
 		titleAreaW := badgeX - 14
