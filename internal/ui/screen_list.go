@@ -18,12 +18,6 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-const (
-	colorBG        = uint8(20)
-	colorHighlight = uint8(60)
-	colorText      = uint8(220)
-)
-
 // narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
 // are abbreviated at or below this width to prevent overflow.
 const narrowScreenW = int32(640)
