@@ -13,6 +13,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/power"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/ui"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -74,7 +75,13 @@ func runSDL() {
 	}
 	logger.Info("display: %dx%d", w, h)
 
-	r, err := renderer.New("Itch.io", int(w), int(h))
+	const miniSettingsPath = "/mnt/SDCARD/.userdata/shared/minuisettings.txt"
+	th := theme.Load(miniSettingsPath)
+	logger.Info("theme: loaded background=#%02X%02X%02X accent=#%02X%02X%02X",
+		th.Background[0], th.Background[1], th.Background[2],
+		th.Accent[0], th.Accent[1], th.Accent[2])
+
+	r, err := renderer.New("Itch.io", int(w), int(h), th)
 	if err != nil {
 		logger.Error("renderer init: %v", err)
 		os.Exit(1)
