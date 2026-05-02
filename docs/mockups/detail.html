@@ -5,8 +5,9 @@
 <title>Itch.io Pak — Detail Screen Mockup (1024×768)</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 24px; gap: 16px; font-family: 'Noto Sans JP', 'Noto Sans', sans-serif; }
+body { background: #111; display: flex; flex-direction: column; align-items: center; padding: 24px; gap: 32px; font-family: 'Noto Sans JP', 'Noto Sans', sans-serif; }
 h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercase; }
+h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercase; }
 
 /* ── Theme tokens ── */
 :root {
@@ -19,26 +20,28 @@ h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercas
   --main-t: #FFFFFF;
   --mfnt:   34px;
   --sfnt:   22px;
+  --tfnt:   18px;   /* tiny — description text */
 
-  /* detail layout (screen_detail.go):
-     headerH = mainFH + smallFH + 16 ≈ 38+24+16 = 78px
-     contentTop = headerH + 6 = 84px
-     footerH = 40px
-     margin = 20px
-     qrColW = W/4 = 256px
-     imgAreaW = W - qrColW - margin - 10 = 1024-256-20-10 = 738px
-     imgBoxW = imgAreaW - margin = 718px
-     contentH = H - contentTop - footerH = 768-84-40 = 644px
-     imgBoxH = contentH*2/3 = 429px
+  /*
+    screen_detail.go layout (1024×768):
+      headerH = mainFH + smallFH + 16 ≈ 38+24+16 = 78px
+      contentTop = 84px
+      footerH = 40px
+      margin = 20px
+      qrColW = 256px
+      imgBoxW = 718px
+      contentH = 644px
+      imgBoxH = 429px
+      qrX = 748px
   */
-  --hdr-h:   78px;
-  --ftr-h:   40px;
-  --margin:  20px;
-  --img-w:   718px;
-  --img-h:   429px;
-  --qr-x:    748px; /* margin + imgBoxW + 10 */
-  --qr-w:    256px;
-  --ct:      84px;  /* contentTop */
+  --hdr-h:  78px;
+  --ftr-h:  40px;
+  --mg:     20px;
+  --img-w:  718px;
+  --img-h:  429px;
+  --qr-x:   748px;
+  --qr-w:   256px;
+  --ct:     84px;
 }
 
 .screen {
@@ -46,47 +49,33 @@ h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercas
   background: var(--bg);
   position: relative; overflow: hidden;
   border: 1px solid #222;
-  font-family: 'Noto Sans JP', 'Noto Sans', sans-serif;
   flex-shrink: 0;
 }
 
 /* ── Header ── */
-.hdr {
-  position: absolute; top: 0; left: 0; right: 0;
-  height: var(--hdr-h); background: var(--hdr);
-}
-.hdr-sep {
-  position: absolute; top: var(--hdr-h); left: 0; right: 0;
-  height: 2px; background: var(--acc);
-}
-.hdr-title {
-  position: absolute; top: 8px; left: 12px;
-  font-size: var(--mfnt); color: var(--main-t);
-}
-.hdr-sub {
-  position: absolute; top: 50px; left: 12px;
-  font-size: var(--sfnt); color: var(--hnt-t);
-}
+.hdr { position: absolute; top: 0; left: 0; right: 0; height: var(--hdr-h); background: var(--hdr); }
+.hdr-sep { position: absolute; top: var(--hdr-h); left: 0; right: 0; height: 2px; background: var(--acc); }
+.hdr-title { position: absolute; top: 8px; left: 12px; font-size: var(--mfnt); color: var(--main-t); }
+.hdr-sub   { position: absolute; top: 50px; left: 12px; font-size: var(--sfnt); color: var(--hnt-t); }
 
-/* ── Image box ── */
+/* ── Screenshot / cover box ── */
 .img-box {
   position: absolute;
-  top: var(--ct); left: var(--margin);
+  top: var(--ct); left: var(--mg);
   width: var(--img-w); height: var(--img-h);
   background: #1a1a2a; border: 1px solid #252535;
   display: flex; align-items: center; justify-content: center;
   color: #2a2a4a; font-size: 14px;
 }
 
-/* ── QR code box ── */
+/* ── QR code ── */
 .qr-box {
   position: absolute;
   top: var(--ct); left: var(--qr-x);
   width: var(--qr-w); height: var(--img-h);
   background: #fff;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 8px;
-  padding: 12px;
+  align-items: center; justify-content: center; gap: 8px; padding: 12px;
 }
 .qr-inner {
   width: 80%; height: 75%;
@@ -97,25 +86,59 @@ h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercas
 }
 .qr-label { font-size: 13px; color: #555; text-align: center; line-height: 1.4; }
 
-/* ── Below-image content ── */
+/* ── Scrollable content below image/QR ── */
 .content-below {
   position: absolute;
   top: calc(var(--ct) + var(--img-h) + 6px);
-  left: var(--margin); right: var(--margin);
+  left: var(--mg); right: var(--mg);
   bottom: var(--ftr-h);
-  display: flex; flex-direction: column; gap: 10px;
+  overflow: hidden;
+  display: flex; flex-direction: column; gap: 0;
 }
-.img-counter { font-size: var(--sfnt); color: #888; }
-.action-pill {
-  display: inline-flex; align-items: center;
-  border-radius: 100px; padding: 6px 18px;
-  font-size: var(--mfnt); font-weight: 700;
-  gap: 10px;
+
+/* Image counter (above sections) */
+.img-counter { font-size: var(--sfnt); color: #888; padding-bottom: 10px; }
+
+/* ── Section: Actions ── */
+.section { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+.section-sep { height: 1px; background: #252530; margin-bottom: 8px; }
+
+/* Action row: [A] label + separate price badge */
+.action-row {
+  display: flex; align-items: center; gap: 10px;
 }
-.action-green { background: #50C850; color: #111; }
-.action-amber { background: #DCB43C; color: #111; }
-.dl-status { font-size: var(--mfnt); color: #50C8DC; }
-.file-path  { font-size: var(--sfnt); color: #666; }
+.btn-circle {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #3a3a4a; color: var(--acc-t);
+  font-size: 14px; font-weight: bold;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.action-label { font-size: var(--mfnt); color: var(--lst-t); }
+.price-badge {
+  margin-left: auto;
+  background: #3a2a10; border: 1px solid #6a4a20;
+  color: #F0C060; border-radius: 100px;
+  padding: 3px 12px; font-size: var(--sfnt); flex-shrink: 0;
+}
+.action-free .action-label { color: #50C878; }
+.action-del  .action-label { color: #C87070; }
+
+/* DL status line */
+.dl-status { font-size: var(--sfnt); color: #50C8DC; }
+
+/* File path */
+.file-path { font-size: var(--tfnt); color: #505060; }
+
+/* ── Section: Tags ── */
+.tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.tag {
+  font-size: 13px; padding: 3px 9px; border-radius: 100px;
+  background: #2a1a30; color: var(--acc-t); border: 1px solid #4a2050;
+}
+
+/* ── Section: Description ── */
+.desc { font-size: var(--tfnt); color: #999; line-height: 1.5; }
 
 /* ── Footer ── */
 .ftr {
@@ -136,50 +159,81 @@ h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercas
   height: 20px; padding: 0 7px; border-radius: 100px;
   background: #2a2a3a; color: var(--acc-t);
   font-size: 12px; white-space: nowrap;
-  display: inline-flex; align-items: center;
-  flex-shrink: 0;
+  display: inline-flex; align-items: center; flex-shrink: 0;
 }
-.hl { font-size: 12px; color: var(--hnt-t); margin-right: 4px; }
+.hl { font-size: 12px; color: var(--hnt-t); margin-right: 6px; }
 </style>
 </head>
 <body>
 <h1>Itch.io Pak — Detail Screen — 1024×768 — NextUI Theme</h1>
 
-<!-- Variant 1: downloaded paid game -->
+<!-- ═══ Variant 1: paid game, already downloaded ═══ -->
+<h2>Paid game · Downloaded · On device</h2>
 <div class="screen">
   <div class="hdr"></div>
   <div class="hdr-sep"></div>
   <div class="hdr-title">Glory Hunters</div>
   <div class="hdr-sub">by 2think</div>
 
-  <!-- Screenshot / cover art box -->
   <div class="img-box">cover art / screenshot 1</div>
 
-  <!-- QR code -->
   <div class="qr-box">
     <div class="qr-inner"></div>
     <div class="qr-label">Scan to open<br>in browser</div>
   </div>
 
-  <!-- Below-image area -->
   <div class="content-below">
     <div class="img-counter">Image 1/5  (L/R)</div>
-    <span class="action-pill action-amber">A: Download again  $5.00</span>
-    <div class="dl-status">[DL] On device</div>
-    <div class="file-path">Glory Hunters 2.0.zip → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</div>
+
+    <!-- Actions section -->
+    <div class="section">
+      <!-- Action + price are separate elements -->
+      <div class="action-row">
+        <div class="btn-circle">A</div>
+        <span class="action-label">Download again</span>
+        <span class="price-badge">$5.00</span>
+      </div>
+      <div class="action-row action-del">
+        <div class="btn-circle">X</div>
+        <span class="action-label">Delete from device</span>
+      </div>
+      <div class="dl-status">On device</div>
+      <div class="file-path">Glory Hunters 2.0.zip → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</div>
+    </div>
+    <div class="section-sep"></div>
+
+    <!-- Tags section -->
+    <div class="section">
+      <div class="tags">
+        <span class="tag">action-adventure</span>
+        <span class="tag">8-bit</span>
+        <span class="tag">gameboy</span>
+        <span class="tag">retro</span>
+        <span class="tag">pixel-art</span>
+      </div>
+    </div>
+    <div class="section-sep"></div>
+
+    <!-- Description section -->
+    <div class="desc">
+      Lead your band of glory hunters through dangerous dungeons and epic boss battles.
+      Collect loot, level up your crew, and claim the ultimate prize in this action-adventure
+      RPG for Game Boy Color.
+    </div>
   </div>
 
-  <!-- Footer -->
+  <!-- Footer: capital labels -->
   <div class="ftr">
-    <div class="hc">B</div><span class="hl">back</span>
-    <div class="hp">L/R</div><span class="hl">screenshots</span>
-    <div class="hp">START</div><span class="hl">settings</span>
-    <div class="hp">↕</div><span class="hl">scroll</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+    <div class="hp">↕</div><span class="hl">Scroll</span>
   </div>
 </div>
 
-<!-- Variant 2: free game, not yet downloaded -->
-<div class="screen" style="margin-top: 20px;">
+<!-- ═══ Variant 2: free game, not yet downloaded ═══ -->
+<h2>Free game · Not downloaded</h2>
+<div class="screen">
   <div class="hdr"></div>
   <div class="hdr-sep"></div>
   <div class="hdr-title">Pixel Forest Quest</div>
@@ -193,14 +247,37 @@ h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercas
 
   <div class="content-below">
     <div class="img-counter">Image 1/3  (L/R)</div>
-    <span class="action-pill action-green">A: Download  Free</span>
+
+    <div class="section">
+      <div class="action-row action-free">
+        <div class="btn-circle">A</div>
+        <span class="action-label">Download</span>
+        <!-- No price badge for free games -->
+      </div>
+    </div>
+    <div class="section-sep"></div>
+
+    <div class="section">
+      <div class="tags">
+        <span class="tag">platformer</span>
+        <span class="tag">exploration</span>
+        <span class="tag">gbstudio</span>
+        <span class="tag">free</span>
+      </div>
+    </div>
+    <div class="section-sep"></div>
+
+    <div class="desc">
+      Explore a pixelated forest world full of secrets, hidden paths, and friendly creatures.
+      A relaxing adventure built with GB Studio.
+    </div>
   </div>
 
   <div class="ftr">
-    <div class="hc">A</div><span class="hl">download</span>
-    <div class="hc">B</div><span class="hl">back</span>
-    <div class="hp">L/R</div><span class="hl">screenshots</span>
-    <div class="hp">START</div><span class="hl">settings</span>
+    <div class="hc">A</div><span class="hl">Download</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
   </div>
 </div>
 </body>
