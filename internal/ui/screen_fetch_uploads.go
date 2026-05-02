@@ -196,7 +196,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	default:
 		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
 		}, ftrY)
 	}
 	r.Present()

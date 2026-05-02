@@ -329,20 +329,20 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		cx, cy := margin+d/2, y+d/2
 		aT := r.Theme.AccentText
 		r.DrawCircleBadge(cx, cy, d, badgeR, badgeG, badgeB)
-		r.DrawSmallTextCentered(btn, margin, cy-smallFH/2, d, aT[0], aT[1], aT[2])
+		r.DrawSmallTextCenteredInRect(btn, margin, y, d, d, aT[0], aT[1], aT[2])
 		r.DrawText(label, margin+d+8, y, labelR, labelG, labelB)
 		if price > 0 {
 			priceStr := fmt.Sprintf("$%.2f", price)
 			pw, _ := r.SmallTextSize(priceStr)
-			const pp = int32(6)
+			const pp = int32(8) // padding to match tag list
 			pillW := pw + pp*2
 			pillH := smallFH + 4
 			pillX := r.W - margin - pillW
 			pillY := y + (fontH+4-pillH)/2
 			r.DrawPill(pillX, pillY, pillW, pillH, 80, 60, 10)
-			r.DrawSmallText(priceStr, pillX+pp, pillY+2, 220, 180, 60)
+			r.DrawSmallTextCenteredInRect(priceStr, pillX, pillY, pillW, pillH, 220, 180, 60)
 		}
-		y += fontH + 10
+		y += fontH + 14
 	}
 
 	if isPresent {
@@ -381,8 +381,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			r.DrawRect(margin+1, y+1, cardW-2, cardH-2, 10, 10, 18)
 
 			// DL pill (left)
-			r.DrawPill(margin+cp, y+cp, dlPillW, dlPillH, 26, 74, 80)
-			r.DrawSmallText("DL", margin+cp+dlBp, y+cp+2, 20, 20, 20)
+			r.DrawPill(margin+cp, y+cp, dlPillW, dlPillH, 80, 200, 220)
+			r.DrawSmallTextCenteredInRect("DL", margin+cp, y+cp, dlPillW, dlPillH, 20, 20, 20)
 
 			// [X] Delete (right, vertically centered)
 			delCircleX := margin + cardW - cp - delBlockW
@@ -390,7 +390,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			delCircleCY := y + cardH/2
 			aT := r.Theme.AccentText
 			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, 160, 50, 50)
-			r.DrawSmallTextCentered("X", delCircleX, delCircleCY-smallFH/2, delCircleD, aT[0], aT[1], aT[2])
+			r.DrawSmallTextCenteredInRect("X", delCircleX, y+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
 			r.DrawSmallText("Delete", delCircleX+delCircleD+6, y+cp+2, 200, 80, 80)
 
 			// Scrolling path text (clipped between DL pill and delete block)
@@ -423,7 +423,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			// Restore outer content clip (don't fully clear — that would unclip the header area)
 			r.SetClipRect(0, contentTop, r.W, contentH)
 
-			y += cardH + 6
+			y += cardH + 10
 		}
 	} else {
 		if s.game.IsFree {
@@ -439,21 +439,26 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// ── Tags ────────────────────────────────────────────────
 	if s.detail != nil && len(s.detail.PageTags) > 0 {
 		r.DrawRect(margin, y, usableW, 1, 50, 50, 50)
-		y += 10
+		y += 11
 		ac2 := r.Theme.Accent
 		aT2 := r.Theme.AccentText
-		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+4,
-			aT2[0], aT2[1], aT2[2], ac2[0], ac2[1], ac2[2])
+		// Blend accent toward gray-35 at 50% so the pill is clearly visible against
+		// the black background while keeping the accent hue.
+		bgPill := [3]uint8{
+			uint8((int(ac2[0]) + 35) / 2),
+			uint8((int(ac2[1]) + 35) / 2),
+			uint8((int(ac2[2]) + 35) / 2),
+		}
+		// Use a fixed line height for tag pills (consistent with list screen).
+		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+6,
+			aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
 		y += tagsH + 10
 	}
 
 	// ── Description (full width) ────────────────────────────
 	if s.detail != nil && s.detail.Description != "" {
-		if s.detail != nil && len(s.detail.PageTags) == 0 {
-			y += 10
-		}
 		r.DrawRect(margin, y, usableW, 1, 50, 50, 50) // separator
-		y += 10
+		y += 11
 		descH := r.DrawWrappedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
 		y += descH
 	}

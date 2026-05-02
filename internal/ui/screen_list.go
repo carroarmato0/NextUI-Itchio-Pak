@@ -260,7 +260,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		ac := r.Theme.Accent
 		aT := r.Theme.AccentText
 		r.DrawPill(pillX, pillY, pillW, pillH, ac[0], ac[1], ac[2])
-		r.DrawText(badge, pillX+hPad, headerTextY, aT[0], aT[1], aT[2])
+		r.DrawTextCenteredInRect(badge, pillX, pillY, pillW, pillH, aT[0], aT[1], aT[2])
 	}
 
 	contentTop := headerH + 4
@@ -520,14 +520,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						textR, textG, textB = 20, 20, 20
 					}
 					lw, lh := r.SmallTextSize(pillLabel)
-					pad := int32(4)
+					const pad = int32(5)
 					pillW := lw + pad*2
-					pillH := lh + pad
-					pillX := imgX + dw - pillW - 5
-					pillY := imgY + 5
-					r.DrawRect(pillX+1, pillY+1, pillW, pillH, shadowR, shadowG, shadowB)
-					r.DrawRect(pillX, pillY, pillW, pillH, pillR, pillG, pillB)
-					r.DrawSmallText(pillLabel, pillX+pad, pillY+pad/2, textR, textG, textB)
+					pillH := lh + 4
+					pillX := imgX + dw - pillW - 6
+					pillY := imgY + 6
+					// Draw a subtle shadow/border for the overlay badge
+					r.DrawPill(pillX+1, pillY+1, pillW, pillH, shadowR, shadowG, shadowB)
+					r.DrawPill(pillX, pillY, pillW, pillH, pillR, pillG, pillB)
+					r.DrawSmallTextCenteredInRect(pillLabel, pillX, pillY, pillW, pillH, textR, textG, textB)
 				}
 			} else if s.cache.Failed(g.CoverURL) {
 				r.DrawText("No Image", rightX+boxW/2-40, metaY+boxH/2-10, 80, 80, 80)
@@ -571,8 +572,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			}
 			if totalTagH <= availH {
 				s.tagScrollY = 0
+				// Blend accent toward gray-35 at 50% so the pill is clearly visible against
+				// the black background while keeping the accent hue.
+				bgPill := [3]uint8{
+					uint8((int(ac[0]) + 35) / 2),
+					uint8((int(ac[1]) + 35) / 2),
+					uint8((int(ac[2]) + 35) / 2),
+				}
 				r.DrawTagPills(filteredTags, rightX, metaY, rightW, lineGap,
-					aT[0], aT[1], aT[2], ac[0], ac[1], ac[2])
+					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
 				metaY += totalTagH
 			} else {
 				maxTagScroll := totalTagH - availH
@@ -585,8 +593,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					s.tagScrollAt = time.Now()
 				}
 				r.SetClipRect(rightX, metaY, rightW, availH)
+				bgPill := [3]uint8{
+					uint8((int(ac[0]) + 35) / 2),
+					uint8((int(ac[1]) + 35) / 2),
+					uint8((int(ac[2]) + 35) / 2),
+				}
 				r.DrawTagPills(filteredTags, rightX, metaY-s.tagScrollY, rightW, lineGap,
-					aT[0], aT[1], aT[2], ac[0], ac[1], ac[2])
+					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
 				r.ClearClipRect()
 			}
 		}

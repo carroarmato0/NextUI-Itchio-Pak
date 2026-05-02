@@ -212,11 +212,13 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 					statusLabel, sR, sG, sB = "PRESENT", 140, 140, 140
 				}
 				sw, sh := r.SmallTextSize(statusLabel)
-				const sp = int32(4)
-				pillX := 20 + labelW + 4
-				pillY := y - 4 + (rowH-sh-sp)/2
-				r.DrawPill(pillX, pillY, sw+sp*2, sh+sp, sR, sG, sB)
-				r.DrawSmallText(statusLabel, pillX+sp, pillY+sp/2, 20, 20, 20)
+				const sp = int32(8) // padding to match tag list
+				pillW := sw + sp*2
+				pillH := sh + 4
+				pillX := 20 + labelW + 12
+				pillY := y - 4 + (rowH-pillH)/2
+				r.DrawPill(pillX, pillY, pillW, pillH, sR, sG, sB)
+				r.DrawSmallTextCenteredInRect(statusLabel, pillX, pillY, pillW, pillH, 20, 20, 20)
 			} else {
 				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
 			}

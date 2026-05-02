@@ -78,7 +78,7 @@ func (s *AboutScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
+		{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }

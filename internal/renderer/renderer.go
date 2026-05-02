@@ -262,6 +262,18 @@ func (r *Renderer) DrawSmallTextCentered(text string, x, y, w int32, red, green,
 	r.DrawSmallText(text, x+(w-tw)/2, y, red, green, blue)
 }
 
+// DrawTextCenteredInRect renders main-font text centered both horizontally and vertically within a rectangle.
+func (r *Renderer) DrawTextCenteredInRect(text string, x, y, w, h int32, red, green, blue uint8) {
+	tw, th := r.TextSize(text)
+	r.DrawText(text, x+(w-tw)/2, y+(h-th)/2, red, green, blue)
+}
+
+// DrawSmallTextCenteredInRect renders small-font text centered both horizontally and vertically within a rectangle.
+func (r *Renderer) DrawSmallTextCenteredInRect(text string, x, y, w, h int32, red, green, blue uint8) {
+	tw, th := r.SmallTextSize(text)
+	r.DrawSmallText(text, x+(w-tw)/2, y+(h-th)/2, red, green, blue)
+}
+
 func (r *Renderer) DrawTextureAt(tex *sdl.Texture, x, y, w, h int32) {
 	r.Renderer.Copy(tex, nil, &sdl.Rect{X: x, Y: y, W: w, H: h})
 }
@@ -432,8 +444,13 @@ func (r *Renderer) MeasureTagPills(tags []string, x, maxW, lineH int32) int32 {
 	if len(tags) == 0 {
 		return 0
 	}
-	const hPad = int32(6)
-	const gap = int32(6)
+	const hPad = int32(8)
+	const vPad = int32(2)
+	const gap = int32(8)
+
+	_, textH := r.SmallTextSize("Ag")
+	pillH := textH + vPad*2
+
 	cx := x
 	cy := int32(0)
 	for _, tag := range tags {
@@ -445,7 +462,7 @@ func (r *Renderer) MeasureTagPills(tags []string, x, maxW, lineH int32) int32 {
 		}
 		cx += pillW + gap
 	}
-	return cy + lineH
+	return cy + pillH
 }
 
 // DrawTagPills renders a slice of tag strings as pill badges that wrap across
@@ -455,9 +472,9 @@ func (r *Renderer) MeasureTagPills(tags []string, x, maxW, lineH int32) int32 {
 func (r *Renderer) DrawTagPills(tags []string, x, y, maxW, lineH int32,
 	fgR, fgG, fgB, bgR, bgG, bgB uint8) int32 {
 
-	const hPad = int32(6)
-	const vPad = int32(3)
-	const gap = int32(6)
+	const hPad = int32(8)
+	const vPad = int32(2)
+	const gap = int32(8)
 
 	_, textH := r.SmallTextSize("Ag")
 	pillH := textH + vPad*2
@@ -473,13 +490,13 @@ func (r *Renderer) DrawTagPills(tags []string, x, y, maxW, lineH int32,
 			cy += lineH
 		}
 		r.DrawPill(cx, cy, pillW, pillH, bgR, bgG, bgB)
-		r.DrawSmallText(tag, cx+hPad, cy+vPad, fgR, fgG, fgB)
+		r.DrawSmallTextCenteredInRect(tag, cx, cy, pillW, pillH, fgR, fgG, fgB)
 		cx += pillW + gap
 	}
 	if len(tags) == 0 {
 		return 0
 	}
-	return cy - y + lineH
+	return cy - y + pillH
 }
 
 // DrawFooterHints renders the footer hint bar from a typed slice.
@@ -503,15 +520,15 @@ func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
 			badgeCX := cx + int32(badgeDiam)/2
 			badgeCY := y + smallH/2
 			r.DrawCircleBadge(badgeCX, badgeCY, int32(badgeDiam), ac[0], ac[1], ac[2])
-			r.DrawSmallTextCentered(h.Label, cx, badgeCY-smallH/2, int32(badgeDiam), acTxt[0], acTxt[1], acTxt[2])
+			r.DrawSmallTextCenteredInRect(h.Label, cx, badgeCY-int32(badgeDiam)/2, int32(badgeDiam), int32(badgeDiam), acTxt[0], acTxt[1], acTxt[2])
 			cx += int32(badgeDiam) + 6
 		case BadgePill:
-			const hPad = int32(5)
+			const hPad = int32(8)
 			pillW := labelW + hPad*2
 			pillH := smallH + 4
 			pillY := y - 2
 			r.DrawPill(cx, pillY, pillW, pillH, ac[0], ac[1], ac[2])
-			r.DrawSmallText(h.Label, cx+hPad, pillY+2, acTxt[0], acTxt[1], acTxt[2])
+			r.DrawSmallTextCenteredInRect(h.Label, cx, pillY, pillW, pillH, acTxt[0], acTxt[1], acTxt[2])
 			cx += pillW + 6
 		}
 		if h.Text != "" {

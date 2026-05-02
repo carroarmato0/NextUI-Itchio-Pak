@@ -155,7 +155,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 			fR, fG, fB = 220, 180, 80
 		}
 		r.DrawPill(tagX, badgeY, badgeW, badgeH, fR, fG, fB)
-		r.DrawSmallText(lbl, tagX+badgePad, badgeY+badgePad/2, 20, 20, 20)
+		r.DrawSmallTextCenteredInRect(lbl, tagX, badgeY, badgeW, badgeH, 20, 20, 20)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
