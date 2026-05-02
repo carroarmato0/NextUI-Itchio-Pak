@@ -27,19 +27,19 @@ var SortModes = []SortMode{
 func SortModeBadge(m SortMode) string {
 	switch m {
 	case SortModeAZ:
-		return "[A-Z]"
+		return "A-Z"
 	case SortModeZA:
-		return "[Z-A]"
+		return "Z-A"
 	case SortModeNew:
-		return "[NEW]"
+		return "NEW"
 	case SortModeDL:
-		return "[DL]"
+		return "DL"
 	case SortModeFree:
-		return "[FREE]"
+		return "FREE"
 	case SortModePaid:
-		return "[PAID]"
+		return "PAID"
 	default:
-		return "[RSS]"
+		return "RSS"
 	}
 }
 

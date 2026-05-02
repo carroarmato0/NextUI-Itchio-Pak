@@ -213,13 +213,13 @@ func TestSortModeBadge(t *testing.T) {
 		mode itchio.SortMode
 		want string
 	}{
-		{itchio.SortModeRSS, "[RSS]"},
-		{itchio.SortModeAZ, "[A-Z]"},
-		{itchio.SortModeZA, "[Z-A]"},
-		{itchio.SortModeNew, "[NEW]"},
-		{itchio.SortModeDL, "[DL]"},
-		{itchio.SortModeFree, "[FREE]"},
-		{itchio.SortModePaid, "[PAID]"},
+		{itchio.SortModeRSS, "RSS"},
+		{itchio.SortModeAZ, "A-Z"},
+		{itchio.SortModeZA, "Z-A"},
+		{itchio.SortModeNew, "NEW"},
+		{itchio.SortModeDL, "DL"},
+		{itchio.SortModeFree, "FREE"},
+		{itchio.SortModePaid, "PAID"},
 	}
 	for _, tc := range cases {
 		got := itchio.SortModeBadge(tc.mode)

@@ -222,6 +222,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// Header
 	headerH := int32(72)
 	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io — GB Studio Games", 12, headerTextY, mt[0], mt[1], mt[2])
@@ -357,13 +358,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		var badgeR, badgeG, badgeB uint8
 		switch {
 		case isPendingUpdate:
-			badgeLabel = "[UP]"
+			badgeLabel = "UP"
 			badgeR, badgeG, badgeB = 240, 160, 40
 		case isRemovedGame:
-			badgeLabel = "[!]"
+			badgeLabel = "!"
 			badgeR, badgeG, badgeB = 200, 60, 60
 		case isPresent:
-			badgeLabel = "[DL]"
+			badgeLabel = "DL"
 			badgeR, badgeG, badgeB = 80, 200, 220
 		case g.IsFree:
 			badgeLabel = "Free"
@@ -372,8 +373,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			badgeLabel = fmt.Sprintf("$%.2f", g.Price)
 			badgeR, badgeG, badgeB = 220, 180, 60
 		}
-		badgeW, _ := r.TextSize(badgeLabel)
-		badgeX := leftW - badgeW - 8
+		badgeW, _ := r.SmallTextSize(badgeLabel)
+		pillW := badgeW + 10 // 5px horizontal padding per side
+		badgeX := leftW - pillW - 8
 
 		// Title area is left of the badge.
 		titleAreaW := badgeX - 14
@@ -430,7 +432,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 
 		// Badge always rendered on top of title.
-		r.DrawText(badgeLabel, badgeX, y, badgeR, badgeG, badgeB)
+		pillH := smallFH + 4
+		pillY := y + (fontH-pillH)/2
+		r.DrawPill(badgeX, pillY, pillW, pillH, badgeR, badgeG, badgeB)
+		r.DrawSmallText(badgeLabel, badgeX+5, pillY+2, 20, 20, 20)
 
 		// Section separator after last [UP]/[!] group row in [DL] mode.
 		if i == dlSepAfterUpdates {
@@ -468,7 +473,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				imgY := metaY + (boxH-dh)/2
 				r.DrawTextureAt(tex, imgX, imgY, dw, dh)
 				// Pill badge overlay — drawn after texture so it appears above animated GIFs.
-				if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
+				if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) || s.inv.IsPresent(g.URL) {
 					var pillLabel string
 					var pillR, pillG, pillB uint8
 					var shadowR, shadowG, shadowB uint8
@@ -478,11 +483,16 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						pillR, pillG, pillB = 240, 160, 40
 						shadowR, shadowG, shadowB = 160, 96, 16
 						textR, textG, textB = 20, 20, 20
-					} else {
+					} else if s.inv.IsRemoved(g.URL) {
 						pillLabel = "REMOVED"
 						pillR, pillG, pillB = 200, 60, 60
 						shadowR, shadowG, shadowB = 122, 16, 16
 						textR, textG, textB = 255, 255, 255
+					} else {
+						pillLabel = "DL"
+						pillR, pillG, pillB = 80, 200, 220
+						shadowR, shadowG, shadowB = 30, 130, 150
+						textR, textG, textB = 20, 20, 20
 					}
 					lw, lh := r.SmallTextSize(pillLabel)
 					pad := int32(4)
@@ -528,10 +538,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		if len(filteredTags) > 0 {
 			ac := r.Theme.Accent
 			aT := r.Theme.AccentText
-			bgPill := [3]uint8{ac[0] / 3, ac[1] / 3, ac[2] / 3}
 			// Measure total pill height to know whether scroll is needed.
 			totalTagH := r.DrawTagPills(filteredTags, rightX, 0, rightW, lineGap,
-				aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
+				aT[0], aT[1], aT[2], ac[0], ac[1], ac[2])
 			availH := r.H - footerH - metaY
 			if availH <= 0 {
 				availH = 0
@@ -539,7 +548,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			if totalTagH <= availH {
 				s.tagScrollY = 0
 				r.DrawTagPills(filteredTags, rightX, metaY, rightW, lineGap,
-					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
+					aT[0], aT[1], aT[2], ac[0], ac[1], ac[2])
 				metaY += totalTagH
 			} else {
 				maxTagScroll := totalTagH - availH
@@ -553,7 +562,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				}
 				r.SetClipRect(rightX, metaY, rightW, availH)
 				r.DrawTagPills(filteredTags, rightX, metaY-s.tagScrollY, rightW, lineGap,
-					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
+					aT[0], aT[1], aT[2], ac[0], ac[1], ac[2])
 				r.ClearClipRect()
 			}
 		}
