@@ -274,44 +274,65 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// ── Action area (full width) ────────────────────────────
 	isPresent := s.inv.IsPresent(s.game.URL)
 
-	drawActionPill := func(label string, pR, pG, pB uint8) {
-		aw, ah := r.TextSize(label)
-		const ap = int32(10)
-		r.DrawPill(margin, y, aw+ap*2, ah+6, pR, pG, pB)
-		r.DrawText(label, margin+ap, y+3, 20, 20, 20)
-		y += ah + 6 + 4
+	// drawActionRow renders: circle badge | label text [price pill right-aligned].
+	// Captures y, fontH, smallFH, margin, ac, r by reference/closure.
+	drawActionRow := func(btn, label string, labelR, labelG, labelB, badgeR, badgeG, badgeB uint8, price float64) {
+		d := fontH + 4
+		cx, cy := margin+d/2, y+d/2
+		aT := r.Theme.AccentText
+		r.DrawCircleBadge(cx, cy, d, badgeR, badgeG, badgeB)
+		r.DrawSmallTextCentered(btn, margin, cy-smallFH/2, d, aT[0], aT[1], aT[2])
+		r.DrawText(label, margin+d+8, y, labelR, labelG, labelB)
+		if price > 0 {
+			priceStr := fmt.Sprintf("$%.2f", price)
+			pw, _ := r.SmallTextSize(priceStr)
+			const pp = int32(6)
+			pillW := pw + pp*2
+			pillH := smallFH + 4
+			pillX := r.W - margin - pillW
+			pillY := y + (fontH+4-pillH)/2
+			r.DrawPill(pillX, pillY, pillW, pillH, 80, 60, 10)
+			r.DrawSmallText(priceStr, pillX+pp, pillY+2, 220, 180, 60)
+		}
+		y += fontH + 10
 	}
 
 	if isPresent {
 		if s.game.IsFree {
-			drawActionPill("A: Download again", 80, 200, 80)
+			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], 0)
 		} else if s.cfg.APIKey == "" {
-			drawActionPill(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), 220, 180, 60)
+			drawActionRow("A", "Purchase required", 220, 180, 60, 100, 80, 20, s.game.Price)
 		} else {
-			drawActionPill(fmt.Sprintf("A: Download again  $%.2f", s.game.Price), 80, 200, 80)
+			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], s.game.Price)
 		}
 
-		r.DrawText("[DL] On device", margin, y, 80, 200, 220)
-		y += fontH + 4
-
-		if entry, ok := s.inv.Lookup(s.game.URL); ok {
-			for _, f := range entry.Files {
-				line := "  " + f.Filename + "  →  " + filepath.Dir(f.DestPath) + "/"
-				r.DrawSmallText(line, margin, y, 120, 120, 120)
-				y += smallFH + 2
+		// Compact on-device status: [DL] filename → destination/
+		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
+			const bp = int32(5)
+			dlW, _ := r.SmallTextSize("DL")
+			pillW := dlW + bp*2
+			pillH := smallFH + 4
+			r.DrawPill(margin, y+2, pillW, pillH, 80, 200, 220)
+			r.DrawSmallText("DL", margin+bp, y+4, 20, 20, 20)
+			f := entry.Files[0]
+			pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
+			r.DrawSmallText(pathText, margin+pillW+8, y+4, 100, 100, 100)
+			if len(entry.Files) > 1 {
+				r.DrawSmallText(fmt.Sprintf("+%d more", len(entry.Files)-1),
+					margin+pillW+8, y+4+smallFH+2, 80, 80, 80)
+				y += smallFH + 4
 			}
+			y += pillH + 8
 		}
-		y += 4
 
-		r.DrawText("[ X: Delete ]", margin, y, 200, 80, 80)
-		y += fontH + 8
+		drawActionRow("X", "Delete", 200, 80, 80, 160, 50, 50, 0)
 	} else {
 		if s.game.IsFree {
-			drawActionPill("A: Download", 80, 200, 80)
+			drawActionRow("A", "Download", 80, 200, 80, ac[0], ac[1], ac[2], 0)
 		} else if s.cfg.APIKey == "" {
-			drawActionPill(fmt.Sprintf("$%.2f  Purchase required", s.game.Price), 220, 180, 60)
+			drawActionRow("A", "Purchase required", 220, 180, 60, 100, 80, 20, s.game.Price)
 		} else {
-			drawActionPill(fmt.Sprintf("A: Download  $%.2f", s.game.Price), 80, 200, 80)
+			drawActionRow("A", "Download", 80, 200, 80, ac[0], ac[1], ac[2], s.game.Price)
 		}
 		y += 4
 	}
