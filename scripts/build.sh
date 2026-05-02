@@ -58,7 +58,9 @@ fi
 # Only need a container runtime when launching from the host.
 RUNTIME=""
 GIT_COMMIT="${GIT_COMMIT:-}"
+CACHE_DIR="$(pwd)/.go_cache"
 if [ -z "${IN_CONTAINER:-}" ]; then
+    mkdir -p "$CACHE_DIR"
     RUNTIME="${RUNTIME_OVERRIDE:-$(detect_runtime)}"
     if [ -z "$RUNTIME" ]; then
         echo "ERROR: docker or podman required" >&2; exit 1
@@ -99,8 +101,10 @@ build_native() {
         ensure_dev_image
         exec $RUNTIME run --rm \
             -v "$(pwd):/workspace" \
+            -v "$CACHE_DIR:/go" \
             -w /workspace \
             -e IN_CONTAINER=1 \
+            -e GOCACHE=/go/build-cache \
             -e GIT_COMMIT="$GIT_COMMIT" \
             "$DEV_IMAGE" "$0" native
     fi
@@ -154,29 +158,88 @@ case "$TARGET" in
             ensure_platform_image "$TARGET"
             exec $RUNTIME run --rm \
                 -v "$(pwd):/workspace" \
+                -v "$CACHE_DIR:/go" \
                 -w /workspace \
                 -e IN_CONTAINER=1 \
+                -e GOCACHE=/go/build-cache \
                 -e GIT_COMMIT="$GIT_COMMIT" \
                 "itchio-pak-$TARGET-dev" "$0" "$TARGET"
         fi
         build_platform "$TARGET"
         ;;
     all)
-        # Each platform needs its own toolchain container; run them sequentially.
+        # Each platform needs its own toolchain container; run them in parallel.
         if [ -n "${IN_CONTAINER:-}" ]; then
             echo "ERROR: 'build.sh all' must be run from the host, not inside a container." >&2
             exit 1
         fi
+
+        # Ensure images exist first (sequentially to avoid race conditions and noise)
         for p in tg5040 tg5050 my355; do
             ensure_platform_image "$p"
-            $RUNTIME run --rm \
-                -v "$(pwd):/workspace" \
-                -w /workspace \
-                -e IN_CONTAINER=1 \
-                -e GIT_COMMIT="$GIT_COMMIT" \
-                "itchio-pak-$p-dev" "$0" "$p"
         done
+
+        run_build() {
+            local p="$1"
+            local log="bin/$p/build.log"
+            mkdir -p "bin/$p"
+            if $0 "$p" > "$log" 2>&1; then
+                grep "Built:" "$log"
+                return 0
+            else
+                return 1
+            fi
+        }
+
+        echo "==> Building all platforms in parallel..."
+        platforms="tg5040 tg5050 my355"
+        for p in $platforms; do
+            run_build "$p" &
+            eval "pid_$p=\$!"
+        done
+
+        # Spinner loop (only if TTY)
+        if [ -t 1 ]; then
+            spinner="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+            i=0
+            while :; do
+                current_building=""
+                running=0
+                for p in $platforms; do
+                    pid_var="pid_$p"
+                    pid=$(eval "echo \$$pid_var")
+                    if kill -0 $pid 2>/dev/null; then
+                        running=1
+                        current_building="$current_building $p"
+                    fi
+                done
+                [ $running -eq 0 ] && break
+                printf "\r  %s Building [%s]..." "${spinner:i++%${#spinner}:1}" "${current_building# }"
+                sleep 0.1
+            done
+            printf "\r\033[K" # Clear spinner line
+        fi
+
+        # Final check and wait
+        failed=""
+        for p in $platforms; do
+            pid_var="pid_$p"
+            pid=$(eval "echo \$$pid_var")
+            if ! wait $pid; then
+                failed="$failed $p"
+            fi
+        done
+
+        if [ -n "$failed" ]; then
+            echo "ERROR: Build failed for platforms:$failed" >&2
+            for p in $failed; do
+                echo "--- Log for $p ---" >&2
+                cat "bin/$p/build.log" >&2
+            done
+            exit 1
+        fi
         ;;
+
     *)
         echo "Unknown target: $TARGET" >&2; exit 1
         ;;

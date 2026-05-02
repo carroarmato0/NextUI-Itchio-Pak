@@ -7,6 +7,6 @@ RUN dpkg --add-architecture arm64 && \
     libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev \
     libsdl2-dev:arm64 libsdl2-ttf-dev:arm64 \
     gcc-aarch64-linux-gnu \
-    zip \
+    zip bsdmainutils \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace

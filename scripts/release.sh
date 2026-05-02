@@ -33,7 +33,6 @@ fi
 echo "==> Running tests..."
 ./scripts/test.sh
 
-echo "==> Building all platforms..."
 ./scripts/build.sh all
 
 echo "==> Assembling release artifacts..."
@@ -55,9 +54,13 @@ cp -L lib/tg5040/* "$PAK_DIR/lib/tg5040/" 2>/dev/null || true
 cp -L lib/tg5050/* "$PAK_DIR/lib/tg5050/" 2>/dev/null || true
 cp -L lib/my355/*  "$PAK_DIR/lib/my355/"  2>/dev/null || true
 
-cd "$PAK_DIR"
-zip -r ../Itch-io.pak.zip .
-cd - >/dev/null
+# Assemble both artifacts in parallel.
+echo "==> Creating release zips..."
+(
+    cd "$PAK_DIR"
+    zip -qr ../Itch-io.pak.zip .
+) &
+pid_zip1=$!
 
 # Multi-device bundle (.pakz) for manual SD card installation.
 # Each platform directory gets its own binary and only its own lib dir.
@@ -71,9 +74,15 @@ for PLATFORM in tg5040 tg5050 my355; do
     cp -r assets/.                "$PLAT_PAK/assets/"
     cp -L lib/$PLATFORM/*         "$PLAT_PAK/lib/$PLATFORM/" 2>/dev/null || true
 done
-cd dist/all
-zip -r ../Itch-io.pakz Tools
-cd - >/dev/null
+
+(
+    cd dist/all
+    zip -qr ../Itch-io.pakz Tools
+) &
+pid_zip2=$!
+
+wait $pid_zip1
+wait $pid_zip2
 
 echo "==> Release artifacts:"
 find dist -name "*.zip" -o -name "*.pakz" | sort

@@ -19,6 +19,7 @@ cmd/itchio-pak/itchio-pak
 
 # Local tooling
 .superpowers/
+.go_cache/
 tmp/
 
 # Git worktrees
