@@ -165,9 +165,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	mt := r.Theme.MainText
 	title := truncateToWidth(r, s.game.Title, r.W-24)
-	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
+	blockH := mainFH + 4 + smallFH
+	titleY := (headerH - blockH) / 2
+	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
 	ht := r.Theme.HintText
-	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
+	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
 	footerH := int32(40)
@@ -316,6 +318,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	// ── Tags ────────────────────────────────────────────────
 	if s.detail != nil && len(s.detail.PageTags) > 0 {
+		r.DrawRect(margin, y, usableW, 1, 50, 50, 50)
+		y += 10
 		ac2 := r.Theme.Accent
 		aT2 := r.Theme.AccentText
 		bgPill := [3]uint8{ac2[0] / 3, ac2[1] / 3, ac2[2] / 3}

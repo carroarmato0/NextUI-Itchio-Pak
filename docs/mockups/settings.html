@@ -35,7 +35,7 @@ h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercas
 /* ── Header ── */
 .hdr { position: absolute; top: 0; left: 0; right: 0; height: var(--hdr-h); background: var(--hdr); }
 .hdr-sep { position: absolute; top: var(--hdr-h); left: 0; right: 0; height: 2px; background: var(--acc); }
-.hdr-title { position: absolute; top: 18px; left: 16px; font-size: var(--mfnt); color: var(--main-t); }
+.hdr-title { position: absolute; top: calc(var(--hdr-h) / 2); left: 16px; transform: translateY(-50%); font-size: var(--mfnt); color: var(--main-t); }
 
 /* ── Content ── */
 .content {

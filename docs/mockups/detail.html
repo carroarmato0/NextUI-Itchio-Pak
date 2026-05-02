@@ -55,8 +55,12 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
 /* ── Header ── */
 .hdr { position: absolute; top: 0; left: 0; right: 0; height: var(--hdr-h); background: var(--hdr); }
 .hdr-sep { position: absolute; top: var(--hdr-h); left: 0; right: 0; height: 2px; background: var(--acc); }
-.hdr-title { position: absolute; top: 8px; left: 12px; font-size: var(--mfnt); color: var(--main-t); }
-.hdr-sub   { position: absolute; top: 50px; left: 12px; font-size: var(--sfnt); color: var(--hnt-t); }
+.hdr-titles {
+  position: absolute; top: calc(var(--hdr-h) / 2); left: 12px; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.hdr-title { font-size: var(--mfnt); color: var(--main-t); line-height: 1; }
+.hdr-sub   { font-size: var(--sfnt); color: var(--hnt-t); line-height: 1; }
 
 /* ── Screenshot / cover box ── */
 .img-box {
@@ -101,7 +105,7 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
 
 /* ── Section: Actions ── */
 .section { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
-.section-sep { height: 1px; background: #252530; margin-bottom: 8px; }
+.section-sep { height: 1px; background: #383848; margin-bottom: 8px; }
 
 /* Action row: [A] label + separate price badge */
 .action-row {
@@ -124,11 +128,9 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
 .action-free .action-label { color: #50C878; }
 .action-del  .action-label { color: #C87070; }
 
-/* DL status line */
-.dl-status { font-size: var(--sfnt); color: #50C8DC; }
-
-/* File path */
-.file-path { font-size: var(--tfnt); color: #505060; }
+/* Compact on-device status row */
+.ondev-row { display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+.ondev-path { font-size: var(--tfnt); color: #505060; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Section: Tags ── */
 .tags { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -172,8 +174,10 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
 <div class="screen">
   <div class="hdr"></div>
   <div class="hdr-sep"></div>
-  <div class="hdr-title">Glory Hunters</div>
-  <div class="hdr-sub">by 2think</div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Glory Hunters</div>
+    <div class="hdr-sub">by 2think</div>
+  </div>
 
   <div class="img-box">cover art / screenshot 1</div>
 
@@ -195,10 +199,12 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
       </div>
       <div class="action-row action-del">
         <div class="btn-circle">X</div>
-        <span class="action-label">Delete from device</span>
+        <span class="action-label">Delete</span>
       </div>
-      <div class="dl-status">On device</div>
-      <div class="file-path">Glory Hunters 2.0.zip → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</div>
+      <div class="ondev-row">
+        <span class="rbadge b-dl">DL</span>
+        <span class="ondev-path">Glory Hunters 2.0.zip → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</span>
+      </div>
     </div>
     <div class="section-sep"></div>
 
@@ -236,8 +242,10 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
 <div class="screen">
   <div class="hdr"></div>
   <div class="hdr-sep"></div>
-  <div class="hdr-title">Pixel Forest Quest</div>
-  <div class="hdr-sub">by PixelDev</div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Pixel Forest Quest</div>
+    <div class="hdr-sub">by PixelDev</div>
+  </div>
 
   <div class="img-box">screenshot 1/3</div>
   <div class="qr-box">
