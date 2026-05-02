@@ -87,12 +87,14 @@ func (s *SettingsScreen) processAutoRepeat() {
 
 func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
 	footerH := int32(40)
 	textY := r.DrawHeaderBar(headerH)
-	r.DrawText("Settings", 20, textY, colorText, colorText, colorText)
+	mt := r.Theme.MainText
+	r.DrawText("Settings", 20, textY, mt[0], mt[1], mt[2])
 
 	_, fontH := r.TextSize("Ag")
 	rowH := fontH + 14
@@ -116,23 +118,41 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 
 	for i, label := range items {
 		y := headerH + 10 + int32(i)*rowH
-		if settingsItem(i) == s.cursor {
-			r.DrawRect(0, y-4, r.W, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+		isSelected := settingsItem(i) == s.cursor
+		if isSelected {
+			ac := r.Theme.Accent
+			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 		}
-		r.DrawText(label, 20, y, colorText, colorText, colorText)
+		var tr, tg, tb uint8
+		if isSelected {
+			c := r.Theme.AccentText
+			tr, tg, tb = c[0], c[1], c[2]
+		} else {
+			c := r.Theme.ListText
+			tr, tg, tb = c[0], c[1], c[2]
+		}
+		r.DrawText(label, 20, y, tr, tg, tb)
 
-		// API Key row: append live validation status.
+		// API Key row: append live validation status as a small pill badge.
 		if settingsItem(i) == sItemAPIKey {
 			labelW, _ := r.TextSize(label)
 			if s.cfg.APIKey != "" {
+				var statusLabel string
+				var sR, sG, sB uint8
 				switch s.client.GetAPIKeyStatus() {
 				case itchio.APIKeyStatusWorking:
-					r.DrawText("WORKING", 20+labelW, y, 80, 200, 80)
+					statusLabel, sR, sG, sB = "WORKING", 80, 200, 80
 				case itchio.APIKeyStatusRejected:
-					r.DrawText("REJECTED", 20+labelW, y, 200, 60, 60)
+					statusLabel, sR, sG, sB = "REJECTED", 200, 60, 60
 				default:
-					r.DrawText("PRESENT", 20+labelW, y, colorText, colorText, colorText)
+					statusLabel, sR, sG, sB = "PRESENT", 140, 140, 140
 				}
+				sw, sh := r.SmallTextSize(statusLabel)
+				const sp = int32(4)
+				pillX := 20 + labelW + 4
+				pillY := y + (fontH-sh-sp)/2
+				r.DrawPill(pillX, pillY, sw+sp*2, sh+sp, sR, sG, sB)
+				r.DrawSmallText(statusLabel, pillX+sp, pillY+sp/2, 20, 20, 20)
 			} else {
 				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
 			}
@@ -156,11 +176,14 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	footerHint := "D-pad navigate · B back · A select"
-	if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-		footerHint = "D-pad navigate · B back · A test API key"
+	hints := []renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "select"},
 	}
-	r.DrawSmallText(footerHint, 10, ftrY, 140, 140, 140)
+	if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+		hints[1].Text = "test API key"
+	}
+	r.DrawFooterHints(hints, ftrY)
 	r.Present()
 }
 
