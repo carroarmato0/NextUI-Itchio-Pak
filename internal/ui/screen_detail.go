@@ -444,12 +444,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		aT2 := r.Theme.AccentText
 		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+4,
 			aT2[0], aT2[1], aT2[2], ac2[0], ac2[1], ac2[2])
-		y += tagsH + 8
+		y += tagsH + 10
 	}
 
 	// ── Description (full width) ────────────────────────────
 	if s.detail != nil && s.detail.Description != "" {
-		y += 10
+		if s.detail != nil && len(s.detail.PageTags) == 0 {
+			y += 10
+		}
 		r.DrawRect(margin, y, usableW, 1, 50, 50, 50) // separator
 		y += 10
 		descH := r.DrawWrappedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
