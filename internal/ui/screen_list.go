@@ -222,36 +222,34 @@ func (s *ListScreen) moveCursor(dir int) {
 
 func (s *ListScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
-	r.Clear(colorBG, colorBG, colorBG)
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 
 	// Header
 	headerH := int32(72)
-	r.DrawRect(0, 0, r.W, headerH, 30, 30, 30)
 	_, fontH := r.TextSize("Ag")
-	headerTextY := (headerH - fontH) / 2
-	r.DrawText("Itch.io — GB Studio Games", 12, headerTextY, colorText, colorText, colorText)
+	headerTextY := r.DrawHeaderBar(headerH)
+	mt := r.Theme.MainText
+	r.DrawText("Itch.io — GB Studio Games", 12, headerTextY, mt[0], mt[1], mt[2])
 	if s.cacheReady {
 		badge := itchio.SortModeBadge(s.sortMode)
-		bw, _ := r.TextSize(badge)
-		bx := r.W - bw - 12
-		var badgeR, badgeG, badgeB uint8
-		switch s.sortMode {
-		case itchio.SortModeFree:
-			badgeR, badgeG, badgeB = 80, 200, 80
-		case itchio.SortModePaid:
-			badgeR, badgeG, badgeB = 220, 180, 60
-		default:
-			badgeR, badgeG, badgeB = 80, 200, 220
-		}
-		r.DrawText(badge, bx, headerTextY, badgeR, badgeG, badgeB)
+		bw, bh := r.TextSize(badge)
+		const hPad = int32(8)
+		pillW := bw + hPad*2
+		pillH := bh + 4
+		pillX := r.W - pillW - 12
+		pillY := headerTextY - 2
+		ac := r.Theme.Accent
+		aT := r.Theme.AccentText
+		r.DrawPill(pillX, pillY, pillW, pillH, ac[0], ac[1], ac[2])
+		r.DrawText(badge, pillX+hPad, headerTextY, aT[0], aT[1], aT[2])
 	}
-	// Thin separator line below header
-	r.DrawRect(0, headerH, r.W, 2, 50, 50, 50)
 
 	contentTop := headerH + 4
 
 	if s.loading {
-		r.DrawText("Loading...", 20, r.H/2, colorText, colorText, colorText)
+		lt := r.Theme.ListText
+		r.DrawText("Loading...", 20, r.H/2, lt[0], lt[1], lt[2])
 		r.Present()
 		return
 	}
@@ -265,7 +263,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawText("Error: "+s.err.Error(), 20, mid, 200, 50, 50)
 		}
 		ftrY := r.DrawFooterBar(40)
-		r.DrawSmallText("A:retry  B:exit", 10, ftrY, 140, 140, 140)
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "A", Text: "retry"},
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"},
+		}, ftrY)
 		r.Present()
 		return
 	}
@@ -279,13 +280,22 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	visibleRows := (r.H - contentTop - footerH) / rowH
 
 	if len(s.viewGames) == 0 && s.cacheReady {
-		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, 140, 140, 140)
+		ht := r.Theme.HintText
+		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
 		r.DrawTextCentered("Press SELECT to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
 		ftrY := r.DrawFooterBar(footerH)
 		if r.W <= narrowScreenW {
-			r.DrawSmallText("SEL:sort  B:exit  ⚙", 10, ftrY, 140, 140, 140)
+			r.DrawFooterHints([]renderer.FooterHint{
+				{Kind: renderer.BadgePill, Label: "SEL", Text: "sort"},
+				{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"},
+				{Kind: renderer.BadgePill, Label: "⚙", Text: ""},
+			}, ftrY)
 		} else {
-			r.DrawSmallText("SELECT:sort  B:exit  Start:settings", 10, ftrY, 140, 140, 140)
+			r.DrawFooterHints([]renderer.FooterHint{
+				{Kind: renderer.BadgePill, Label: "SELECT", Text: "sort"},
+				{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"},
+				{Kind: renderer.BadgePill, Label: "START", Text: "settings"},
+			}, ftrY)
 		}
 		r.Present()
 		return
@@ -339,7 +349,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		y := contentTop + int32(rowIdx)*rowH + (rowH-fontH)/2 // vertically centre text in row
 		rowTop := contentTop + int32(rowIdx)*rowH
 		if i == s.cursor {
-			r.DrawRect(0, rowTop, leftW, rowH, colorHighlight, colorHighlight, colorHighlight+20)
+			ac := r.Theme.Accent
+			r.DrawPill(4, rowTop+2, leftW-8, rowH-4, ac[0], ac[1], ac[2])
 		}
 
 		// Determine download/update status for this row.
@@ -375,11 +386,12 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 		isDownloaded := isPresent || isPendingUpdate || isRemovedGame
 		if i == s.cursor {
+			aT := r.Theme.AccentText
 			if isDownloaded {
 				titleW, _ := r.BoldTextSize(g.Title)
 				if titleW <= titleAreaW {
 					s.titleScrollX = 0
-					r.DrawBoldText(g.Title, 10, y, colorText, colorText, colorText)
+					r.DrawBoldText(g.Title, 10, y, aT[0], aT[1], aT[2])
 				} else {
 					maxScroll := titleW - titleAreaW
 					scrollX := s.titleScrollX
@@ -387,7 +399,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						scrollX = maxScroll
 					}
 					r.SetClipRect(10, rowTop, titleAreaW, rowH)
-					r.DrawBoldText(g.Title, 10-scrollX, y, colorText, colorText, colorText)
+					r.DrawBoldText(g.Title, 10-scrollX, y, aT[0], aT[1], aT[2])
 					r.ClearClipRect()
 					if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
 						s.titleScrollX = 0
@@ -398,7 +410,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				titleW, _ := r.TextSize(g.Title)
 				if titleW <= titleAreaW {
 					s.titleScrollX = 0
-					r.DrawText(g.Title, 10, y, colorText, colorText, colorText)
+					r.DrawText(g.Title, 10, y, aT[0], aT[1], aT[2])
 				} else {
 					maxScroll := titleW - titleAreaW
 					scrollX := s.titleScrollX
@@ -406,7 +418,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						scrollX = maxScroll
 					}
 					r.SetClipRect(10, rowTop, titleAreaW, rowH)
-					r.DrawText(g.Title, 10-scrollX, y, colorText, colorText, colorText)
+					r.DrawText(g.Title, 10-scrollX, y, aT[0], aT[1], aT[2])
 					r.ClearClipRect()
 					if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
 						s.titleScrollX = 0
@@ -415,10 +427,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				}
 			}
 		} else {
+			lt := r.Theme.ListText
 			if isDownloaded {
-				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
+				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), 10, y, lt[0], lt[1], lt[2])
 			} else {
-				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, colorText, colorText, colorText)
+				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, lt[0], lt[1], lt[2])
 			}
 		}
 
@@ -441,7 +454,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		boxH := rightW * 3 / 4 // 4:3 aspect ratio box
 
 		// Draw the box background for all states
-		r.DrawRect(rightX, metaY, boxW, boxH, colorBG, colorBG, colorBG)
+		r.DrawRect(rightX, metaY, boxW, boxH, bg[0], bg[1], bg[2])
 
 		if g.CoverURL != "" {
 			tex := s.cache.Get(r, g.CoverURL)
@@ -494,7 +507,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			}
 		} else {
 			// No cover URL — wireframe border
-			r.DrawRect(rightX+2, metaY+2, boxW-4, boxH-4, colorBG, colorBG, colorBG)
+			r.DrawRect(rightX+2, metaY+2, boxW-4, boxH-4, bg[0], bg[1], bg[2])
 			r.DrawRect(rightX+3, metaY+3, boxW-6, boxH-6, 35, 35, 35)
 			r.DrawText("No Image", rightX+boxW/2-40, metaY+boxH/2-10, 80, 80, 80)
 		}
@@ -503,17 +516,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		lineGap := fontH + 5
 
 		if g.Author != "" {
-			r.DrawText("by "+g.Author, rightX, metaY, 160, 160, 160)
+			mt2 := r.Theme.MainText
+			r.DrawText("by "+g.Author, rightX, metaY, mt2[0], mt2[1], mt2[2])
 			metaY += lineGap
 		}
-		// Price — same colours as the list column
-		if g.IsFree {
-			r.DrawText("Free", rightX, metaY, 80, 200, 80)
-		} else {
-			r.DrawText(fmt.Sprintf("$%.2f", g.Price), rightX, metaY, 220, 180, 60)
-		}
-		metaY += lineGap
-		// Tags: filter, comma-join, wrap to panel width, vertical-scroll if overflow.
+		// Tags: filter and render as pill badges with vertical-scroll if overflow.
 		var filteredTags []string
 		for _, tag := range g.Tags {
 			if strings.EqualFold(tag, "free") {
@@ -525,20 +532,23 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			filteredTags = append(filteredTags, tag)
 		}
 		if len(filteredTags) > 0 {
-			tagLine := strings.Join(filteredTags, ", ")
-			wrappedLines := r.WrapText(tagLine, rightW)
-			wrappedH := int32(len(wrappedLines)) * lineGap
+			ac := r.Theme.Accent
+			aT := r.Theme.AccentText
+			bgPill := [3]uint8{ac[0] / 3, ac[1] / 3, ac[2] / 3}
+			// Measure total pill height to know whether scroll is needed.
+			totalTagH := r.DrawTagPills(filteredTags, rightX, 0, rightW, lineGap,
+				aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
 			availH := r.H - footerH - metaY
 			if availH <= 0 {
 				availH = 0
 			}
-			if wrappedH <= availH {
-				for _, line := range wrappedLines {
-					r.DrawText(line, rightX, metaY, 120, 180, 220)
-					metaY += lineGap
-				}
+			if totalTagH <= availH {
+				s.tagScrollY = 0
+				r.DrawTagPills(filteredTags, rightX, metaY, rightW, lineGap,
+					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
+				metaY += totalTagH
 			} else {
-				maxTagScroll := wrappedH - availH
+				maxTagScroll := totalTagH - availH
 				if s.tagScrollY > maxTagScroll {
 					s.tagScrollY = maxTagScroll
 				}
@@ -548,79 +558,51 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					s.tagScrollAt = time.Now()
 				}
 				r.SetClipRect(rightX, metaY, rightW, availH)
-				drawY := metaY - s.tagScrollY
-				for _, line := range wrappedLines {
-					r.DrawText(line, rightX, drawY, 120, 180, 220)
-					drawY += lineGap
-				}
+				r.DrawTagPills(filteredTags, rightX, metaY-s.tagScrollY, rightW, lineGap,
+					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
 				r.ClearClipRect()
 			}
 		}
 	}
 
-	// Footer with pagination info
-	var pageInfo string
+	// Build footer hints.
+	ftrY := r.DrawFooterBar(footerH)
+
+	var footerHints []renderer.FooterHint
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "select"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L/R", Text: "page"})
+	if s.cacheReady {
+		if r.W <= narrowScreenW {
+			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "sort"})
+		} else {
+			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "sort"})
+		}
+	}
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"})
+	if r.W <= narrowScreenW {
+		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
+	} else {
+		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "settings"})
+	}
+	r.DrawFooterHints(footerHints, ftrY)
+
+	// Pagination info right-aligned.
+	pageInfo := fmt.Sprintf("Page %d", s.page)
 	if s.totalPages > 0 {
 		pageInfo = fmt.Sprintf("Page %d/%d", s.page, s.totalPages)
-	} else {
-		pageInfo = fmt.Sprintf("Page %d", s.page)
 	}
-	var countInfo string
-	if s.totalGames > 0 {
-		countInfo = fmt.Sprintf("%d/%d games", len(s.games), s.totalGames)
-	} else {
-		countInfo = fmt.Sprintf("%d games", len(s.games))
-	}
-	// Contextual dismiss hint for [UP]/[!] games.
-	var dismissHint string
-	var dismissHintR, dismissHintG, dismissHintB uint8
-	if s.cursor < len(s.games) {
-		g := s.games[s.cursor]
-		if s.inv.HasPendingUpdates(g.URL) {
-			dismissHintR, dismissHintG, dismissHintB = 240, 160, 40
-			if r.W <= narrowScreenW {
-				dismissHint = "X:dismiss"
-			} else {
-				dismissHint = "X:dismiss update"
-			}
-		} else if s.inv.IsRemoved(g.URL) {
-			dismissHintR, dismissHintG, dismissHintB = 200, 60, 60
-			if r.W <= narrowScreenW {
-				dismissHint = "X:dismiss"
-			} else {
-				dismissHint = "X:dismiss warning"
-			}
-		}
-	}
+	ht := r.Theme.HintText
+	piW, _ := r.SmallTextSize(pageInfo)
+	r.DrawSmallText(pageInfo, r.W-piW-10, ftrY, ht[0], ht[1], ht[2])
 
-	var hints string
-	if r.W <= narrowScreenW {
-		if s.cacheReady {
-			hints = "A:sel  L/R  SEL:sort  B:exit  ⚙"
-		} else {
-			hints = "A:sel  L/R  B:exit  ⚙"
-		}
-	} else {
-		if s.cacheReady {
-			hints = "A:select  L/R:page  SELECT:sort  B:exit  Start:settings"
-		} else {
-			hints = "A:select  L/R:page  B:exit  Start:settings"
-		}
-	}
-	footer := fmt.Sprintf("%s · %s  |  %s", pageInfo, countInfo, hints)
-	ftrY := r.DrawFooterBar(footerH)
-	r.DrawSmallText(footer, 10, ftrY, 140, 140, 140)
-	if dismissHint != "" {
-		dhW, _ := r.SmallTextSize(dismissHint)
-		r.DrawSmallText(dismissHint, r.W-dhW-10, ftrY, dismissHintR, dismissHintG, dismissHintB)
-	}
 	r.Present()
 }
 
 // drawPlaceholder renders a bordered rectangle with centered text.
 func (s *ListScreen) drawPlaceholder(r *renderer.Renderer, x, y, w, h int32, label string) {
+	bg := r.Theme.Background
 	r.DrawRect(x, y, w, h, 45, 45, 45)
-	r.DrawRect(x+2, y+2, w-4, h-4, colorBG, colorBG, colorBG)
+	r.DrawRect(x+2, y+2, w-4, h-4, bg[0], bg[1], bg[2])
 	r.DrawText(label, x+w/2-40, y+h/2-10, 80, 80, 80)
 }
 
