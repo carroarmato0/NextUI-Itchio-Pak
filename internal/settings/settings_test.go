@@ -322,3 +322,32 @@ func TestSortModeBackwardsCompatible(t *testing.T) {
 		t.Errorf("old config SortMode = %q, want empty string", loaded.SortMode)
 	}
 }
+
+func TestNextUIThemeDefault(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path/config.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Default must be false.
+	if cfg.NextUITheme {
+		t.Errorf("default NextUITheme = %v, want %v", cfg.NextUITheme, false)
+	}
+}
+
+func TestNextUIThemeRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{NextUITheme: true}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !loaded.NextUITheme {
+		t.Errorf("NextUITheme = %v, want %v", loaded.NextUITheme, true)
+	}
+}

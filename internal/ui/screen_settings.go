@@ -11,6 +11,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -28,6 +29,7 @@ const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
 	sItemROMLocation
+	sItemNextUITheme
 	sItemLogLevel
 	sItemClearCache
 	sItemRefreshCache
@@ -46,13 +48,40 @@ type SettingsScreen struct {
 	onRefreshGames func(Screen) Screen // nil if not available
 	updateSvc      UpdateServicer
 
+	nextUITheme    theme.Theme
+	defaultTheme   theme.Theme
+	themeAvailable bool
+	onThemeToggle  func(bool)
+
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
 }
 
-func NewSettingsScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, prev Screen, onRefreshGames func(Screen) Screen, updateSvc UpdateServicer) *SettingsScreen {
-	s := &SettingsScreen{client: client, cfg: cfg, cfgPath: cfgPath, prev: prev, onRefreshGames: onRefreshGames, updateSvc: updateSvc}
+func NewSettingsScreen(
+	client *itchio.Client,
+	cfg *settings.Config,
+	cfgPath string,
+	prev Screen,
+	onRefreshGames func(Screen) Screen,
+	updateSvc UpdateServicer,
+	nextUITheme theme.Theme,
+	defaultTheme theme.Theme,
+	themeAvailable bool,
+	onThemeToggle func(bool),
+) *SettingsScreen {
+	s := &SettingsScreen{
+		client:         client,
+		cfg:            cfg,
+		cfgPath:        cfgPath,
+		prev:           prev,
+		onRefreshGames: onRefreshGames,
+		updateSvc:      updateSvc,
+		nextUITheme:    nextUITheme,
+		defaultTheme:   defaultTheme,
+		themeAvailable: themeAvailable,
+		onThemeToggle:  onThemeToggle,
+	}
 	// Start a one-shot background validation the first time Settings is opened
 	// this session. MarkAPIKeyCheckStarted is a CAS gate so subsequent opens
 	// are a no-op.
@@ -77,12 +106,36 @@ func (s *SettingsScreen) processAutoRepeat() {
 	if now.Sub(s.lastRepeat) < repeatInterval {
 		return
 	}
-	if s.heldDir > 0 && int(s.cursor) < int(sItemCount)-1 {
-		s.cursor++
-	} else if s.heldDir < 0 && s.cursor > 0 {
-		s.cursor--
-	}
+	s.moveCursor(s.heldDir)
 	s.lastRepeat = now
+}
+
+func (s *SettingsScreen) moveCursor(dir int) {
+	if dir > 0 {
+		if int(s.cursor) < int(sItemCount)-1 {
+			s.cursor++
+		}
+	} else if dir < 0 {
+		if s.cursor > 0 {
+			s.cursor--
+		}
+	}
+	// Skip NextUI Theme if not available.
+	if s.cursor == sItemNextUITheme && !s.themeAvailable {
+		if dir >= 0 { // moving down or neutral
+			if int(s.cursor) < int(sItemCount)-1 {
+				s.cursor++
+			} else {
+				s.cursor-- // bounce back if at end
+			}
+		} else { // moving up
+			if s.cursor > 0 {
+				s.cursor--
+			} else {
+				s.cursor++ // bounce back if at start
+			}
+		}
+	}
 }
 
 func (s *SettingsScreen) Draw(r *renderer.Renderer) {
@@ -104,21 +157,32 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		logLevelLabel = "Debug"
 	}
 
-	items := []string{
-		"API Key: ",
-		"ROM Selection: " + s.cfg.ROMSelection,
-		"ROM Location: " + s.cfg.ROMLocation,
-		"Log Level: " + logLevelLabel,
-		"Clear Image Cache",
-		"Refresh Game List",
-		"Update Inventory",
-		"Content Moderation >",
-		"About",
+	nextUIThemeLabel := "Off"
+	if s.cfg.NextUITheme {
+		nextUIThemeLabel = "On"
 	}
 
-	for i, label := range items {
+	type menuItem struct {
+		id    settingsItem
+		label string
+	}
+	var items []menuItem
+	items = append(items, menuItem{sItemAPIKey, "API Key: "})
+	items = append(items, menuItem{sItemROMMode, "ROM Selection: " + s.cfg.ROMSelection})
+	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
+	if s.themeAvailable {
+		items = append(items, menuItem{sItemNextUITheme, "NextUI Theme: " + nextUIThemeLabel})
+	}
+	items = append(items, menuItem{sItemLogLevel, "Log Level: " + logLevelLabel})
+	items = append(items, menuItem{sItemClearCache, "Clear Image Cache"})
+	items = append(items, menuItem{sItemRefreshCache, "Refresh Game List"})
+	items = append(items, menuItem{sItemUpdateInventory, "Update Inventory"})
+	items = append(items, menuItem{sItemContentModeration, "Content Moderation >"})
+	items = append(items, menuItem{sItemAbout, "About"})
+
+	for i, item := range items {
 		y := headerH + 10 + int32(i)*rowH
-		isSelected := settingsItem(i) == s.cursor
+		isSelected := item.id == s.cursor
 		if isSelected {
 			ac := r.Theme.Accent
 			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
@@ -131,11 +195,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			c := r.Theme.ListText
 			tr, tg, tb = c[0], c[1], c[2]
 		}
-		r.DrawText(label, 20, y, tr, tg, tb)
+		r.DrawText(item.label, 20, y, tr, tg, tb)
 
 		// API Key row: append live validation status as a small pill badge.
-		if settingsItem(i) == sItemAPIKey {
-			labelW, _ := r.TextSize(label)
+		if item.id == sItemAPIKey {
+			labelW, _ := r.TextSize(item.label)
 			if s.cfg.APIKey != "" {
 				var statusLabel string
 				var sR, sG, sB uint8
@@ -159,7 +223,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		}
 
 		// Update Inventory row: right-aligned timestamp/running annotation.
-		if settingsItem(i) == sItemUpdateInventory && s.updateSvc != nil {
+		if item.id == sItemUpdateInventory && s.updateSvc != nil {
 			annotation := updateInventoryAnnotation(s.updateSvc)
 			aw, _ := r.SmallTextSize(annotation)
 			ax := r.W - aw - 20
@@ -195,11 +259,7 @@ func (s *SettingsScreen) startHold(dir int) {
 	s.heldSince = time.Now()
 	s.lastRepeat = s.heldSince
 	// Move immediately on first press
-	if dir > 0 && int(s.cursor) < int(sItemCount)-1 {
-		s.cursor++
-	} else if dir < 0 && s.cursor > 0 {
-		s.cursor--
-	}
+	s.moveCursor(dir)
 }
 
 func (s *SettingsScreen) stopHold(dir int) {
@@ -315,6 +375,13 @@ func (s *SettingsScreen) activate() Screen {
 			s.cfg.ROMLocation = "auto"
 		}
 		s.cfg.Save(s.cfgPath)
+	case sItemNextUITheme:
+		s.cfg.NextUITheme = !s.cfg.NextUITheme
+		s.cfg.Save(s.cfgPath)
+		logger.Info("settings: NextUI theme changed to %v", s.cfg.NextUITheme)
+		if s.onThemeToggle != nil {
+			s.onThemeToggle(s.cfg.NextUITheme)
+		}
 	case sItemLogLevel:
 		if s.cfg.LogLevel == "debug" {
 			s.cfg.LogLevel = ""

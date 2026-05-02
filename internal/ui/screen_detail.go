@@ -14,6 +14,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -60,6 +61,11 @@ type DetailScreen struct {
 	prev          Screen
 	inv           *inventory.Inventory
 	inventoryPath string
+
+	nextUITheme    theme.Theme
+	defaultTheme   theme.Theme
+	themeAvailable bool
+	onThemeToggle  func(bool)
 }
 
 // ShowModal displays a dismissable overlay message on the detail screen.
@@ -69,8 +75,36 @@ func (s *DetailScreen) ShowModal(title, body string) {
 	s.modal = detailModal{active: true, kind: modalKindInfo, title: title, body: body}
 }
 
-func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, inv *inventory.Inventory, inventoryPath string, prev Screen) *DetailScreen {
-	s := &DetailScreen{client: client, cfg: cfg, cfgPath: cfgPath, cache: cache, game: game, prev: prev, loading: true, inv: inv, inventoryPath: inventoryPath, pathScrollAt: time.Now()}
+func NewDetailScreen(
+	client *itchio.Client,
+	cfg *settings.Config,
+	cfgPath string,
+	cache *renderer.ImageCache,
+	game itchio.Game,
+	inv *inventory.Inventory,
+	inventoryPath string,
+	prev Screen,
+	nextUITheme theme.Theme,
+	defaultTheme theme.Theme,
+	themeAvailable bool,
+	onThemeToggle func(bool),
+) *DetailScreen {
+	s := &DetailScreen{
+		client:         client,
+		cfg:            cfg,
+		cfgPath:        cfgPath,
+		cache:          cache,
+		game:           game,
+		prev:           prev,
+		loading:        true,
+		inv:            inv,
+		inventoryPath:  inventoryPath,
+		pathScrollAt:   time.Now(),
+		nextUITheme:    nextUITheme,
+		defaultTheme:   defaultTheme,
+		themeAvailable: themeAvailable,
+		onThemeToggle:  onThemeToggle,
+	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -408,15 +442,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += 10
 		ac2 := r.Theme.Accent
 		aT2 := r.Theme.AccentText
-		// Blend accent toward gray-35 at 50% so the pill is clearly visible against
-		// the black background while keeping the accent hue.
-		bgPill := [3]uint8{
-			uint8((int(ac2[0]) + 35) / 2),
-			uint8((int(ac2[1]) + 35) / 2),
-			uint8((int(ac2[2]) + 35) / 2),
-		}
 		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+4,
-			aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
+			aT2[0], aT2[1], aT2[2], ac2[0], ac2[1], ac2[2])
 		y += tagsH + 8
 	}
 
@@ -677,7 +704,8 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_x:
 			return s.triggerDelete()
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -717,7 +745,8 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+
 		}
 	}
 	return s

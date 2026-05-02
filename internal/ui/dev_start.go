@@ -10,6 +10,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -30,22 +31,33 @@ type devAutoDetailScreen struct {
 	inv           *inventory.Inventory
 	inventoryPath string
 	stopPoll      chan struct{}
+
+	nextUITheme    theme.Theme
+	defaultTheme   theme.Theme
+	themeAvailable bool
+	onThemeToggle  func(bool)
 }
 
 func newDevAutoDetailScreen(
 	list *ListScreen, client *itchio.Client, cfg *settings.Config,
 	cfgPath string, cache *renderer.ImageCache,
 	inv *inventory.Inventory, inventoryPath string,
+	nextUITheme theme.Theme, defaultTheme theme.Theme,
+	themeAvailable bool, onThemeToggle func(bool),
 ) *devAutoDetailScreen {
 	s := &devAutoDetailScreen{
-		list:          list,
-		client:        client,
-		cfg:           cfg,
-		cfgPath:       cfgPath,
-		cache:         cache,
-		inv:           inv,
-		inventoryPath: inventoryPath,
-		stopPoll:      make(chan struct{}),
+		list:           list,
+		client:         client,
+		cfg:            cfg,
+		cfgPath:        cfgPath,
+		cache:          cache,
+		inv:            inv,
+		inventoryPath:  inventoryPath,
+		stopPoll:       make(chan struct{}),
+		nextUITheme:    nextUITheme,
+		defaultTheme:   defaultTheme,
+		themeAvailable: themeAvailable,
+		onThemeToggle:  onThemeToggle,
 	}
 	go s.pollForGames()
 	return s
@@ -83,6 +95,7 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 			return NewDetailScreen(
 				s.client, s.cfg, s.cfgPath, s.cache,
 				s.list.games[0], s.inv, s.inventoryPath, s.list,
+				s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle,
 			)
 		}
 		return s.list
@@ -108,13 +121,17 @@ func NewDevStartScreen(
 	inv *inventory.Inventory,
 	inventoryPath string,
 	updateSvc UpdateServicer,
+	nextUITheme theme.Theme,
+	defaultTheme theme.Theme,
+	themeAvailable bool,
+	onThemeToggle func(bool),
 ) Screen {
 	switch name {
 	case "settings":
 		// onRefreshGames is nil-safe inside SettingsScreen.
-		return NewSettingsScreen(client, cfg, cfgPath, list, nil, updateSvc)
+		return NewSettingsScreen(client, cfg, cfgPath, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
 	case "detail":
-		return newDevAutoDetailScreen(list, client, cfg, cfgPath, cache, inv, inventoryPath)
+		return newDevAutoDetailScreen(list, client, cfg, cfgPath, cache, inv, inventoryPath, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
 	default:
 		return list
 	}

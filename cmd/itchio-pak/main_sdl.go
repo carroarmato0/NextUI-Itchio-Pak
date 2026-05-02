@@ -80,17 +80,30 @@ func runSDL() {
 	logger.Info("display: %dx%d", w, h)
 
 	const miniSettingsPath = "/mnt/SDCARD/.userdata/shared/minuisettings.txt"
-	th := theme.Load(miniSettingsPath)
-	logger.Info("theme: loaded background=#%02X%02X%02X accent=#%02X%02X%02X",
-		th.Background[0], th.Background[1], th.Background[2],
-		th.Accent[0], th.Accent[1], th.Accent[2])
+	nextUITheme, themeAvailable := theme.Load(miniSettingsPath)
+	defaultTheme := theme.Defaults()
 
-	r, err := renderer.New("Itch.io", int(w), int(h), th)
+	activeTheme := defaultTheme
+	if cfg.NextUITheme && themeAvailable {
+		activeTheme = nextUITheme
+	}
+	logger.Info("theme: available=%v, active=%v", themeAvailable, cfg.NextUITheme && themeAvailable)
+
+	r, err := renderer.New("Itch.io", int(w), int(h), activeTheme)
 	if err != nil {
 		logger.Error("renderer init: %v", err)
 		os.Exit(1)
 	}
 	defer r.Close()
+
+	onThemeToggle := func(enabled bool) {
+		if enabled && themeAvailable {
+			r.Theme = nextUITheme
+		} else {
+			r.Theme = defaultTheme
+		}
+		logger.Debug("renderer: theme updated (NextUI active: %v)", enabled && themeAvailable)
+	}
 
 	cache := renderer.NewImageCache(50)
 	defer cache.Clear()
@@ -112,11 +125,11 @@ func runSDL() {
 	})
 	powerMgr.Start()
 
-	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc)
+	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
 	var current ui.Screen
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
-		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc)
+		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
 	} else {
 		current = listScreen
 	}

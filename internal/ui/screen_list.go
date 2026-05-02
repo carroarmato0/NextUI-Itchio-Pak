@@ -15,6 +15,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -75,19 +76,41 @@ type ListScreen struct {
 	// Sort/filter state
 	sortMode  itchio.SortMode
 	viewGames []itchio.Game // sorted/filtered view; paging operates on this
+
+	nextUITheme    theme.Theme
+	defaultTheme   theme.Theme
+	themeAvailable bool
+	onThemeToggle  func(bool)
 }
 
-func NewListScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, cachePath string, inv *inventory.Inventory, inventoryPath string, updateSvc UpdateServicer) *ListScreen {
+func NewListScreen(
+	client *itchio.Client,
+	cfg *settings.Config,
+	cfgPath string,
+	cache *renderer.ImageCache,
+	cachePath string,
+	inv *inventory.Inventory,
+	inventoryPath string,
+	updateSvc UpdateServicer,
+	nextUITheme theme.Theme,
+	defaultTheme theme.Theme,
+	themeAvailable bool,
+	onThemeToggle func(bool),
+) *ListScreen {
 	s := &ListScreen{
-		client:        client,
-		cfg:           cfg,
-		cache:         cache,
-		page:          1,
-		cfgPath:       cfgPath,
-		cachePath:     cachePath,
-		inv:           inv,
-		inventoryPath: inventoryPath,
-		updateSvc:     updateSvc,
+		client:         client,
+		cfg:            cfg,
+		cache:          cache,
+		page:           1,
+		cfgPath:        cfgPath,
+		cachePath:      cachePath,
+		inv:            inv,
+		inventoryPath:  inventoryPath,
+		updateSvc:      updateSvc,
+		nextUITheme:    nextUITheme,
+		defaultTheme:   defaultTheme,
+		themeAvailable: themeAvailable,
+		onThemeToggle:  onThemeToggle,
 	}
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
@@ -664,10 +687,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_RETURN:
 			if s.cursor < len(s.games) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 		case sdl.K_x:
 			if s.cursor < len(s.games) {
 				g := s.games[s.cursor]
@@ -733,12 +756,12 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.games) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 		case sdl.CONTROLLER_BUTTON_BACK:
 			if !s.cacheReady {
 				return s

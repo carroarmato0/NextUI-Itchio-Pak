@@ -20,7 +20,10 @@ color7=0x010203
 	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	th := Load(p)
+	th, ok := Load(p)
+	if !ok {
+		t.Error("expected ok=true for valid theme file")
+	}
 	if th.MainText != [3]uint8{0xFF, 0x00, 0x00} {
 		t.Errorf("MainText: got %v", th.MainText)
 	}
@@ -50,7 +53,10 @@ func TestLoad_SubsetOfFields(t *testing.T) {
 	if err := os.WriteFile(p, []byte("color2=0x9B2257\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	th := Load(p)
+	th, ok := Load(p)
+	if !ok {
+		t.Error("expected ok=true for subset of fields")
+	}
 	if th.Accent != [3]uint8{0x9B, 0x22, 0x57} {
 		t.Errorf("Accent: got %v", th.Accent)
 	}
@@ -60,8 +66,11 @@ func TestLoad_SubsetOfFields(t *testing.T) {
 }
 
 func TestLoad_MissingFile(t *testing.T) {
-	th := Load("/nonexistent/path/minuisettings.txt")
-	def := defaults()
+	th, ok := Load("/nonexistent/path/minuisettings.txt")
+	if ok {
+		t.Error("expected ok=false for missing file")
+	}
+	def := Defaults()
 	if th != def {
 		t.Errorf("expected defaults for missing file, got %+v", th)
 	}
@@ -76,12 +85,35 @@ color7=0x141414
 	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	th := Load(p)
-	if th.Accent != defaults().Accent {
+	th, ok := Load(p)
+	if !ok {
+		t.Error("expected ok=true for valid theme file")
+	}
+	if th.Accent != Defaults().Accent {
+
 		t.Errorf("Accent should be default after bad hex, got %v", th.Accent)
 	}
 	if th.Background != [3]uint8{0x14, 0x14, 0x14} {
 		t.Errorf("Background: got %v", th.Background)
+	}
+}
+
+func TestLoad_IgnoreUnrecognizedKeys(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "minuisettings.txt")
+	content := `color2=0x00FF00
+radius=20
+showclock=1
+`
+	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	th, ok := Load(p)
+	if !ok {
+		t.Error("expected ok=true for partial theme file")
+	}
+	if th.Accent != [3]uint8{0x00, 0xFF, 0x00} {
+		t.Errorf("Accent: got %v", th.Accent)
 	}
 }
 
@@ -91,8 +123,11 @@ func TestLoad_EmptyFile(t *testing.T) {
 	if err := os.WriteFile(p, []byte(""), 0644); err != nil {
 		t.Fatal(err)
 	}
-	th := Load(p)
-	def := defaults()
+	th, ok := Load(p)
+	if ok {
+		t.Error("expected ok=false for empty file (no fields found)")
+	}
+	def := Defaults()
 	if th != def {
 		t.Errorf("expected defaults for empty file, got %+v", th)
 	}

@@ -54,6 +54,7 @@ type Config struct {
 	Filter       ContentFilter     `json:"content_filter"`
 	LogLevel     string            `json:"log_level,omitempty"`  // "debug" | "" (resolves to "info")
 	SortMode     string            `json:"sort_mode,omitempty"`  // "az" | "za" | "new" | "dl" | "free" | "paid" | "" (empty = [RSS])
+	NextUITheme  bool              `json:"nextui_theme"`
 }
 
 func defaults() *Config {
