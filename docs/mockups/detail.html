@@ -20,22 +20,10 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
   --main-t: #FFFFFF;
   --mfnt:   34px;
   --sfnt:   22px;
-  --tfnt:   18px;   /* tiny — description text */
+  --tfnt:   18px;
 
-  /*
-    screen_detail.go layout (1024×768):
-      headerH = mainFH + smallFH + 16 ≈ 38+24+16 = 78px
-      contentTop = 84px
-      footerH = 40px
-      margin = 20px
-      qrColW = 256px
-      imgBoxW = 718px
-      contentH = 644px
-      imgBoxH = 429px
-      qrX = 748px
-  */
   --hdr-h:  78px;
-  --ftr-h:  40px;
+  --ftr-h:  52px;
   --mg:     20px;
   --img-w:  718px;
   --img-h:  429px;
@@ -100,135 +88,240 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
   display: flex; flex-direction: column; gap: 0;
 }
 
-/* Image counter (above sections) */
 .img-counter { font-size: var(--sfnt); color: #888; padding-bottom: 10px; }
+.section-sep { height: 1px; background: #383848; margin: 8px 0; }
 
-/* ── Section: Actions ── */
-.section { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
-.section-sep { height: 1px; background: #383848; margin-bottom: 8px; }
-
-/* Action row: [A] label + separate price badge */
-.action-row {
-  display: flex; align-items: center; gap: 10px;
-}
+/* ── Common action elements ── */
 .btn-circle {
   width: 28px; height: 28px; border-radius: 50%;
-  background: #3a3a4a; color: var(--acc-t);
-  font-size: 14px; font-weight: bold;
+  background: var(--acc); color: var(--acc-t);
+  font-size: 13px; font-weight: bold;
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.action-label { font-size: var(--mfnt); color: var(--lst-t); }
+.btn-circle.del { background: #5a2020; }
+.btn-circle.warn { background: #5a4010; }
 .price-badge {
   margin-left: auto;
-  background: #3a2a10; border: 1px solid #6a4a20;
+  background: #2a1a05; border: 1px solid #5a3a10;
   color: #F0C060; border-radius: 100px;
   padding: 3px 12px; font-size: var(--sfnt); flex-shrink: 0;
 }
-.action-free .action-label { color: #50C878; }
-.action-del  .action-label { color: #C87070; }
+.free-badge {
+  margin-left: auto;
+  background: #0a2a10; border: 1px solid #1a5a20;
+  color: #50C878; border-radius: 100px;
+  padding: 3px 12px; font-size: var(--sfnt); flex-shrink: 0;
+}
 
-/* Compact on-device status row */
-.ondev-row { display: flex; align-items: center; gap: 8px; padding-top: 2px; }
-.ondev-path { font-size: var(--tfnt); color: #505060; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* ── Option A — "Compact inline": two rows max ── */
 
-/* ── Section: Tags ── */
+/* Primary action row */
+.opt-a .action-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 0;
+}
+.opt-a .action-label     { font-size: var(--mfnt); color: var(--lst-t); }
+.opt-a .action-label.dl  { color: #50C878; }
+.opt-a .action-label.warn{ color: #F0C060; }
+
+/* Combined status + delete row: file info on left, [X] Delete on right */
+.opt-a .status-del-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0 2px 0;
+}
+.opt-a .dl-pill {
+  background: #1a4a50; color: #80D8E0; border-radius: 100px;
+  font-size: 13px; padding: 2px 8px; flex-shrink: 0; white-space: nowrap;
+}
+.opt-a .file-info {
+  font-size: var(--tfnt); color: #4a4a60;
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.opt-a .del-compact {
+  display: flex; align-items: center; gap: 6px;
+  margin-left: auto; flex-shrink: 0;
+}
+.opt-a .del-label { font-size: var(--sfnt); color: #C07070; }
+
+/* ── Option B — "Stacked rows": info sub-row + separate delete ── */
+
+.opt-b .action-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 0;
+}
+.opt-b .action-label     { font-size: var(--mfnt); color: var(--lst-t); }
+.opt-b .action-label.dl  { color: #50C878; }
+.opt-b .action-label.warn{ color: #F0C060; }
+
+/* Info sub-row: indented, small, gray */
+.opt-b .info-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0 3px 36px;  /* indent to align with text after badge */
+  border-top: 1px solid #252530;
+}
+.opt-b .dl-pill {
+  background: #1a4a50; color: #80D8E0; border-radius: 100px;
+  font-size: 13px; padding: 2px 8px; flex-shrink: 0;
+}
+.opt-b .file-info {
+  font-size: var(--tfnt); color: #4a4a60;
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Separate delete row */
+.opt-b .del-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 0;
+  border-top: 1px solid #252530;
+}
+.opt-b .del-label { font-size: var(--mfnt); color: #C07070; }
+
+/* ── Option C — "On-device card": status as a visual block ── */
+
+.opt-c .action-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 0;
+}
+.opt-c .action-label     { font-size: var(--mfnt); color: var(--lst-t); }
+.opt-c .action-label.dl  { color: #50C878; }
+.opt-c .action-label.warn{ color: #F0C060; }
+
+/* Status card: thin bordered box grouping on-device info + delete */
+.opt-c .status-card {
+  border: 1px solid #2a2a3a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  display: flex; align-items: center; gap: 8px;
+  background: #0a0a12;
+}
+.opt-c .dl-pill {
+  background: #1a4a50; color: #80D8E0; border-radius: 100px;
+  font-size: 13px; padding: 2px 8px; flex-shrink: 0;
+}
+.opt-c .file-info {
+  font-size: var(--tfnt); color: #4a4a60;
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.opt-c .del-in-card {
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0;
+}
+.opt-c .del-label-card { font-size: var(--sfnt); color: #C07070; }
+
+/* ── Tags (improved contrast) ── */
 .tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .tag {
   font-size: 13px; padding: 3px 9px; border-radius: 100px;
-  background: #2a1a30; color: var(--acc-t); border: 1px solid #4a2050;
+  /* blend accent(#9B2257) + gray35 at 50% → #5D2B46 — clearly visible on black */
+  background: #5D2B46; color: var(--acc-t);
 }
 
-/* ── Section: Description ── */
+/* ── Description ── */
 .desc { font-size: var(--tfnt); color: #999; line-height: 1.5; }
 
 /* ── Footer ── */
 .ftr {
   position: absolute; bottom: 0; left: 0; right: 0;
   height: var(--ftr-h); background: var(--hdr);
-  border-top: 1px solid #252535;
+  border-top: 2px solid var(--acc);
   display: flex; align-items: center;
-  padding: 0 12px; gap: 5px;
+  padding: 0 12px; gap: 6px;
 }
 .hc {
   width: 22px; height: 22px; border-radius: 50%;
-  background: #3a3a4a; color: var(--acc-t);
+  background: var(--acc); color: var(--acc-t);
   font-size: 12px; font-weight: bold;
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
 .hp {
   height: 20px; padding: 0 7px; border-radius: 100px;
-  background: #2a2a3a; color: var(--acc-t);
+  background: var(--acc); color: var(--acc-t);
   font-size: 12px; white-space: nowrap;
   display: inline-flex; align-items: center; flex-shrink: 0;
 }
-.hl { font-size: 12px; color: var(--hnt-t); margin-right: 6px; }
+.hl { font-size: 12px; color: var(--hnt-t); margin-right: 8px; }
 </style>
 </head>
 <body>
-<h1>Itch.io Pak — Detail Screen — 1024×768 — NextUI Theme</h1>
+<h1>Itch.io Pak — Detail Screen — Action Area Redesign Options</h1>
 
-<!-- ═══ Variant 1: paid game, already downloaded ═══ -->
-<h2>Paid game · Downloaded · On device</h2>
-<div class="screen">
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Option A — Compact: primary action row + inline status+delete row</h2>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<!-- A · State 1: Free, not downloaded -->
+<h2>A · Free · Not downloaded</h2>
+<div class="screen opt-a">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Pixel Forest Quest</div>
+    <div class="hdr-sub">by PixelDev</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/3  (L/R)</div>
+    <div class="action-row">
+      <div class="btn-circle">A</div>
+      <span class="action-label dl">Download</span>
+      <span class="free-badge">FREE</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">platformer</span>
+      <span class="tag">exploration</span>
+      <span class="tag">gbstudio</span>
+      <span class="tag">free</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Explore a pixelated forest world full of secrets and friendly creatures.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">Download</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+  </div>
+</div>
+
+<!-- A · State 2: Paid, no API key -->
+<h2>A · Paid · No API key</h2>
+<div class="screen opt-a">
   <div class="hdr"></div>
   <div class="hdr-sep"></div>
   <div class="hdr-titles">
     <div class="hdr-title">Glory Hunters</div>
     <div class="hdr-sub">by 2think</div>
   </div>
-
-  <div class="img-box">cover art / screenshot 1</div>
-
+  <div class="img-box">cover art / screenshot</div>
   <div class="qr-box">
     <div class="qr-inner"></div>
     <div class="qr-label">Scan to open<br>in browser</div>
   </div>
-
   <div class="content-below">
     <div class="img-counter">Image 1/5  (L/R)</div>
-
-    <!-- Actions section -->
-    <div class="section">
-      <!-- Action + price are separate elements -->
-      <div class="action-row">
-        <div class="btn-circle">A</div>
-        <span class="action-label">Download again</span>
-        <span class="price-badge">$5.00</span>
-      </div>
-      <div class="action-row action-del">
-        <div class="btn-circle">X</div>
-        <span class="action-label">Delete</span>
-      </div>
-      <div class="ondev-row">
-        <span class="rbadge b-dl">DL</span>
-        <span class="ondev-path">Glory Hunters 2.0.zip → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</span>
-      </div>
+    <div class="action-row">
+      <div class="btn-circle warn">A</div>
+      <span class="action-label warn">Purchase required</span>
+      <span class="price-badge">$5.00</span>
     </div>
     <div class="section-sep"></div>
-
-    <!-- Tags section -->
-    <div class="section">
-      <div class="tags">
-        <span class="tag">action-adventure</span>
-        <span class="tag">8-bit</span>
-        <span class="tag">gameboy</span>
-        <span class="tag">retro</span>
-        <span class="tag">pixel-art</span>
-      </div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
     </div>
     <div class="section-sep"></div>
-
-    <!-- Description section -->
-    <div class="desc">
-      Lead your band of glory hunters through dangerous dungeons and epic boss battles.
-      Collect loot, level up your crew, and claim the ultimate prize in this action-adventure
-      RPG for Game Boy Color.
-    </div>
+    <div class="desc">Lead your band of glory hunters through dangerous dungeons and epic boss battles.</div>
   </div>
-
-  <!-- Footer: capital labels -->
   <div class="ftr">
     <div class="hc">B</div><span class="hl">Back</span>
     <div class="hp">L/R</div><span class="hl">Screenshots</span>
@@ -237,50 +330,92 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
   </div>
 </div>
 
-<!-- ═══ Variant 2: free game, not yet downloaded ═══ -->
-<h2>Free game · Not downloaded</h2>
-<div class="screen">
+<!-- A · State 3: Paid, downloaded -->
+<h2>A · Paid · Already downloaded</h2>
+<div class="screen opt-a">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Glory Hunters</div>
+    <div class="hdr-sub">by 2think</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/5  (L/R)</div>
+    <!-- Primary: download again + price -->
+    <div class="action-row">
+      <div class="btn-circle">A</div>
+      <span class="action-label dl">Download again</span>
+      <span class="price-badge">$5.00</span>
+    </div>
+    <!-- Combined status + delete: file info left, [X] Delete right -->
+    <div class="status-del-row">
+      <span class="dl-pill">DL</span>
+      <span class="file-info">glory_hunters_v2.gb → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</span>
+      <div class="del-compact">
+        <div class="btn-circle del">X</div>
+        <span class="del-label">Delete</span>
+      </div>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Lead your band of glory hunters through dangerous dungeons and epic boss battles.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">Download</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+    <div class="hp">↕</div><span class="hl">Scroll</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Option B — Stacked: info sub-row indented below primary, delete as own row</h2>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<!-- B · State 1: Free, not downloaded -->
+<h2>B · Free · Not downloaded</h2>
+<div class="screen opt-b">
   <div class="hdr"></div>
   <div class="hdr-sep"></div>
   <div class="hdr-titles">
     <div class="hdr-title">Pixel Forest Quest</div>
     <div class="hdr-sub">by PixelDev</div>
   </div>
-
-  <div class="img-box">screenshot 1/3</div>
+  <div class="img-box">cover art / screenshot</div>
   <div class="qr-box">
     <div class="qr-inner"></div>
     <div class="qr-label">Scan to open<br>in browser</div>
   </div>
-
   <div class="content-below">
     <div class="img-counter">Image 1/3  (L/R)</div>
-
-    <div class="section">
-      <div class="action-row action-free">
-        <div class="btn-circle">A</div>
-        <span class="action-label">Download</span>
-        <!-- No price badge for free games -->
-      </div>
+    <div class="action-row">
+      <div class="btn-circle">A</div>
+      <span class="action-label dl">Download</span>
+      <span class="free-badge">FREE</span>
     </div>
     <div class="section-sep"></div>
-
-    <div class="section">
-      <div class="tags">
-        <span class="tag">platformer</span>
-        <span class="tag">exploration</span>
-        <span class="tag">gbstudio</span>
-        <span class="tag">free</span>
-      </div>
+    <div class="tags">
+      <span class="tag">platformer</span>
+      <span class="tag">exploration</span>
+      <span class="tag">gbstudio</span>
+      <span class="tag">free</span>
     </div>
     <div class="section-sep"></div>
-
-    <div class="desc">
-      Explore a pixelated forest world full of secrets, hidden paths, and friendly creatures.
-      A relaxing adventure built with GB Studio.
-    </div>
+    <div class="desc">Explore a pixelated forest world full of secrets and friendly creatures.</div>
   </div>
-
   <div class="ftr">
     <div class="hc">A</div><span class="hl">Download</span>
     <div class="hc">B</div><span class="hl">Back</span>
@@ -288,5 +423,229 @@ h2 { font-size: 11px; color: #333; letter-spacing: 2px; text-transform: uppercas
     <div class="hp">START</div><span class="hl">Settings</span>
   </div>
 </div>
+
+<!-- B · State 2: Paid, no API key -->
+<h2>B · Paid · No API key</h2>
+<div class="screen opt-b">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Glory Hunters</div>
+    <div class="hdr-sub">by 2think</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/5  (L/R)</div>
+    <div class="action-row">
+      <div class="btn-circle warn">A</div>
+      <span class="action-label warn">Purchase required</span>
+      <span class="price-badge">$5.00</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Lead your band of glory hunters through dangerous dungeons and epic boss battles.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+    <div class="hp">↕</div><span class="hl">Scroll</span>
+  </div>
+</div>
+
+<!-- B · State 3: Paid, downloaded -->
+<h2>B · Paid · Already downloaded</h2>
+<div class="screen opt-b">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Glory Hunters</div>
+    <div class="hdr-sub">by 2think</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/5  (L/R)</div>
+    <!-- Primary action -->
+    <div class="action-row">
+      <div class="btn-circle">A</div>
+      <span class="action-label dl">Download again</span>
+      <span class="price-badge">$5.00</span>
+    </div>
+    <!-- Info sub-row: indented, small, gray -->
+    <div class="info-row">
+      <span class="dl-pill">DL</span>
+      <span class="file-info">glory_hunters_v2.gb → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</span>
+    </div>
+    <!-- Delete row: separate, red-tinted -->
+    <div class="del-row">
+      <div class="btn-circle del">X</div>
+      <span class="del-label">Delete</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Lead your band of glory hunters through dangerous dungeons and epic boss battles.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">Download</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+    <div class="hp">↕</div><span class="hl">Scroll</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Option C — Status card: on-device block groups info + delete</h2>
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<!-- C · State 1: Free, not downloaded -->
+<h2>C · Free · Not downloaded</h2>
+<div class="screen opt-c">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Pixel Forest Quest</div>
+    <div class="hdr-sub">by PixelDev</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/3  (L/R)</div>
+    <div class="action-row">
+      <div class="btn-circle">A</div>
+      <span class="action-label dl">Download</span>
+      <span class="free-badge">FREE</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">platformer</span>
+      <span class="tag">exploration</span>
+      <span class="tag">gbstudio</span>
+      <span class="tag">free</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Explore a pixelated forest world full of secrets and friendly creatures.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">Download</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+  </div>
+</div>
+
+<!-- C · State 2: Paid, no API key -->
+<h2>C · Paid · No API key</h2>
+<div class="screen opt-c">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Glory Hunters</div>
+    <div class="hdr-sub">by 2think</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/5  (L/R)</div>
+    <div class="action-row">
+      <div class="btn-circle warn">A</div>
+      <span class="action-label warn">Purchase required</span>
+      <span class="price-badge">$5.00</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Lead your band of glory hunters through dangerous dungeons and epic boss battles.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+    <div class="hp">↕</div><span class="hl">Scroll</span>
+  </div>
+</div>
+
+<!-- C · State 3: Paid, downloaded -->
+<h2>C · Paid · Already downloaded</h2>
+<div class="screen opt-c">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-titles">
+    <div class="hdr-title">Glory Hunters</div>
+    <div class="hdr-sub">by 2think</div>
+  </div>
+  <div class="img-box">cover art / screenshot</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+  <div class="content-below">
+    <div class="img-counter">Image 1/5  (L/R)</div>
+    <!-- Primary action -->
+    <div class="action-row">
+      <div class="btn-circle">A</div>
+      <span class="action-label dl">Download again</span>
+      <span class="price-badge">$5.00</span>
+    </div>
+    <!-- Status card: groups file info + Delete -->
+    <div class="status-card">
+      <span class="dl-pill">DL</span>
+      <span class="file-info">glory_hunters_v2.gb → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</span>
+      <div class="del-in-card">
+        <div class="btn-circle del">X</div>
+        <span class="del-label-card">Delete</span>
+      </div>
+    </div>
+    <div class="section-sep"></div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
+    </div>
+    <div class="section-sep"></div>
+    <div class="desc">Lead your band of glory hunters through dangerous dungeons and epic boss battles.</div>
+  </div>
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">Download</span>
+    <div class="hc">B</div><span class="hl">Back</span>
+    <div class="hp">L/R</div><span class="hl">Screenshots</span>
+    <div class="hp">START</div><span class="hl">Settings</span>
+    <div class="hp">↕</div><span class="hl">Scroll</span>
+  </div>
+</div>
+
 </body>
 </html>
