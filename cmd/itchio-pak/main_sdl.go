@@ -30,8 +30,12 @@ func runSDL() {
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
-	// else is logged.
+	// else is logged. LOG_LEVEL env var overrides the config value so the
+	// dev-screenshot script can force debug logging without editing config.
 	logger.SetLevel(logger.LevelFromString(cfg.LogLevel))
+	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
+		logger.SetLevel(logger.LevelFromString(envLevel))
+	}
 	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
 
 	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
@@ -108,7 +112,14 @@ func runSDL() {
 	})
 	powerMgr.Start()
 
-	var current ui.Screen = ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc)
+	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc)
+	var current ui.Screen
+	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
+		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
+		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc)
+	} else {
+		current = listScreen
+	}
 
 	// pendingQuit and pendingAction are set together; only read when pendingQuit is true.
 	var (
