@@ -79,8 +79,8 @@ func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Select"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }

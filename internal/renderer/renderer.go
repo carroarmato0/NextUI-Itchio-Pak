@@ -504,7 +504,7 @@ func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
 			badgeCY := y + smallH/2
 			r.DrawCircleBadge(badgeCX, badgeCY, int32(badgeDiam), ac[0], ac[1], ac[2])
 			r.DrawSmallTextCentered(h.Label, cx, badgeCY-smallH/2, int32(badgeDiam), acTxt[0], acTxt[1], acTxt[2])
-			cx += int32(badgeDiam) + 4
+			cx += int32(badgeDiam) + 6
 		case BadgePill:
 			const hPad = int32(5)
 			pillW := labelW + hPad*2
@@ -512,7 +512,7 @@ func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
 			pillY := y - 2
 			r.DrawPill(cx, pillY, pillW, pillH, ac[0], ac[1], ac[2])
 			r.DrawSmallText(h.Label, cx+hPad, pillY+2, acTxt[0], acTxt[1], acTxt[2])
-			cx += pillW + 4
+			cx += pillW + 6
 		}
 		if h.Text != "" {
 			r.DrawSmallText(h.Text, cx, y, hint[0], hint[1], hint[2])

@@ -161,9 +161,9 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
 		{Kind: renderer.BadgePill, Label: "↕", Text: "Select"},
-		{Kind: renderer.BadgePill, Label: "L/R", Text: "format"},
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Download"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
+		{Kind: renderer.BadgePill, Label: "L/R", Text: "Format"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Download"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }
