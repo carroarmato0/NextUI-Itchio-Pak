@@ -25,7 +25,7 @@ cd "$SCRIPT_DIR/.."
 # Format: "<screen>:<wait_pattern>"
 # The wait_pattern is grepped from the device log to detect when the screen
 # is fully initialised and rendered.
-ALL_SCREENS="list:cache: detail:detail: settings:platform="
+ALL_SCREENS="list:cache: detail:dev:detail-ready settings:theme:"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
@@ -68,7 +68,7 @@ OUT_DIR="docs/screenshots"
 CAPTURE_ALL=0
 NO_BUILD=0
 KEEP_ALIVE=0
-SETTLE=1.5
+SETTLE=4
 TIMEOUT=30
 
 while [ $# -gt 0 ]; do
@@ -99,10 +99,13 @@ if [ -n "${DEPLOY_PLATFORM:-}" ]; then
     PLATFORM="$DEPLOY_PLATFORM"
 else
     echo "==> Detecting device platform..."
-    if adb shell "[ -d /usr/miyoo ]" 2>/dev/null; then
-        PLATFORM="my355"
-    elif adb shell "grep -q TG5050 /proc/cpuinfo" 2>/dev/null; then
+    # Use stdout-based checks — adb shell exit codes are unreliable on some hosts.
+    if adb shell "grep -o TG3040 /proc/cpuinfo" 2>/dev/null | grep -q TG3040; then
+        PLATFORM="tg5040"
+    elif adb shell "grep -o TG5050 /proc/cpuinfo" 2>/dev/null | grep -q TG5050; then
         PLATFORM="tg5050"
+    elif adb shell "[ -d /usr/miyoo ] && echo miyoo" 2>/dev/null | grep -q miyoo; then
+        PLATFORM="my355"
     else
         PLATFORM="tg5040"
     fi
@@ -122,6 +125,26 @@ fi
 echo "==> Pushing binary to device..."
 adb push "bin/$PLATFORM/itchio-pak" "$PAK_DEST/itchio-pak"
 
+# ── Keepawake: prevent device idle-sleep during the capture session ───────────
+# When launched from ADB (not via NextUI), the system's idle-timeout is not
+# suppressed by the launcher.  A kernel wakelock prevents suspend; periodic
+# adb pings act as a fallback on kernels where wake_lock is not accessible.
+adb shell "echo 'dev-screenshot' > /sys/power/wake_lock 2>/dev/null" || true
+_keepawake() {
+    while true; do
+        adb shell "true" 2>/dev/null
+        sleep 10
+    done
+}
+_keepawake &
+_KEEPAWAKE_PID=$!
+_cleanup() {
+    kill "$_KEEPAWAKE_PID" 2>/dev/null
+    wait "$_KEEPAWAKE_PID" 2>/dev/null
+    adb shell "echo 'dev-screenshot' > /sys/power/wake_unlock 2>/dev/null" || true
+}
+trap "_cleanup" EXIT INT TERM
+
 # ── Helper: capture one screen ───────────────────────────────────────────────
 # capture_screen <screen_name> <wait_pattern> <out_file> <is_last>
 capture_screen() {
@@ -138,16 +161,23 @@ capture_screen() {
     adb shell "truncate -s 0 '$LOG_PATH' 2>/dev/null || rm -f '$LOG_PATH' 2>/dev/null; true" || true
 
     # Launch in background with dev env vars.
+    # PLATFORM and SHARED_USERDATA_PATH must be set so the binary writes its log
+    # to the expected path and loads config/cache from the correct location.
+    # nohup is unavailable on BusyBox devices; trap '' HUP makes the shell (and
+    # any child it exec's) ignore SIGHUP, so the app survives the adb session close.
     echo "==> Launching (DEV_START_SCREEN=$_SCREEN, LOG_LEVEL=debug)..."
-    adb shell "nohup sh -c 'DEV_START_SCREEN=$_SCREEN LOG_LEVEL=debug $PAK_DEST/launch.sh' \
-        > /tmp/pak-dev.log 2>&1 &" || true
+    adb shell "(trap '' HUP; DEV_START_SCREEN=$_SCREEN LOG_LEVEL=debug PLATFORM=$PLATFORM \
+        SHARED_USERDATA_PATH=/mnt/SDCARD/.userdata/shared \
+        $PAK_DEST/launch.sh > /tmp/pak-dev.log 2>&1 &)" || true
 
     # Wait for readiness.
+    # adb shell exit codes are unreliable on some hosts (always return 0), so
+    # readiness is detected via stdout output rather than exit status.
     echo "==> Waiting for screen (pattern: '$_WAIT', timeout: ${TIMEOUT}s)..."
     _DEADLINE=$(($(date +%s) + TIMEOUT))
     _READY=0
     while [ "$(date +%s)" -lt "$_DEADLINE" ]; do
-        if adb shell "test -f '$LOG_PATH' && grep -q '$_WAIT' '$LOG_PATH'" 2>/dev/null; then
+        if adb shell "grep '$_WAIT' '$LOG_PATH' 2>/dev/null" | grep -q "$_WAIT"; then
             _READY=1
             echo "    Ready."
             break
@@ -207,10 +237,10 @@ if [ "$CAPTURE_ALL" -eq 1 ]; then
 else
     # Single screen.
     case "$SCREEN" in
-        list)     WAIT_PATTERN="cache:"    ;;
-        detail)   WAIT_PATTERN="detail:"   ;;
-        settings) WAIT_PATTERN="platform=" ;;
-        *)        WAIT_PATTERN="platform=" ;;
+        list)     WAIT_PATTERN="cache:"  ;;
+        detail)   WAIT_PATTERN="dev:detail-ready" ;;
+        settings) WAIT_PATTERN="theme:"  ;;
+        *)        WAIT_PATTERN="theme:"  ;;
     esac
     OUT="${OUT:-$OUT_DIR/$SCREEN.png}"
     echo "==> Platform: $PLATFORM | Screen: $SCREEN | Output: $OUT"

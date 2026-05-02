@@ -49,10 +49,13 @@ if [ -n "$PLATFORM_OVERRIDE" ]; then
     PLATFORM="$PLATFORM_OVERRIDE"
 else
     echo "==> Detecting device platform..."
-    if adb shell "[ -d /usr/miyoo ]" 2>/dev/null; then
-        PLATFORM="my355"
-    elif adb shell "grep -q TG5050 /proc/cpuinfo" 2>/dev/null; then
+    # Use stdout-based checks — adb shell exit codes are unreliable on some hosts.
+    if adb shell "grep -o TG3040 /proc/cpuinfo" 2>/dev/null | grep -q TG3040; then
+        PLATFORM="tg5040"
+    elif adb shell "grep -o TG5050 /proc/cpuinfo" 2>/dev/null | grep -q TG5050; then
         PLATFORM="tg5050"
+    elif adb shell "[ -d /usr/miyoo ] && echo miyoo" 2>/dev/null | grep -q miyoo; then
+        PLATFORM="my355"
     else
         PLATFORM="tg5040"
     fi

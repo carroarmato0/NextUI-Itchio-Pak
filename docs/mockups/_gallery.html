@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Itch.io Pak — UI Mockup Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #080808;
+  font-family: 'Noto Sans JP', 'Noto Sans', sans-serif;
+  color: #ccc;
+  padding: 24px;
+}
+h1 { font-size: 15px; color: #555; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px; }
+p.intro { font-size: 13px; color: #444; margin-bottom: 30px; }
+h2 { font-size: 12px; color: #444; letter-spacing: 2px; text-transform: uppercase; margin: 32px 0 8px; }
+.gallery { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+
+/* ── Device frame ── */
+.device {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.label {
+  font-size: 11px; color: #444; letter-spacing: 1px; text-transform: uppercase;
+}
+.screen {
+  width: 640px; height: 480px;
+  background: #141414;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #1a1a1a;
+  flex-shrink: 0;
+}
+
+/* ── Theme tokens ── */
+:root {
+  --bg:          #141414;
+  --hdr:         #1E1E1E;
+  --acc:         #3C3C5C;
+  --acc-t:       #DCDCDC;
+  --lst-t:       #DCDCDC;
+  --hnt-t:       #8C8C8C;
+  --main-t:      #DCDCDC;
+  --fnt:         20px;    /* main font — Noto Sans JP at ~22pt for 480p */
+  --fnt-sm:      14px;    /* small font — ~18pt for 480p */
+  --row-h:       32px;    /* fontH(≈20) + 12 padding */
+}
+
+/* ── Structural primitives ── */
+.hdr {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 72px;
+  background: var(--hdr);
+}
+.hdr-sep {
+  position: absolute; top: 72px; left: 0; right: 0;
+  height: 2px; background: var(--acc);
+}
+.hdr-title {
+  position: absolute; top: 26px; left: 12px;
+  font-size: var(--fnt); color: var(--main-t);
+  white-space: nowrap;
+}
+.hdr-sub {
+  position: absolute; top: 48px; left: 12px;
+  font-size: var(--fnt-sm); color: var(--hnt-t);
+  white-space: nowrap;
+}
+.sort-badge {
+  position: absolute; right: 12px; top: 24px;
+  background: var(--acc); color: var(--acc-t);
+  border-radius: 100px; padding: 3px 10px;
+  font-size: var(--fnt);
+}
+.path-bar {
+  position: absolute; left: 0; right: 0;
+  height: 28px;
+  background: var(--hdr);
+  display: flex; align-items: center;
+  padding: 0 12px;
+}
+.path-text {
+  font-size: var(--fnt-sm); color: #7890A0;
+}
+
+/* footer */
+.ftr {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 40px; background: var(--hdr);
+  display: flex; align-items: center;
+  padding: 0 10px; gap: 6px;
+}
+.hc {  /* hint circle */
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #555; color: var(--acc-t);
+  font-size: 11px; font-weight: bold;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hp {  /* hint pill */
+  height: 18px; padding: 0 6px; border-radius: 100px;
+  background: #444; color: var(--acc-t);
+  font-size: 11px; white-space: nowrap;
+  display: inline-flex; align-items: center;
+  flex-shrink: 0;
+}
+.hl { font-size: 11px; color: var(--hnt-t); margin-right: 4px; } /* hint label */
+.ftr-right { margin-left: auto; font-size: 11px; color: var(--hnt-t); }
+
+/* pill / selection */
+.pill {
+  position: absolute; border-radius: 100px;
+  background: var(--acc);
+}
+
+/* ── List screen panels ── */
+.left-panel {
+  position: absolute; top: 76px; left: 0; bottom: 40px; width: 332px;
+  overflow: hidden;
+}
+.right-panel {
+  position: absolute; top: 76px; left: 356px; right: 10px; bottom: 40px;
+  overflow: hidden;
+}
+.row {
+  height: var(--row-h); position: relative;
+  display: flex; align-items: center;
+  padding: 0 10px;
+}
+.row-sel { position: absolute; left: 4px; right: 4px; top: 3px; bottom: 3px; background: var(--acc); border-radius: 100px; }
+.row-title { position: relative; z-index: 1; font-size: var(--fnt); color: var(--lst-t); white-space: nowrap; overflow: hidden; flex: 1; }
+.row.sel .row-title { color: var(--acc-t); }
+.row.dl .row-title  { font-weight: 700; }
+/* row badge pill */
+.rbadge { position: relative; z-index: 1; font-size: 11px; padding: 2px 5px; border-radius: 100px; color: #111; flex-shrink: 0; margin-left: 4px; }
+.b-dl   { background: #50C8DC; }
+.b-up   { background: #F0A028; }
+.b-rm   { background: #C83C3C; color: #eee; }
+.b-free { background: #50C850; }
+.b-paid { background: #DCB43C; }
+
+/* cover art box */
+.cover-box {
+  width: 100%; aspect-ratio: 4/3;
+  background: #222; position: relative; overflow: hidden;
+}
+.cover-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  color: #333; font-size: 13px;
+  background: linear-gradient(135deg, #1a1a2a 0%, #222238 50%, #1a1a2a 100%);
+}
+.cover-placeholder .art {
+  width: 60%; aspect-ratio: 4/3;
+  border: 1px solid #333;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: #2a2a4a;
+}
+.cover-img { width: 100%; height: 100%; object-fit: cover; }
+.cv-badge {
+  position: absolute; top: 5px; right: 5px;
+  font-size: 11px; padding: 3px 5px; border-radius: 3px;
+  box-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+}
+.cv-dl   { background: #50C8DC; color: #111; }
+.cv-up   { background: #F0A028; color: #111; }
+.cv-rm   { background: #C83C3C; color: #eee; }
+
+.author { font-size: var(--fnt); color: var(--main-t); margin-top: 10px; }
+.tags   { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag    { font-size: 11px; padding: 2px 7px; border-radius: 100px; background: var(--acc); color: var(--acc-t); }
+
+/* section separator in DL mode */
+.dl-sep { height: 1px; background: #333; position: relative; margin: 2px 0; }
+.dl-sep-label { font-size: 11px; color: #555; padding: 2px 10px; }
+
+/* ── Content modals / full-screen layouts ── */
+.modal-bg {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  width: 420px;
+  background: #19191f; border: 1px solid #3C3C5C;
+  border-radius: 6px; overflow: hidden;
+}
+.modal-title { background: var(--hdr); padding: 10px 16px; font-size: var(--fnt); color: var(--acc-t); border-bottom: 2px solid var(--acc); }
+.modal-body  { padding: 16px; }
+.modal-row   { height: 32px; display: flex; align-items: center; font-size: var(--fnt); color: var(--lst-t); position: relative; padding: 0 10px; }
+.modal-row.sel .row-sel { display: block; }
+.modal-value { margin-left: auto; font-size: var(--fnt-sm); color: var(--hnt-t); }
+.modal-value.acc { color: var(--acc); }
+
+/* progress bar */
+.prog-bg { height: 20px; background: #3C3C3C; border-radius: 3px; overflow: hidden; margin: 0 40px; }
+.prog-fill { height: 100%; background: #50C850; }
+
+/* content section (settings, pickers, etc.) */
+.content-top { position: absolute; top: 76px; left: 0; right: 0; bottom: 40px; }
+.content-item {
+  height: 36px; position: relative;
+  display: flex; align-items: center; padding: 0 20px;
+  font-size: var(--fnt); color: var(--lst-t);
+}
+.content-item.sel .content-sel { display: block; }
+.content-sel { display: none; position: absolute; left: 4px; right: 4px; top: 3px; bottom: 3px; background: var(--acc); border-radius: 100px; }
+.content-item .txt { position: relative; z-index: 1; }
+.content-item.sel .txt { color: var(--acc-t); }
+.content-item .val { position: relative; z-index: 1; margin-left: auto; font-size: var(--fnt-sm); color: var(--hnt-t); }
+.content-item.sel .val { color: var(--acc-t); }
+
+/* confirm row (location picker) */
+.confirm-row {
+  position: relative; height: 34px;
+  display: flex; align-items: center; padding: 0 12px;
+  color: #50C878; font-size: var(--fnt);
+  border-bottom: 1px solid #1c3c1c;
+}
+.confirm-row.sel { background: #1a3a22; }
+.confirm-row.unsel { background: #0f1e15; }
+
+/* QR placeholder */
+.qr-box {
+  background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #333;
+  image-rendering: pixelated;
+}
+.qr-inner {
+  width: 80%; height: 80%;
+  background:
+    repeating-linear-gradient(0deg, #000 0, #000 4px, transparent 4px, transparent 8px),
+    repeating-linear-gradient(90deg, #000 0, #000 4px, transparent 4px, transparent 8px);
+  background-size: 8px 8px;
+  opacity: 0.7;
+}
+
+/* action pill */
+.action-pill {
+  display: inline-flex; align-items: center;
+  border-radius: 100px; padding: 4px 14px;
+  font-size: var(--fnt); font-weight: 700;
+  margin: 4px 0;
+}
+
+/* format badge */
+.fmt-badge { font-size: 11px; padding: 2px 5px; border-radius: 100px; }
+.fmt-gb  { background: #78DC78; color: #111; }
+.fmt-gbc { background: #50B4FF; color: #111; }
+.fmt-zip { background: #DCB450; color: #111; }
+
+/* about logo area */
+.logo-area {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px; gap: 8px;
+}
+.logo-icon {
+  width: 64px; height: 64px;
+  background: #c0392b;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px;
+}
+</style>
+</head>
+<body>
+
+<h1>Itch.io Pak — UI Mockup Gallery</h1>
+<p class="intro">640×480 · Noto Sans JP · Default NextUI dark theme (#3C3C5C accent)</p>
+
+<h2>1024×768 — TrimUI Brick — NextUI Theme (#9B2257 accent)</h2>
+<div class="gallery">
+  <div class="device" style="transform-origin: top left; transform: scale(0.55);">
+    <div class="label"><a href="list.html" target="_blank" style="color:#666;">list.html ↗</a></div>
+    <iframe src="list.html" width="1024" height="768" scrolling="no" style="border:none; display:block;"></iframe>
+  </div>
+  <div class="device" style="transform-origin: top left; transform: scale(0.55);">
+    <div class="label"><a href="detail.html" target="_blank" style="color:#666;">detail.html ↗</a></div>
+    <iframe src="detail.html" width="1024" height="768" scrolling="no" style="border:none; display:block;"></iframe>
+  </div>
+  <div class="device" style="transform-origin: top left; transform: scale(0.55);">
+    <div class="label"><a href="settings.html" target="_blank" style="color:#666;">settings.html ↗</a></div>
+    <iframe src="settings.html" width="1024" height="768" scrolling="no" style="border:none; display:block;"></iframe>
+  </div>
+</div>
+<br>
+
+<h2>640×480 — Miyoo Flip — Main Screens</h2>
+<div class="gallery">
+
+<!-- ═══════════════════════════════ LIST SCREEN ═══════════════════════════════ -->
+<div class="device">
+  <div class="label">list — game list (RSS mode, 1 downloaded)</div>
+  <div class="screen" id="list">
+    <!-- Header -->
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Itch.io — GB Studio Games</div>
+    <span class="sort-badge">RSS</span>
+
+    <!-- Left panel — game rows -->
+    <div class="left-panel">
+      <!-- row 0: selected + downloaded (bold title) -->
+      <div class="row sel dl">
+        <div class="row-sel"></div>
+        <span class="row-title">Taiyaki Fabulous Museum</span>
+        <span class="rbadge b-dl">DL</span>
+      </div>
+      <div class="row">
+        <span class="row-title">The Dark Ages Quest</span>
+        <span class="rbadge b-free">Free</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Puzzle Adventures</span>
+        <span class="rbadge b-paid">$3.00</span>
+      </div>
+      <div class="row dl">
+        <span class="row-title">Crystal Caverns</span>
+        <span class="rbadge b-up">UP</span>
+      </div>
+      <div class="row dl">
+        <span class="row-title">Shadow Kingdom</span>
+        <span class="rbadge b-rm" style="color:#eee">!</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Ocean Dreamer</span>
+        <span class="rbadge b-free">Free</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Neon Dash</span>
+        <span class="rbadge b-paid">$2.00</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Forest Quest</span>
+        <span class="rbadge b-free">Free</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Void Walker</span>
+        <span class="rbadge b-paid">$1.50</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Dragon Realm</span>
+        <span class="rbadge b-free">Free</span>
+      </div>
+      <div class="row">
+        <span class="row-title">Star Breaker</span>
+        <span class="rbadge b-paid">$4.00</span>
+      </div>
+    </div>
+
+    <!-- Right panel — cover art + metadata -->
+    <div class="right-panel">
+      <div class="cover-box">
+        <div class="cover-placeholder">
+          <div class="art">cover art</div>
+        </div>
+        <div class="cv-badge cv-dl">DL</div>
+      </div>
+      <div class="author">by Nami Iro Workshop</div>
+      <div class="tags">
+        <span class="tag">Puzzle</span>
+        <span class="tag">Adventure</span>
+        <span class="tag">Single player</span>
+        <span class="tag">GB Studio</span>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="ftr">
+      <div class="hc">A</div><span class="hl">select</span>
+      <div class="hp">L/R</div><span class="hl">page</span>
+      <div class="hp">SELECT</div><span class="hl">sort</span>
+      <div class="hc">B</div><span class="hl">exit</span>
+      <div class="hp">START</div><span class="hl">settings</span>
+      <span class="ftr-right">Page 1/8</span>
+    </div>
+  </div>
+</div>
+
+<!-- LIST — DL sort mode with groups -->
+<div class="device">
+  <div class="label">list — DL sort mode (groups: updates → removed → ok)</div>
+  <div class="screen">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Itch.io — GB Studio Games</div>
+    <span class="sort-badge">DL</span>
+
+    <div class="left-panel">
+      <div class="row sel dl">
+        <div class="row-sel"></div>
+        <span class="row-title">Crystal Caverns</span>
+        <span class="rbadge b-up">UP</span>
+      </div>
+      <div class="row dl">
+        <span class="row-title">Shadow Kingdom</span>
+        <span class="rbadge b-rm" style="color:#eee">!</span>
+      </div>
+      <!-- separator -->
+      <div style="height:1px; background:#333; margin: 2px 0;"></div>
+      <div style="padding: 2px 10px; font-size:11px; color:#555;">— downloaded —</div>
+      <div class="row dl">
+        <span class="row-title">Taiyaki Fabulous Museum</span>
+        <span class="rbadge b-dl">DL</span>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="cover-box">
+        <div class="cover-placeholder"><div class="art">cover art</div></div>
+        <div class="cv-badge cv-up">UPDATE</div>
+      </div>
+      <div class="author">by Crystal Dev</div>
+      <div class="tags">
+        <span class="tag">Platformer</span>
+        <span class="tag">Adventure</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">A</div><span class="hl">select</span>
+      <div class="hp">L/R</div><span class="hl">page</span>
+      <div class="hp">SELECT</div><span class="hl">sort</span>
+      <div class="hc">B</div><span class="hl">exit</span>
+      <div class="hp">START</div><span class="hl">settings</span>
+      <span class="ftr-right">Page 1/1</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- .gallery -->
+
+<h2>Detail Screen</h2>
+<div class="gallery">
+
+<!-- DETAIL — free game, not downloaded -->
+<div class="device">
+  <div class="label">detail — free game, not yet downloaded</div>
+  <div class="screen" id="detail">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">The Dark Ages Quest</div>
+    <div class="hdr-sub">by Medieval Gamedev Studio</div>
+
+    <!-- Detail content -->
+    <div style="position:absolute; top:78px; left:0; right:0; bottom:40px; overflow:hidden;">
+      <!-- Top row: screenshot (left 75%) + QR code (right 25%) -->
+      <div style="display:flex; gap:10px; padding:0 10px; height:168px;">
+        <!-- screenshot box -->
+        <div style="flex:3; background:#1a1a2a; border:1px solid #2a2a3a; position:relative; display:flex; align-items:center; justify-content:center;">
+          <span style="font-size:13px; color:#333;">screenshot 1/3</span>
+          <span style="position:absolute; bottom:4px; right:6px; font-size:11px; color:#555;">Image 1/3  (L/R)</span>
+        </div>
+        <!-- QR code box -->
+        <div style="flex:1; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px;">
+          <div style="width:90%; height:70%; background: repeating-linear-gradient(0deg,#000 0,#000 3px,transparent 3px,transparent 6px), repeating-linear-gradient(90deg,#000 0,#000 3px,transparent 3px,transparent 6px); background-size:6px 6px; opacity:0.7;"></div>
+          <span style="font-size:10px; color:#555; text-align:center;">Scan to open<br>in browser</span>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div style="padding:8px 10px 0;">
+        <p style="font-size:14px; color:#aaa; line-height:1.5;">A pixel-art RPG set in medieval times. Explore dungeons, battle monsters, and uncover the secrets of the forgotten kingdom.</p>
+      </div>
+
+      <!-- Download action pill -->
+      <div style="padding:10px 10px 0;">
+        <span class="action-pill" style="background:#50C850; color:#111;">A: Download  Free</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">A</div><span class="hl">download</span>
+      <div class="hp">L/R</div><span class="hl">screenshots</span>
+      <div class="hc">B</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL — paid game not owned -->
+<div class="device">
+  <div class="label">detail — paid game, not owned</div>
+  <div class="screen">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Puzzle Adventures</div>
+    <div class="hdr-sub">by Puzzle Dev</div>
+
+    <div style="position:absolute; top:78px; left:0; right:0; bottom:40px; overflow:hidden;">
+      <div style="display:flex; gap:10px; padding:0 10px; height:168px;">
+        <div style="flex:3; background:#1a1a2a; border:1px solid #2a2a3a; display:flex; align-items:center; justify-content:center;">
+          <span style="font-size:13px; color:#333;">screenshot 1/2</span>
+        </div>
+        <div style="flex:1; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px;">
+          <div style="width:90%; height:70%; background: repeating-linear-gradient(0deg,#000 0,#000 3px,transparent 3px,transparent 6px), repeating-linear-gradient(90deg,#000 0,#000 3px,transparent 3px,transparent 6px); background-size:6px 6px; opacity:0.7;"></div>
+          <span style="font-size:10px; color:#555; text-align:center;">Scan to open<br>in browser</span>
+        </div>
+      </div>
+      <div style="padding:8px 10px 0;">
+        <p style="font-size:14px; color:#aaa; line-height:1.5;">A challenging puzzle game with over 60 hand-crafted levels. Connect crystals, avoid traps, and reach the exit.</p>
+      </div>
+      <div style="padding:10px 10px 0;">
+        <span class="action-pill" style="background:#DCB43C; color:#111;">$3.00  Purchase required</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hp">L/R</div><span class="hl">screenshots</span>
+      <div class="hc">B</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL — downloaded game -->
+<div class="device">
+  <div class="label">detail — already downloaded</div>
+  <div class="screen">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Taiyaki Fabulous Museum</div>
+    <div class="hdr-sub">by Nami Iro Workshop</div>
+
+    <div style="position:absolute; top:78px; left:0; right:0; bottom:40px; overflow:hidden;">
+      <div style="display:flex; gap:10px; padding:0 10px; height:168px;">
+        <div style="flex:3; background:#1a1a2a; border:1px solid #2a2a3a; display:flex; align-items:center; justify-content:center;">
+          <span style="font-size:13px; color:#333;">screenshot 1/4</span>
+        </div>
+        <div style="flex:1; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px;">
+          <div style="width:90%; height:70%; background: repeating-linear-gradient(0deg,#000 0,#000 3px,transparent 3px,transparent 6px), repeating-linear-gradient(90deg,#000 0,#000 3px,transparent 3px,transparent 6px); background-size:6px 6px; opacity:0.7;"></div>
+          <span style="font-size:10px; color:#555; text-align:center;">Scan to open<br>in browser</span>
+        </div>
+      </div>
+      <div style="padding:8px 10px 0;">
+        <p style="font-size:14px; color:#aaa; line-height:1.5;">Visit a quirky museum of taiyaki artifacts. A heartwarming exploration game with charming pixel art and music.</p>
+      </div>
+      <div style="padding:6px 10px 0; font-size:14px; color:#50C8DC;">DL  On device</div>
+      <div style="padding:4px 10px 0;">
+        <span class="action-pill" style="background:#50C850; color:#111;">A: Download again  Free</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">A</div><span class="hl">download again</span>
+      <div class="hp">L/R</div><span class="hl">screenshots</span>
+      <div class="hc">B</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- .gallery -->
+
+<h2>Settings</h2>
+<div class="gallery">
+
+<div class="device">
+  <div class="label">settings screen</div>
+  <div class="screen" id="settings">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Settings</div>
+
+    <div class="content-top">
+      <div class="content-item sel">
+        <div class="content-sel"></div>
+        <span class="txt">API Key</span>
+        <span class="val">●●●●●●●●…abc1</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">ROM Selection</span>
+        <span class="val">auto</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">ROM Location</span>
+        <span class="val">auto</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Log Level</span>
+        <span class="val">info</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Clear Image Cache</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Refresh Game List</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Check for Updates</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Content Moderation</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">About</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">A</div><span class="hl">confirm</span>
+      <div class="hc">B</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<h2>Download Flow</h2>
+<div class="gallery">
+
+<!-- DOWNLOAD progress -->
+<div class="device">
+  <div class="label">download — in progress</div>
+  <div class="screen" id="download">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">The Dark Ages Quest</div>
+    <div class="hdr-sub">by Medieval Gamedev Studio</div>
+
+    <div style="position:absolute; top:76px; left:0; right:0; bottom:40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+      <span style="font-size:14px; color:#8C8C8C;">Downloading the-dark-ages.gbc …</span>
+      <!-- progress bar -->
+      <div style="width:560px; height:20px; background:#3C3C3C; border-radius:3px; overflow:hidden;">
+        <div style="width:62%; height:100%; background:#50C850;"></div>
+      </div>
+      <span style="font-size:var(--fnt); color:var(--main-t);">62%  (1.8 MB / 2.9 MB)</span>
+    </div>
+
+    <div class="ftr"></div>
+  </div>
+</div>
+
+<!-- ROM PICKER -->
+<div class="device">
+  <div class="label">rom-picker — multiple ROMs available</div>
+  <div class="screen" id="rom-picker">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">The Dark Ages Quest</div>
+    <div class="hdr-sub">by Medieval Gamedev Studio</div>
+
+    <div class="content-top" style="top:78px;">
+      <div style="padding: 4px 20px; font-size:var(--fnt-sm); color:#aaa;">Select file to download:</div>
+      <div class="content-item sel">
+        <div class="content-sel"></div>
+        <span class="txt">dark-ages-quest.gbc</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">dark-ages-quest-extra.gb</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">dark-ages-quest-ost.zip</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">select</span>
+      <div class="hc">A</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- FORMAT PICKER -->
+<div class="device">
+  <div class="label">format-picker — unknown extension, choose format</div>
+  <div class="screen" id="format-picker">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Puzzle Adventures</div>
+    <div class="hdr-sub">by Puzzle Dev</div>
+
+    <div class="content-top" style="top:78px;">
+      <div style="padding:4px 12px; font-size:var(--fnt-sm); color:#C8B464;">No .gb/.gbc detected — choose file and format:</div>
+      <!-- row with format badge on right -->
+      <div class="content-item sel" style="justify-content:space-between;">
+        <div class="content-sel"></div>
+        <span class="txt" style="flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">puzzle-adventures</span>
+        <span class="fmt-badge fmt-gbc" style="position:relative; z-index:1; margin-left:8px;">GBC</span>
+      </div>
+      <div class="content-item" style="justify-content:space-between;">
+        <span class="txt" style="flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">puzzle-adventures-extra</span>
+        <span class="fmt-badge fmt-gb" style="margin-left:8px;">GB</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hp">↕</div><span class="hl">select</span>
+      <div class="hp">L/R</div><span class="hl">format</span>
+      <div class="hc">B</div><span class="hl">download</span>
+      <div class="hc">A</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- LOCATION PICKER -->
+<div class="device">
+  <div class="label">location-picker — directory browser</div>
+  <div class="screen" id="location-picker">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">The Dark Ages Quest</div>
+    <div class="hdr-sub">by Medieval Gamedev Studio</div>
+
+    <!-- path bar -->
+    <div style="position:absolute; top:74px; left:0; right:0; height:28px; background:var(--hdr); display:flex; align-items:center; padding:0 12px; border-bottom:1px solid #252525;">
+      <span style="font-size:var(--fnt-sm); color:#7890A0;">/mnt/SDCARD/Roms/Game Boy Color (GBC)/</span>
+    </div>
+
+    <!-- confirm row (pinned, green tint) -->
+    <div style="position:absolute; top:102px; left:0; right:0; height:34px; background:#1a3a22; display:flex; align-items:center; padding:0 12px; border-bottom:1px solid #1c3c1c;">
+      <span style="font-size:var(--fnt); color:#50C878;">[ ✓  Save here ]</span>
+    </div>
+
+    <!-- directory list -->
+    <div style="position:absolute; top:138px; left:0; right:0; bottom:40px; overflow:hidden;">
+      <!-- up row -->
+      <div style="height:32px; display:flex; align-items:center; padding:0 20px;">
+        <div style="position:absolute; left:4px; right:4px; top:3px; bottom:3px; background:var(--acc); border-radius:100px;"></div>
+        <span style="position:relative; z-index:1; font-size:var(--fnt-sm); color:var(--acc-t);">↑  .. (go up)</span>
+      </div>
+      <div style="height:32px; display:flex; align-items:center; padding:0 20px;">
+        <span style="font-size:var(--fnt); color:var(--lst-t);">▸ Zelda-likes</span>
+      </div>
+      <div style="height:32px; display:flex; align-items:center; padding:0 20px;">
+        <span style="font-size:var(--fnt); color:var(--lst-t);">▸ RPGs</span>
+      </div>
+      <div style="height:32px; display:flex; align-items:center; padding:0 20px;">
+        <span style="font-size:var(--fnt); color:var(--lst-t);">▸ Unsorted</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">confirm/enter</span>
+      <div class="hc">A</div><span class="hl">go up</span>
+      <div class="hp">START</div><span class="hl">cancel</span>
+    </div>
+  </div>
+</div>
+
+<!-- PURCHASE PICKER -->
+<div class="device">
+  <div class="label">purchase-picker — multiple purchases found</div>
+  <div class="screen" id="purchase-picker">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">The Dark Ages Quest</div>
+    <div class="hdr-sub">by Medieval Gamedev Studio</div>
+
+    <div class="content-top" style="top:78px;">
+      <div style="padding:4px 20px 10px; font-size:var(--fnt-sm); color:#aaa;">Multiple purchases found — choose one:</div>
+      <div class="content-item sel" style="height:46px; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px;">
+        <div class="content-sel"></div>
+        <span class="txt">Individual purchase</span>
+        <span style="position:relative; z-index:1; font-size:var(--fnt-sm); color:var(--acc-t);">Downloaded 2×</span>
+      </div>
+      <div class="content-item" style="height:46px; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px;">
+        <span class="txt">Bundle: GB Studio Essentials</span>
+        <span style="font-size:var(--fnt-sm); color:var(--hnt-t);">Downloaded 0×</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">select</span>
+      <div class="hc">A</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- .gallery -->
+
+<h2>Settings Sub-screens</h2>
+<div class="gallery">
+
+<!-- TAG FILTER -->
+<div class="device">
+  <div class="label">tag-filter — filter by tags</div>
+  <div class="screen" id="tag-filter">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Tag Filter</div>
+
+    <div class="content-top">
+      <div style="padding:4px 12px 8px; font-size:var(--fnt-sm); color:#aaa;">Show only games with these tags:</div>
+      <div class="content-item sel">
+        <div class="content-sel"></div>
+        <span class="txt">Platformer</span>
+        <span class="val acc">✓  active</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">RPG</span>
+        <span class="val">off</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Puzzle</span>
+        <span class="val">off</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Adventure</span>
+        <span class="val">off</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Action</span>
+        <span class="val">off</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Shooter</span>
+        <span class="val">off</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">(clear all)</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">toggle</span>
+      <div class="hc">A</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- CONTENT MODERATION -->
+<div class="device">
+  <div class="label">content-moderation — NSFW filter settings</div>
+  <div class="screen" id="content-moderation">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Content Moderation</div>
+
+    <div class="content-top">
+      <div style="padding:4px 12px 8px; font-size:var(--fnt-sm); color:#aaa;">Control which content is shown in the game list.</div>
+      <div class="content-item sel">
+        <div class="content-sel"></div>
+        <span class="txt">Show adult-only content</span>
+        <span class="val">off</span>
+      </div>
+      <div class="content-item">
+        <span class="txt">Show mature content</span>
+        <span class="val">on</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">toggle</span>
+      <div class="hc">A</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE DOWNLOADS -->
+<div class="device">
+  <div class="label">manage-downloads — inventory management</div>
+  <div class="screen" id="manage-downloads">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Manage Downloads</div>
+
+    <div class="content-top">
+      <div style="padding:4px 12px 6px; font-size:var(--fnt-sm); color:#aaa;">3 games tracked in inventory</div>
+      <div class="content-item sel" style="height:44px; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px;">
+        <div class="content-sel"></div>
+        <span class="txt">Taiyaki Fabulous Museum</span>
+        <span style="position:relative; z-index:1; font-size:var(--fnt-sm); color:var(--acc-t);">/mnt/SDCARD/Roms/GBC/taiyaki.gbc</span>
+      </div>
+      <div class="content-item" style="height:44px; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px;">
+        <span class="txt">Crystal Caverns</span>
+        <span style="font-size:var(--fnt-sm); color:#F0A028;">Update available</span>
+      </div>
+      <div class="content-item" style="height:44px; flex-direction:column; align-items:flex-start; justify-content:center; gap:2px;">
+        <span class="txt">Shadow Kingdom</span>
+        <span style="font-size:var(--fnt-sm); color:#C83C3C;">Removed from store</span>
+      </div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">remove entry</span>
+      <div class="hc">A</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- ABOUT -->
+<div class="device">
+  <div class="label">about screen</div>
+  <div class="screen" id="about">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">About</div>
+
+    <div style="position:absolute; top:76px; left:0; right:0; bottom:40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:20px;">
+      <div style="width:60px; height:60px; background:#c0392b; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:28px;">🎮</div>
+      <div style="font-size:20px; color:var(--main-t);">Itch.io Pak  <span style="font-size:14px; color:var(--hnt-t);">v0.9.0</span></div>
+      <div style="font-size:14px; color:#aaa; text-align:center;">Browse and download GB/GBC games<br>from Itch.io's GB Studio collection.</div>
+      <div style="font-size:12px; color:#555; text-align:center; margin-top:8px;">Unofficial community Pak — not affiliated with Itch.io.</div>
+      <div style="font-size:12px; color:var(--acc); margin-top:4px;">github.com/carroarmato0/NextUI-Itchio-Pak</div>
+    </div>
+
+    <div class="ftr">
+      <div class="hc">B</div><span class="hl">back</span>
+    </div>
+  </div>
+</div>
+
+<!-- CACHE REFRESH -->
+<div class="device">
+  <div class="label">cache-refresh — rebuilding game list</div>
+  <div class="screen" id="cache-refresh">
+    <div class="hdr"></div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-title">Refreshing Game List</div>
+
+    <div style="position:absolute; top:76px; left:0; right:0; bottom:40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+      <span style="font-size:var(--fnt-sm); color:var(--hnt-t);">Fetching all GB Studio games from Itch.io…</span>
+      <div style="width:560px; height:20px; background:#3C3C3C; border-radius:3px; overflow:hidden;">
+        <div style="width:38%; height:100%; background:var(--acc);"></div>
+      </div>
+      <span style="font-size:var(--fnt); color:var(--main-t);">304 games fetched…</span>
+    </div>
+
+    <div class="ftr"></div>
+  </div>
+</div>
+
+</div><!-- .gallery -->
+</body>
+</html>

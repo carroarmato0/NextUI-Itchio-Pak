@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Itch.io Pak — Settings Screen Mockup (1024×768)</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 24px; gap: 16px; font-family: 'Noto Sans JP', 'Noto Sans', sans-serif; }
+h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercase; }
+
+/* ── Theme tokens ── */
+:root {
+  --bg:     #000000;
+  --hdr:    #1E2329;
+  --acc:    #9B2257;
+  --acc-t:  #DCDCDC;
+  --lst-t:  #FFFFFF;
+  --hnt-t:  #FFFFFF;
+  --main-t: #FFFFFF;
+  --mfnt:   34px;
+  --sfnt:   22px;
+  --hdr-h:  72px;
+  --ftr-h:  40px;
+  --row-h:  48px;
+}
+
+.screen {
+  width: 1024px; height: 768px;
+  background: var(--bg);
+  position: relative; overflow: hidden;
+  border: 1px solid #222;
+  font-family: 'Noto Sans JP', 'Noto Sans', sans-serif;
+  flex-shrink: 0;
+}
+
+/* ── Header ── */
+.hdr { position: absolute; top: 0; left: 0; right: 0; height: var(--hdr-h); background: var(--hdr); }
+.hdr-sep { position: absolute; top: var(--hdr-h); left: 0; right: 0; height: 2px; background: var(--acc); }
+.hdr-title { position: absolute; top: 18px; left: 16px; font-size: var(--mfnt); color: var(--main-t); }
+
+/* ── Content items ── */
+.content {
+  position: absolute;
+  top: calc(var(--hdr-h) + 4px); left: 0;
+  right: 0; bottom: var(--ftr-h);
+}
+.item {
+  height: var(--row-h);
+  position: relative; display: flex; align-items: center;
+  padding: 0 20px;
+}
+.item-pill {
+  position: absolute; left: 4px; right: 4px; top: 4px; bottom: 4px;
+  background: var(--acc); border-radius: 100px;
+}
+.item-txt { position: relative; z-index: 1; font-size: var(--mfnt); color: var(--lst-t); flex: 1; }
+.item.sel .item-txt { color: var(--acc-t); }
+.item-val { position: relative; z-index: 1; font-size: var(--sfnt); color: var(--hnt-t); }
+.item.sel .item-val { color: var(--acc-t); }
+
+/* status badges */
+.badge {
+  position: relative; z-index: 1;
+  font-size: 13px; padding: 3px 9px; border-radius: 100px;
+  flex-shrink: 0; margin-left: 10px;
+}
+.b-ok  { background: #50C850; color: #111; }
+.b-err { background: #C83C3C; color: #eee; }
+.b-neu { background: #505060; color: #ddd; }
+
+/* spinner indicator */
+.checking { position: relative; z-index: 1; font-size: var(--sfnt); color: #F0A028; margin-left: auto; }
+
+/* ── Footer ── */
+.ftr {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: var(--ftr-h); background: var(--hdr);
+  border-top: 1px solid #252535;
+  display: flex; align-items: center;
+  padding: 0 12px; gap: 5px;
+}
+.hc {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #3a3a4a; color: var(--acc-t);
+  font-size: 12px; font-weight: bold;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hp {
+  height: 20px; padding: 0 7px; border-radius: 100px;
+  background: #2a2a3a; color: var(--acc-t);
+  font-size: 12px; white-space: nowrap;
+  display: inline-flex; align-items: center;
+  flex-shrink: 0;
+}
+.hl { font-size: 12px; color: var(--hnt-t); margin-right: 4px; }
+</style>
+</head>
+<body>
+<h1>Itch.io Pak — Settings Screen — 1024×768 — NextUI Theme</h1>
+
+<div class="screen">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-title">Settings</div>
+
+  <div class="content">
+    <div class="item sel">
+      <div class="item-pill"></div>
+      <span class="item-txt">API Key</span>
+      <span class="badge b-ok">WORKING</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">ROM Selection</span>
+      <span class="item-val">auto</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">ROM Location</span>
+      <span class="item-val">auto</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">Log Level</span>
+      <span class="item-val">Info</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">Clear Image Cache</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">Refresh Game List</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">Update Inventory</span>
+      <span class="checking">checking…</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">Content Moderation ›</span>
+    </div>
+    <div class="item">
+      <span class="item-txt">About</span>
+    </div>
+  </div>
+
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">confirm</span>
+    <div class="hc">B</div><span class="hl">back</span>
+    <div class="hp">START</div><span class="hl">settings</span>
+    <div class="hp">↕</div><span class="hl">scroll</span>
+  </div>
+</div>
+</body>
+</html>

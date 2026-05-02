@@ -80,7 +80,7 @@ func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 		if err != nil {
 			logger.Error("detail: FetchGameDetail: %v", err)
 		} else {
-			logger.Debug("detail: %d screenshots", len(d.ScreenshotURLs))
+			logger.Info("detail: %d screenshots", len(d.ScreenshotURLs))
 			// Prepend cover art as the first image so it's shown by default
 			if game.CoverURL != "" {
 				d.ScreenshotURLs = append([]string{game.CoverURL}, d.ScreenshotURLs...)

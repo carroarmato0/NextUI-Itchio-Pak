@@ -7,6 +7,7 @@ import (
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
@@ -78,6 +79,7 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 			close(s.stopPoll)
 		}
 		if len(s.list.games) > 0 {
+			logger.Info("dev:detail-ready %q", s.list.games[0].Title)
 			return NewDetailScreen(
 				s.client, s.cfg, s.cfgPath, s.cache,
 				s.list.games[0], s.inv, s.inventoryPath, s.list,
@@ -85,7 +87,13 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		return s.list
 	}
-	return s.list.HandleEvent(e)
+	// Let the list handle the event (for scrolling, etc.), but keep this
+	// wrapper as current unless the list navigated away to a different screen.
+	next := s.list.HandleEvent(e)
+	if next == Screen(s.list) {
+		return s
+	}
+	return next
 }
 
 // NewDevStartScreen returns the initial Screen for the given DEV_START_SCREEN

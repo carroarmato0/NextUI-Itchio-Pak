@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Itch.io Pak — Detail Screen Mockup (1024×768)</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 24px; gap: 16px; font-family: 'Noto Sans JP', 'Noto Sans', sans-serif; }
+h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercase; }
+
+/* ── Theme tokens ── */
+:root {
+  --bg:     #000000;
+  --hdr:    #1E2329;
+  --acc:    #9B2257;
+  --acc-t:  #DCDCDC;
+  --lst-t:  #FFFFFF;
+  --hnt-t:  #FFFFFF;
+  --main-t: #FFFFFF;
+  --mfnt:   34px;
+  --sfnt:   22px;
+
+  /* detail layout (screen_detail.go):
+     headerH = mainFH + smallFH + 16 ≈ 38+24+16 = 78px
+     contentTop = headerH + 6 = 84px
+     footerH = 40px
+     margin = 20px
+     qrColW = W/4 = 256px
+     imgAreaW = W - qrColW - margin - 10 = 1024-256-20-10 = 738px
+     imgBoxW = imgAreaW - margin = 718px
+     contentH = H - contentTop - footerH = 768-84-40 = 644px
+     imgBoxH = contentH*2/3 = 429px
+  */
+  --hdr-h:   78px;
+  --ftr-h:   40px;
+  --margin:  20px;
+  --img-w:   718px;
+  --img-h:   429px;
+  --qr-x:    748px; /* margin + imgBoxW + 10 */
+  --qr-w:    256px;
+  --ct:      84px;  /* contentTop */
+}
+
+.screen {
+  width: 1024px; height: 768px;
+  background: var(--bg);
+  position: relative; overflow: hidden;
+  border: 1px solid #222;
+  font-family: 'Noto Sans JP', 'Noto Sans', sans-serif;
+  flex-shrink: 0;
+}
+
+/* ── Header ── */
+.hdr {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: var(--hdr-h); background: var(--hdr);
+}
+.hdr-sep {
+  position: absolute; top: var(--hdr-h); left: 0; right: 0;
+  height: 2px; background: var(--acc);
+}
+.hdr-title {
+  position: absolute; top: 8px; left: 12px;
+  font-size: var(--mfnt); color: var(--main-t);
+}
+.hdr-sub {
+  position: absolute; top: 50px; left: 12px;
+  font-size: var(--sfnt); color: var(--hnt-t);
+}
+
+/* ── Image box ── */
+.img-box {
+  position: absolute;
+  top: var(--ct); left: var(--margin);
+  width: var(--img-w); height: var(--img-h);
+  background: #1a1a2a; border: 1px solid #252535;
+  display: flex; align-items: center; justify-content: center;
+  color: #2a2a4a; font-size: 14px;
+}
+
+/* ── QR code box ── */
+.qr-box {
+  position: absolute;
+  top: var(--ct); left: var(--qr-x);
+  width: var(--qr-w); height: var(--img-h);
+  background: #fff;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  padding: 12px;
+}
+.qr-inner {
+  width: 80%; height: 75%;
+  background:
+    repeating-linear-gradient(0deg, #000 0, #000 5px, transparent 5px, transparent 10px),
+    repeating-linear-gradient(90deg, #000 0, #000 5px, transparent 5px, transparent 10px);
+  background-size: 10px 10px; opacity: 0.8;
+}
+.qr-label { font-size: 13px; color: #555; text-align: center; line-height: 1.4; }
+
+/* ── Below-image content ── */
+.content-below {
+  position: absolute;
+  top: calc(var(--ct) + var(--img-h) + 6px);
+  left: var(--margin); right: var(--margin);
+  bottom: var(--ftr-h);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.img-counter { font-size: var(--sfnt); color: #888; }
+.action-pill {
+  display: inline-flex; align-items: center;
+  border-radius: 100px; padding: 6px 18px;
+  font-size: var(--mfnt); font-weight: 700;
+  gap: 10px;
+}
+.action-green { background: #50C850; color: #111; }
+.action-amber { background: #DCB43C; color: #111; }
+.dl-status { font-size: var(--mfnt); color: #50C8DC; }
+.file-path  { font-size: var(--sfnt); color: #666; }
+
+/* ── Footer ── */
+.ftr {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: var(--ftr-h); background: var(--hdr);
+  border-top: 1px solid #252535;
+  display: flex; align-items: center;
+  padding: 0 12px; gap: 5px;
+}
+.hc {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #3a3a4a; color: var(--acc-t);
+  font-size: 12px; font-weight: bold;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hp {
+  height: 20px; padding: 0 7px; border-radius: 100px;
+  background: #2a2a3a; color: var(--acc-t);
+  font-size: 12px; white-space: nowrap;
+  display: inline-flex; align-items: center;
+  flex-shrink: 0;
+}
+.hl { font-size: 12px; color: var(--hnt-t); margin-right: 4px; }
+</style>
+</head>
+<body>
+<h1>Itch.io Pak — Detail Screen — 1024×768 — NextUI Theme</h1>
+
+<!-- Variant 1: downloaded paid game -->
+<div class="screen">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-title">Glory Hunters</div>
+  <div class="hdr-sub">by 2think</div>
+
+  <!-- Screenshot / cover art box -->
+  <div class="img-box">cover art / screenshot 1</div>
+
+  <!-- QR code -->
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+
+  <!-- Below-image area -->
+  <div class="content-below">
+    <div class="img-counter">Image 1/5  (L/R)</div>
+    <span class="action-pill action-amber">A: Download again  $5.00</span>
+    <div class="dl-status">[DL] On device</div>
+    <div class="file-path">Glory Hunters 2.0.zip → /mnt/SDCARD/Roms/Game Boy Color (GBC)/</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="ftr">
+    <div class="hc">B</div><span class="hl">back</span>
+    <div class="hp">L/R</div><span class="hl">screenshots</span>
+    <div class="hp">START</div><span class="hl">settings</span>
+    <div class="hp">↕</div><span class="hl">scroll</span>
+  </div>
+</div>
+
+<!-- Variant 2: free game, not yet downloaded -->
+<div class="screen" style="margin-top: 20px;">
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-title">Pixel Forest Quest</div>
+  <div class="hdr-sub">by PixelDev</div>
+
+  <div class="img-box">screenshot 1/3</div>
+  <div class="qr-box">
+    <div class="qr-inner"></div>
+    <div class="qr-label">Scan to open<br>in browser</div>
+  </div>
+
+  <div class="content-below">
+    <div class="img-counter">Image 1/3  (L/R)</div>
+    <span class="action-pill action-green">A: Download  Free</span>
+  </div>
+
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">download</span>
+    <div class="hc">B</div><span class="hl">back</span>
+    <div class="hp">L/R</div><span class="hl">screenshots</span>
+    <div class="hp">START</div><span class="hl">settings</span>
+  </div>
+</div>
+</body>
+</html>

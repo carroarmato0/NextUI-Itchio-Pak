@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Itch.io Pak — List Screen Mockup (1024×768)</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 24px; gap: 16px; font-family: 'Noto Sans JP', 'Noto Sans', sans-serif; }
+h1 { font-size: 13px; color: #444; letter-spacing: 2px; text-transform: uppercase; }
+
+/* ── Theme tokens (NextUI device defaults) ── */
+:root {
+  --bg:     #000000;
+  --hdr:    #1E2329;
+  --acc:    #9B2257;
+  --acc-t:  #DCDCDC;
+  --lst-t:  #FFFFFF;
+  --hnt-t:  #FFFFFF;
+  --main-t: #FFFFFF;
+  --mfnt:   34px;
+  --sfnt:   22px;
+  --row-h:  48px;
+  --hdr-h:  72px;
+  --ftr-h:  40px;
+  --left-w: 532px;
+  --right-x: 556px;
+}
+
+.screen {
+  width: 1024px; height: 768px;
+  background: var(--bg);
+  position: relative; overflow: hidden;
+  border: 1px solid #222;
+  font-family: 'Noto Sans JP', 'Noto Sans', sans-serif;
+  flex-shrink: 0;
+}
+
+/* ── Header ── */
+.hdr {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: var(--hdr-h);
+  background: var(--hdr);
+}
+.hdr-sep {
+  position: absolute; top: var(--hdr-h); left: 0; right: 0;
+  height: 2px; background: var(--acc);
+}
+.hdr-title {
+  position: absolute; top: 18px; left: 16px;
+  font-size: var(--mfnt); color: var(--main-t);
+  white-space: nowrap;
+}
+.filter-badge {
+  position: absolute; top: 16px; right: 60px;
+  background: var(--acc); color: var(--acc-t);
+  border-radius: 100px; padding: 4px 14px;
+  font-size: var(--sfnt);
+}
+.sort-badge {
+  position: absolute; top: 16px; right: 10px;
+  background: var(--acc); color: var(--acc-t);
+  border-radius: 100px; padding: 4px 12px;
+  font-size: var(--sfnt);
+}
+
+/* ── Content panels ── */
+.left-panel {
+  position: absolute;
+  top: calc(var(--hdr-h) + 4px); left: 0;
+  bottom: var(--ftr-h); width: var(--left-w);
+  overflow: hidden;
+}
+.right-panel {
+  position: absolute;
+  top: calc(var(--hdr-h) + 4px); left: var(--right-x);
+  right: 10px; bottom: var(--ftr-h);
+  overflow: hidden;
+}
+
+/* ── Game rows ── */
+.row {
+  height: var(--row-h);
+  position: relative; display: flex; align-items: center;
+  padding: 0 12px;
+}
+.row-pill {
+  position: absolute; left: 4px; right: 4px; top: 4px; bottom: 4px;
+  background: var(--acc); border-radius: 100px;
+}
+.row-title {
+  position: relative; z-index: 1;
+  font-size: var(--mfnt); color: var(--lst-t);
+  white-space: nowrap; overflow: hidden; flex: 1;
+  text-overflow: ellipsis;
+}
+.row.sel .row-title { color: var(--acc-t); }
+.rbadge {
+  position: relative; z-index: 1;
+  font-size: 13px; padding: 3px 7px; border-radius: 100px;
+  flex-shrink: 0; margin-left: 6px;
+}
+.b-dl   { background: #50C8DC; color: #111; }
+.b-up   { background: #F0A028; color: #111; }
+.b-rm   { background: #C83C3C; color: #eee; }
+.b-free { background: #50C850; color: #111; }
+.b-paid { background: #DCB43C; color: #111; }
+
+/* ── Right panel: cover art ── */
+.cover-box {
+  width: 100%; aspect-ratio: 4/3;
+  background: #1a1a2a; position: relative; overflow: hidden;
+  border: 1px solid #252535;
+}
+.cover-placeholder {
+  width: 100%; height: 100%;
+  background: linear-gradient(135deg, #0d0d1a 0%, #18182e 50%, #0d0d1a 100%);
+  display: flex; align-items: center; justify-content: center;
+  color: #2a2a4a; font-size: 14px;
+}
+.cover-img { width: 100%; height: 100%; object-fit: cover; }
+.cv-badge {
+  position: absolute; top: 6px; right: 6px;
+  font-size: 13px; padding: 3px 7px; border-radius: 4px;
+}
+.cv-dl { background: #50C8DC; color: #111; }
+.cv-up { background: #F0A028; color: #111; }
+
+.author {
+  margin-top: 10px;
+  font-size: var(--mfnt); color: var(--main-t);
+}
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.tag {
+  font-size: 13px; padding: 3px 9px; border-radius: 100px;
+  background: #2a1a30; color: var(--acc-t); border: 1px solid #4a2050;
+}
+
+/* ── Footer ── */
+.ftr {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: var(--ftr-h); background: var(--hdr);
+  border-top: 1px solid #252535;
+  display: flex; align-items: center;
+  padding: 0 12px; gap: 5px;
+}
+.hc {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #3a3a4a; color: var(--acc-t);
+  font-size: 12px; font-weight: bold;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hp {
+  height: 20px; padding: 0 7px; border-radius: 100px;
+  background: #2a2a3a; color: var(--acc-t);
+  font-size: 12px; white-space: nowrap;
+  display: inline-flex; align-items: center;
+  flex-shrink: 0;
+}
+.hl { font-size: 12px; color: var(--hnt-t); margin-right: 4px; }
+.ftr-right { margin-left: auto; font-size: 12px; color: var(--hnt-t); }
+</style>
+</head>
+<body>
+<h1>Itch.io Pak — List Screen — 1024×768 — NextUI Theme</h1>
+
+<div class="screen">
+  <!-- Header -->
+  <div class="hdr"></div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-title">Itch.io — GB Studio Games</div>
+  <span class="filter-badge">Adventure</span>
+  <span class="sort-badge">DL</span>
+
+  <!-- Left panel: game list -->
+  <div class="left-panel">
+    <div class="row sel">
+      <div class="row-pill"></div>
+      <span class="row-title">Glory Hunters</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">Taiyaki Fabulous Muse…</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">Opossum Country</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">Kero Kero Cowboy</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">Swordbird Song: The Ir…</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">2021: Moon Escape</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">Zelda's Adventure</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+    <div class="row">
+      <span class="row-title">SOLASTRA</span>
+      <span class="rbadge b-dl">DL</span>
+    </div>
+  </div>
+
+  <!-- Right panel: cover art + metadata -->
+  <div class="right-panel">
+    <div class="cover-box">
+      <div class="cover-placeholder">cover art</div>
+      <div class="cv-badge cv-dl">DL</div>
+    </div>
+    <div class="author">by 2think</div>
+    <div class="tags">
+      <span class="tag">action-adventure</span>
+      <span class="tag">8-bit</span>
+      <span class="tag">gameboy</span>
+      <span class="tag">retro</span>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="ftr">
+    <div class="hc">A</div><span class="hl">select</span>
+    <div class="hp">L/R</div><span class="hl">page</span>
+    <div class="hp">SELECT</div><span class="hl">sort</span>
+    <div class="hc">B</div><span class="hl">exit</span>
+    <div class="hp">START</div><span class="hl">settings</span>
+    <span class="ftr-right">Page 1/1</span>
+  </div>
+</div>
+</body>
+</html>
