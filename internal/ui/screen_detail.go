@@ -53,6 +53,10 @@ type DetailScreen struct {
 	heldSince     time.Time
 	lastRepeat    time.Time
 
+	// Horizontal scroll for the on-device file path in the status card
+	pathScrollX   int32
+	pathScrollAt  time.Time
+
 	prev          Screen
 	inv           *inventory.Inventory
 	inventoryPath string
@@ -66,7 +70,7 @@ func (s *DetailScreen) ShowModal(title, body string) {
 }
 
 func NewDetailScreen(client *itchio.Client, cfg *settings.Config, cfgPath string, cache *renderer.ImageCache, game itchio.Game, inv *inventory.Inventory, inventoryPath string, prev Screen) *DetailScreen {
-	s := &DetailScreen{client: client, cfg: cfg, cfgPath: cfgPath, cache: cache, game: game, prev: prev, loading: true, inv: inv, inventoryPath: inventoryPath}
+	s := &DetailScreen{client: client, cfg: cfg, cfgPath: cfgPath, cache: cache, game: game, prev: prev, loading: true, inv: inv, inventoryPath: inventoryPath, pathScrollAt: time.Now()}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -143,6 +147,16 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}()
 
 	s.processAutoScroll()
+
+	// Advance horizontal scroll for the on-device file path (1s pause then 50px/s).
+	const pathScrollDelay = time.Second
+	const pathScrollSpeed = int32(50)
+	if !s.pathScrollAt.IsZero() {
+		elapsed := time.Since(s.pathScrollAt)
+		if elapsed > pathScrollDelay {
+			s.pathScrollX = int32((elapsed - pathScrollDelay).Seconds() * float64(pathScrollSpeed))
+		}
+	}
 
 	// ── Parental advisory overlay ────────────────────────────
 	if !s.loading && s.err == nil && s.advisoryTriggered {
@@ -306,26 +320,77 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], s.game.Price)
 		}
 
-		// Compact on-device status: [DL] filename → destination/
+		// Status card: [DL] scrolling-path [X] Delete — groups on-device info + action.
 		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
-			const bp = int32(5)
-			dlW, _ := r.SmallTextSize("DL")
-			pillW := dlW + bp*2
-			pillH := smallFH + 4
-			r.DrawPill(margin, y+2, pillW, pillH, 80, 200, 220)
-			r.DrawSmallText("DL", margin+bp, y+4, 20, 20, 20)
 			f := entry.Files[0]
 			pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
-			r.DrawSmallText(pathText, margin+pillW+8, y+4, 100, 100, 100)
 			if len(entry.Files) > 1 {
-				r.DrawSmallText(fmt.Sprintf("+%d more", len(entry.Files)-1),
-					margin+pillW+8, y+4+smallFH+2, 80, 80, 80)
-				y += smallFH + 4
+				pathText += fmt.Sprintf(" (+%d more)", len(entry.Files)-1)
 			}
-			y += pillH + 8
-		}
 
-		drawActionRow("X", "Delete", 200, 80, 80, 160, 50, 50, 0)
+			const cp = int32(8)  // card inner padding
+			const dlBp = int32(5) // DL pill horizontal padding
+
+			dlW, _ := r.SmallTextSize("DL")
+			dlPillW := dlW + dlBp*2
+			dlPillH := smallFH + 4
+
+			delCircleD := smallFH + 4
+			delLabelW, _ := r.SmallTextSize("Delete")
+			delBlockW := delCircleD + 6 + delLabelW
+
+			cardH := dlPillH + cp*2
+			cardW := r.W - margin*2
+
+			// Thin border + dark fill
+			r.DrawRect(margin, y, cardW, cardH, 42, 42, 58)
+			r.DrawRect(margin+1, y+1, cardW-2, cardH-2, 10, 10, 18)
+
+			// DL pill (left)
+			r.DrawPill(margin+cp, y+cp, dlPillW, dlPillH, 26, 74, 80)
+			r.DrawSmallText("DL", margin+cp+dlBp, y+cp+2, 20, 20, 20)
+
+			// [X] Delete (right, vertically centered)
+			delCircleX := margin + cardW - cp - delBlockW
+			delCircleCX := delCircleX + delCircleD/2
+			delCircleCY := y + cardH/2
+			aT := r.Theme.AccentText
+			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, 160, 50, 50)
+			r.DrawSmallTextCentered("X", delCircleX, delCircleCY-smallFH/2, delCircleD, aT[0], aT[1], aT[2])
+			r.DrawSmallText("Delete", delCircleX+delCircleD+6, y+cp+2, 200, 80, 80)
+
+			// Scrolling path text (clipped between DL pill and delete block)
+			textX := margin + cp + dlPillW + 6
+			textMaxW := delCircleX - textX - 4
+			pathW, _ := r.SmallTextSize(pathText)
+
+			r.SetClipRect(textX, y, textMaxW, cardH)
+			if pathW <= textMaxW {
+				s.pathScrollX = 0
+				r.DrawSmallText(pathText, textX, y+cp+2, 100, 100, 120)
+			} else {
+				maxScrollX := pathW - textMaxW
+				scrollX := s.pathScrollX
+				if scrollX > maxScrollX {
+					scrollX = maxScrollX
+				}
+				r.DrawSmallText(pathText, textX-scrollX, y+cp+2, 100, 100, 120)
+				// Reset scroll once we've paused at the end long enough
+				if s.pathScrollX >= maxScrollX {
+					totalDur := pathScrollDelay +
+						time.Duration(maxScrollX)*time.Second/time.Duration(pathScrollSpeed) +
+						time.Second
+					if time.Since(s.pathScrollAt) > totalDur {
+						s.pathScrollX = 0
+						s.pathScrollAt = time.Now()
+					}
+				}
+			}
+			// Restore outer content clip (don't fully clear — that would unclip the header area)
+			r.SetClipRect(0, contentTop, r.W, contentH)
+
+			y += cardH + 6
+		}
 	} else {
 		if s.game.IsFree {
 			drawActionRow("A", "Download", 80, 200, 80, ac[0], ac[1], ac[2], 0)
@@ -343,7 +408,13 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += 10
 		ac2 := r.Theme.Accent
 		aT2 := r.Theme.AccentText
-		bgPill := [3]uint8{ac2[0] / 3, ac2[1] / 3, ac2[2] / 3}
+		// Blend accent toward gray-35 at 50% so the pill is clearly visible against
+		// the black background while keeping the accent hue.
+		bgPill := [3]uint8{
+			uint8((int(ac2[0]) + 35) / 2),
+			uint8((int(ac2[1]) + 35) / 2),
+			uint8((int(ac2[2]) + 35) / 2),
+		}
 		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+4,
 			aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
 		y += tagsH + 8
@@ -362,6 +433,13 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	s.contentHeight = y - (contentTop - s.scrollY)
 
 	r.ClearClipRect()
+
+	// Redraw the header bar on top of the clipped content so it is never
+	// obscured by content that scrolled toward the top of the screen.
+	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
+	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
 	// ── Footer ──────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
