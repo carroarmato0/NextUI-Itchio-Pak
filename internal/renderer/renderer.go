@@ -426,6 +426,28 @@ func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue 
 	}
 }
 
+// MeasureTagPills returns the total pixel height that DrawTagPills would consume
+// for the given tags without rendering anything.
+func (r *Renderer) MeasureTagPills(tags []string, x, maxW, lineH int32) int32 {
+	if len(tags) == 0 {
+		return 0
+	}
+	const hPad = int32(6)
+	const gap = int32(6)
+	cx := x
+	cy := int32(0)
+	for _, tag := range tags {
+		tw, _ := r.SmallTextSize(tag)
+		pillW := tw + hPad*2
+		if cx > x && cx+pillW > x+maxW {
+			cx = x
+			cy += lineH
+		}
+		cx += pillW + gap
+	}
+	return cy + lineH
+}
+
 // DrawTagPills renders a slice of tag strings as pill badges that wrap across
 // lines. Each pill has fgR/fgG/fgB text on bgR/bgG/bgB background.
 // maxW is the available pixel width; lineH is the vertical step between rows.

@@ -62,7 +62,7 @@ func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
-	footerH := int32(40)
+	footerH := int32(52)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
@@ -103,8 +103,8 @@ func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "select"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Select"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }

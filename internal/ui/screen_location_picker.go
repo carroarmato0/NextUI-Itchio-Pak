@@ -173,7 +173,7 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 
 	_, mainFH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
-	footerH := int32(40)
+	footerH := int32(52)
 	ac := r.Theme.Accent
 	hBG := r.Theme.HeaderBG
 
@@ -277,19 +277,19 @@ func (s *LocationPickerScreen) footerHints() []renderer.FooterHint {
 	hints := []renderer.FooterHint{}
 	switch {
 	case s.cursor == 0 && s.atRoot():
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "confirm"})
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Confirm"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Cancel"})
 	case s.cursor == 0:
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "confirm"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Confirm"})
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "go up"})
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Cancel"})
 	case s.atRoot():
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "enter dir"})
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Cancel"})
 	default:
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "confirm/enter"})
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "go up"})
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "cancel"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Cancel"})
 	}
 	return hints
 }

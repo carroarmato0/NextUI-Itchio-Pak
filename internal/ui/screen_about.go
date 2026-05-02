@@ -32,7 +32,7 @@ func (s *AboutScreen) Draw(r *renderer.Renderer) {
 	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
-	footerH := int32(40)
+	footerH := int32(52)
 	textY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
 	r.DrawText("About", 20, textY, mt[0], mt[1], mt[2])
@@ -78,7 +78,7 @@ func (s *AboutScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }

@@ -172,7 +172,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
-	footerH := int32(40)
+	footerH := int32(52)
 	contentH := r.H - contentTop - footerH
 	s.viewportH = contentH
 	margin := int32(20)
@@ -366,14 +366,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// ── Footer ──────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
-		{Kind: renderer.BadgePill, Label: "L/R", Text: "screenshots"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
+		{Kind: renderer.BadgePill, Label: "L/R", Text: "Screenshots"},
 	}
 	if r.W > narrowScreenW {
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "settings"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
 	if s.contentHeight > contentH {
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "↕", Text: "scroll"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "↕", Text: "Scroll"})
 	}
 	r.DrawFooterHints(hints, ftrY)
 }
@@ -452,7 +452,7 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 
 	r.DrawTextCentered("B  Go back", 0, y, r.W, 180, 80, 80)
 
-	footerH := int32(40)
+	footerH := int32(52)
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints(backHints(r.W), ftrY)
 }
@@ -713,10 +713,10 @@ func (s *DetailScreen) performSingleFileDelete() {
 // backHints returns standard "back + settings" footer hints scaled to screen width.
 func backHints(screenW int32) []renderer.FooterHint {
 	hints := []renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
 	if screenW > narrowScreenW {
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "settings"})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	} else {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
 	}

@@ -257,10 +257,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		} else {
 			r.DrawText("Error: "+s.err.Error(), 20, mid, 200, 50, 50)
 		}
-		ftrY := r.DrawFooterBar(40)
+		ftrY := r.DrawFooterBar(52)
 		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgeCircle, Label: "A", Text: "retry"},
-			{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"},
+			{Kind: renderer.BadgeCircle, Label: "A", Text: "Retry"},
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
 		}, ftrY)
 		r.Present()
 		return
@@ -271,7 +271,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	rightW := r.W - rightX - 10
 
 	rowH := fontH + 12 // measured font height + padding
-	footerH := int32(40)
+	footerH := int32(52)
 	visibleRows := (r.H - contentTop - footerH) / rowH
 
 	if len(s.viewGames) == 0 && s.cacheReady {
@@ -281,15 +281,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		ftrY := r.DrawFooterBar(footerH)
 		if r.W <= narrowScreenW {
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "SEL", Text: "sort"},
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"},
+				{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"},
+				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
 				{Kind: renderer.BadgePill, Label: "⚙", Text: ""},
 			}, ftrY)
 		} else {
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "SELECT", Text: "sort"},
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"},
-				{Kind: renderer.BadgePill, Label: "START", Text: "settings"},
+				{Kind: renderer.BadgePill, Label: "SELECT", Text: "Sort"},
+				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
+				{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
 			}, ftrY)
 		}
 		r.Present()
@@ -539,8 +539,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			ac := r.Theme.Accent
 			aT := r.Theme.AccentText
 			// Measure total pill height to know whether scroll is needed.
-			totalTagH := r.DrawTagPills(filteredTags, rightX, 0, rightW, lineGap,
-				aT[0], aT[1], aT[2], ac[0], ac[1], ac[2])
+			totalTagH := r.MeasureTagPills(filteredTags, rightX, rightW, lineGap)
 			availH := r.H - footerH - metaY
 			if availH <= 0 {
 				availH = 0
@@ -572,20 +571,20 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 
 	var footerHints []renderer.FooterHint
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "select"})
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L/R", Text: "page"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L/R", Text: "Page"})
 	if s.cacheReady {
 		if r.W <= narrowScreenW {
-			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "sort"})
+			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"})
 		} else {
-			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "sort"})
+			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "Sort"})
 		}
 	}
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "exit"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	if r.W <= narrowScreenW {
 		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
 	} else {
-		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "settings"})
+		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
 	r.DrawFooterHints(footerHints, ftrY)
 

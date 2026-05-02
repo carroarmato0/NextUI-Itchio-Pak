@@ -191,7 +191,7 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
-	footerH := int32(40)
+	footerH := int32(52)
 
 	// ── Header bar ────────────────────────────────────────────────────────────
 	textY := r.DrawHeaderBar(headerH)
@@ -252,9 +252,9 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	// ── Footer ────────────────────────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgePill, Label: "L/R", Text: "skip"},
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "toggle"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "back"},
+		{Kind: renderer.BadgePill, Label: "L/R", Text: "Skip"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Toggle"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }

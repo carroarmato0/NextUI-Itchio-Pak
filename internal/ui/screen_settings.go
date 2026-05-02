@@ -91,7 +91,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	r.Clear(bg[0], bg[1], bg[2])
 
 	headerH := int32(72)
-	footerH := int32(40)
+	footerH := int32(52)
 	textY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
 	r.DrawText("Settings", 20, textY, mt[0], mt[1], mt[2])
@@ -150,7 +150,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				sw, sh := r.SmallTextSize(statusLabel)
 				const sp = int32(4)
 				pillX := 20 + labelW + 4
-				pillY := y + (fontH-sh-sp)/2
+				pillY := y - 4 + (rowH-sh-sp)/2
 				r.DrawPill(pillX, pillY, sw+sp*2, sh+sp, sR, sG, sB)
 				r.DrawSmallText(statusLabel, pillX+sp, pillY+sp/2, 20, 20, 20)
 			} else {
@@ -177,11 +177,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "back"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "select"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
 	}
 	if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-		hints[1].Text = "test API key"
+		hints[1].Text = "Test API key"
 	}
 	r.DrawFooterHints(hints, ftrY)
 	r.Present()
