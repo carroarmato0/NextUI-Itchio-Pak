@@ -401,25 +401,26 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Increased margin from the right edge of the list (leftW) from 8 to 16.
 		badgeX := leftW - pillW - 16
 
-		// Title area is left of the badge.
-		titleAreaW := badgeX - 14
+		// Title area is between the left margin (16) and the badge gap.
+		titleAreaW := badgeX - 16 - 14
 
 		isDownloaded := isPresent || isPendingUpdate || isRemovedGame
+		const titleX = int32(16)
 		if i == s.cursor {
 			aT := r.Theme.AccentText
 			if isDownloaded {
 				titleW, _ := r.BoldTextSize(g.Title)
 				if titleW <= titleAreaW {
 					s.titleScrollX = 0
-					r.DrawBoldText(g.Title, 10, y, aT[0], aT[1], aT[2])
+					r.DrawBoldText(g.Title, titleX, y, aT[0], aT[1], aT[2])
 				} else {
 					maxScroll := titleW - titleAreaW
 					scrollX := s.titleScrollX
 					if scrollX > maxScroll {
 						scrollX = maxScroll
 					}
-					r.SetClipRect(10, rowTop, titleAreaW, rowH)
-					r.DrawBoldText(g.Title, 10-scrollX, y, aT[0], aT[1], aT[2])
+					r.SetClipRect(titleX, rowTop, titleAreaW, rowH)
+					r.DrawBoldText(g.Title, titleX-scrollX, y, aT[0], aT[1], aT[2])
 					r.ClearClipRect()
 					if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
 						s.titleScrollX = 0
@@ -430,15 +431,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				titleW, _ := r.TextSize(g.Title)
 				if titleW <= titleAreaW {
 					s.titleScrollX = 0
-					r.DrawText(g.Title, 10, y, aT[0], aT[1], aT[2])
+					r.DrawText(g.Title, titleX, y, aT[0], aT[1], aT[2])
 				} else {
 					maxScroll := titleW - titleAreaW
 					scrollX := s.titleScrollX
 					if scrollX > maxScroll {
 						scrollX = maxScroll
 					}
-					r.SetClipRect(10, rowTop, titleAreaW, rowH)
-					r.DrawText(g.Title, 10-scrollX, y, aT[0], aT[1], aT[2])
+					r.SetClipRect(titleX, rowTop, titleAreaW, rowH)
+					r.DrawText(g.Title, titleX-scrollX, y, aT[0], aT[1], aT[2])
 					r.ClearClipRect()
 					if scrollX == maxScroll && time.Since(s.titleScrollAt) > scrollDelay+time.Duration(maxScroll)*time.Second/time.Duration(scrollSpeed)+time.Second {
 						s.titleScrollX = 0
@@ -449,9 +450,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		} else {
 			lt := r.Theme.ListText
 			if isDownloaded {
-				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), 10, y, lt[0], lt[1], lt[2])
+				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), titleX, y, lt[0], lt[1], lt[2])
 			} else {
-				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), 10, y, lt[0], lt[1], lt[2])
+				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), titleX, y, lt[0], lt[1], lt[2])
 			}
 		}
 
@@ -465,7 +466,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		if i == dlSepAfterUpdates {
 			sepY := rowTop + rowH
 			r.DrawRect(0, sepY, leftW, 1, 50, 50, 50)
-			r.DrawSmallText("— downloaded —", 10, sepY+2, 80, 80, 80)
+			r.DrawSmallText("— downloaded —", titleX, sepY+2, 80, 80, 80)
 		}
 	}
 
