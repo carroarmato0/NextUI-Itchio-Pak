@@ -38,7 +38,7 @@ type Entry struct {
 	UpdateDismissedAt  time.Time      `json:"update_dismissed_at,omitempty"`
 	GameRemovedAt      time.Time      `json:"game_removed_at,omitempty"`
 	RemovalDismissedAt time.Time      `json:"removal_dismissed_at,omitempty"`
-	UnifiedNamingDisabled bool        `json:"unified_naming_disabled,omitempty"`
+	UnifiedNamingDisabled bool           `json:"unified_naming_disabled,omitempty"`
 }
 
 type Inventory struct {
