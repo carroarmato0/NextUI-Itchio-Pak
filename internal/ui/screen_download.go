@@ -167,7 +167,13 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 		mid := headerH + contentH/2
 		r.DrawTextCentered("Download complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
 		r.DrawSmallTextCentered(s.upload.Filename, 0, mid+4, r.W, ht[0], ht[1], ht[2])
-		r.DrawSmallTextCentered("Saved to: "+s.dest, 0, mid+4+smallFH+4, r.W, 120, 120, 120)
+		const pathMargin = int32(20)
+		maxPathW := r.W - pathMargin*2
+		r.DrawSmallTextCentered("Saved to:", 0, mid+4+smallFH+8, r.W, 120, 120, 120)
+		dir := truncateSmallToWidth(r, filepath.Dir(s.dest)+"/", maxPathW)
+		r.DrawSmallTextCentered(dir, 0, mid+4+smallFH*2+10, r.W, 80, 80, 80)
+		file := truncateSmallToWidth(r, filepath.Base(s.dest), maxPathW)
+		r.DrawSmallTextCentered(file, 0, mid+4+smallFH*3+12, r.W, 120, 120, 120)
 
 	case dlError:
 		// Layout from top of content area: error title, message, then QR centered

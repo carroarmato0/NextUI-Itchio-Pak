@@ -844,6 +844,26 @@ func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
 	return strings.TrimRight(string(runes), " ") + "…"
 }
 
+// truncateSmallToWidth truncates text with "…" so it fits within maxW pixels
+// when rendered in the small hint font.
+func truncateSmallToWidth(r *renderer.Renderer, text string, maxW int32) string {
+	tw, _ := r.SmallTextSize(text)
+	if tw <= maxW {
+		return text
+	}
+	ellipsisW, _ := r.SmallTextSize("…")
+	target := maxW - ellipsisW
+	runes := []rune(text)
+	for len(runes) > 0 {
+		tw, _ = r.SmallTextSize(string(runes))
+		if tw <= target {
+			break
+		}
+		runes = runes[:len(runes)-1]
+	}
+	return strings.TrimRight(string(runes), " ") + "…"
+}
+
 // truncateBoldToWidth truncates text with "…" so it fits within maxW pixels
 // when rendered in bold.
 func truncateBoldToWidth(r *renderer.Renderer, text string, maxW int32) string {
