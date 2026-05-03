@@ -38,13 +38,13 @@ func (f formatChoice) ext() string {
 func (f formatChoice) label() string {
 	switch f {
 	case formatGB:
-		return "[GB]"
+		return "GB"
 	case formatGBC:
-		return "[GBC]"
+		return "GBC"
 	case formatZIP:
-		return "[ZIP]"
+		return "ZIP"
 	}
-	return "[GBC]"
+	return "GBC"
 }
 
 func (f formatChoice) next() formatChoice { return (f + 1) % 3 }
@@ -121,7 +121,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	rowH := fontH + 20
 	const tagMargin = int32(8)
 	const badgePad = int32(4)
-	maxTagW, _ := r.SmallTextSize("[GBC]") // widest label — used for a stable filename budget
+	maxTagW, _ := r.SmallTextSize("GBC") // widest label — used for a stable filename budget
 	badgeW := maxTagW + badgePad*2
 	badgeH := smallFH + badgePad
 
