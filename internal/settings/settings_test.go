@@ -351,3 +351,62 @@ func TestNextUIThemeRoundTrip(t *testing.T) {
 		t.Errorf("NextUITheme = %v, want %v", loaded.NextUITheme, true)
 	}
 }
+
+func TestUnifiedNaming_DefaultTrue(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := settings.Load(filepath.Join(dir, "missing.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.UnifiedNaming {
+		t.Error("UnifiedNaming default should be true")
+	}
+}
+
+func TestUnifiedNaming_OldConfigGetsDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	// Old config with no unified_naming field
+	if err := os.WriteFile(path, []byte(`{}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.UnifiedNaming {
+		t.Error("UnifiedNaming should default to true when absent from config")
+	}
+}
+
+func TestUnifiedNaming_ExplicitFalse(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"unified_naming": false}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UnifiedNaming {
+		t.Error("UnifiedNaming should be false when explicitly set to false")
+	}
+}
+
+func TestUnifiedNaming_RoundTrip_False(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg, _ := settings.Load(filepath.Join(dir, "missing.json"))
+	cfg.UnifiedNaming = false
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.UnifiedNaming {
+		t.Error("UnifiedNaming=false should survive save/load round-trip")
+	}
+}
