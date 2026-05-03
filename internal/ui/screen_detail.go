@@ -489,12 +489,6 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgePill, Label: "L/R", Text: "Screenshots"},
 	}
-	if isPresent {
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "X", Text: "Delete"})
-		if s.cfg.UnifiedNaming {
-			hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "Y", Text: "Title filename"})
-		}
-	}
 	if r.W > narrowScreenW {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
