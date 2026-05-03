@@ -347,7 +347,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
-	// In [DL] mode, compute where group transitions occur for separator lines.
+	// In [DL] mode, compute where group transitions occur for the separator.
 	dlSepAfterUpdates := -1
 	if s.sortMode == itchio.SortModeDL && len(s.games) > 0 {
 		lastUpdateIdx := -1
@@ -361,16 +361,28 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
+	// Height of the separator bar. Rows after the separator are shifted down
+	// by this amount so the bar occupies its own dedicated slot between groups.
+	dlSepBarH := int32(0)
+	if dlSepAfterUpdates >= 0 {
+		dlSepBarH = smallFH + 8
+	}
+
 	for i, g := range s.games {
 		if i < startIdx {
 			continue
 		}
 		rowIdx := i - startIdx
-		if int32(rowIdx) >= visibleRows {
+		// Rows below the separator are shifted down by dlSepBarH.
+		yOff := int32(0)
+		if dlSepAfterUpdates >= 0 && i > dlSepAfterUpdates {
+			yOff = dlSepBarH
+		}
+		rowTop := contentTop + int32(rowIdx)*rowH + yOff
+		if rowTop >= r.H-footerH {
 			break
 		}
-		y := contentTop + int32(rowIdx)*rowH + (rowH-fontH)/2 // vertically centre text in row
-		rowTop := contentTop + int32(rowIdx)*rowH
+		y := rowTop + (rowH-fontH)/2
 		if i == s.cursor {
 			ac := r.Theme.Accent
 			r.DrawPill(4, rowTop+2, leftW-8, rowH-4, ac[0], ac[1], ac[2])
@@ -469,16 +481,16 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	}
 
 	// Draw the DL-mode group separator AFTER all row content so it renders
-	// on top of any row background. A filled bar with centred label acts as
-	// a single cohesive divider between the updates group and the rest.
-	if dlSepAfterUpdates >= 0 {
+	// on top of any row backgrounds. The bar fills the dedicated gap slot
+	// between the last update row and the first downloaded row.
+	if dlSepAfterUpdates >= 0 && dlSepBarH > 0 {
 		sepRowIdx := dlSepAfterUpdates - startIdx
-		if sepRowIdx >= 0 && sepRowIdx < int(visibleRows) {
-			sepRowTop := contentTop + int32(sepRowIdx)*rowH
-			sepBarH := smallFH + 8
-			sepBarY := sepRowTop + rowH - sepBarH/2
-			r.DrawRect(0, sepBarY, leftW, sepBarH, 40, 40, 40)
-			r.DrawSmallTextCentered("— downloaded —", 0, sepBarY+(sepBarH-smallFH)/2, leftW, 100, 100, 100)
+		if sepRowIdx >= 0 {
+			sepBarY := contentTop + int32(sepRowIdx+1)*rowH
+			if sepBarY < r.H-footerH {
+				r.DrawRect(0, sepBarY, leftW, dlSepBarH, 40, 40, 40)
+				r.DrawSmallTextCentered("— downloaded —", 0, sepBarY+(dlSepBarH-smallFH)/2, leftW, 100, 100, 100)
+			}
 		}
 	}
 
