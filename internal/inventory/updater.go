@@ -107,22 +107,35 @@ func (s *UpdateService) runCheck() {
 
 	logger.Info("update-svc: checking %d inventory entries", len(urls))
 
+	// Collect upstream file lists during the check loop but do NOT write them
+	// to the inventory yet. Applying them all at once at the end means the UI
+	// never sees a state where badges have changed but sort order has not.
+	pendingFiles := make(map[string][]UpstreamFile)
 	for _, gameURL := range urls {
-		s.checkEntry(gameURL)
-		if err := s.inv.Save(s.inventoryPath); err != nil {
-			logger.Error("update-svc: save after entry %s: %v", gameURL, err)
+		if files := s.checkEntry(gameURL); files != nil {
+			pendingFiles[gameURL] = files
 		}
+	}
+
+	for gameURL, files := range pendingFiles {
+		s.inv.SetUpstreamFiles(gameURL, files)
+	}
+	if err := s.inv.Save(s.inventoryPath); err != nil {
+		logger.Error("update-svc: save: %v", err)
 	}
 
 	logger.Info("update-svc: check complete")
 }
 
-func (s *UpdateService) checkEntry(gameURL string) {
+// checkEntry runs cover-art repair and the upstream check for one game.
+// For free games it returns the upstream file list to apply later (batched);
+// for paid games it returns nil.
+func (s *UpdateService) checkEntry(gameURL string) []UpstreamFile {
 	s.inv.mu.Lock()
 	entry, ok := s.inv.Entries[gameURL]
 	if !ok {
 		s.inv.mu.Unlock()
-		return
+		return nil
 	}
 	// Snapshot without holding the lock during I/O.
 	coverURL := entry.CoverURL
@@ -148,10 +161,10 @@ func (s *UpdateService) checkEntry(gameURL string) {
 
 	// 2. Upstream check.
 	if isFree {
-		s.checkFreeGame(gameURL)
-	} else {
-		s.checkPaidGame(gameURL)
+		return s.checkFreeGame(gameURL)
 	}
+	s.checkPaidGame(gameURL)
+	return nil
 }
 
 // isGameRemoved reports whether err indicates a 404 or 410 HTTP response.
@@ -163,7 +176,9 @@ func isGameRemoved(err error) bool {
 	return strings.Contains(s, "HTTP 404") || strings.Contains(s, "HTTP 410")
 }
 
-func (s *UpdateService) checkFreeGame(gameURL string) {
+// checkFreeGame fetches the current upload list and returns it for the caller
+// to apply via SetUpstreamFiles (batched at end-of-check). Returns nil on error.
+func (s *UpdateService) checkFreeGame(gameURL string) []UpstreamFile {
 	uploads, err := s.client.FetchUploads(gameURL)
 	if err != nil {
 		if isGameRemoved(err) {
@@ -172,22 +187,21 @@ func (s *UpdateService) checkFreeGame(gameURL string) {
 		} else {
 			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
 		}
-		return
+		return nil
 	}
 	// Game is reachable — clear any stale removal state.
 	s.inv.MarkReachable(gameURL)
 
-	// Build new upstream file list from scraped uploads.
-	newFiles := make([]UpstreamFile, 0, len(uploads))
+	files := make([]UpstreamFile, 0, len(uploads))
 	for _, u := range uploads {
-		newFiles = append(newFiles, UpstreamFile{
+		files = append(files, UpstreamFile{
 			Filename: u.Filename,
 			UploadID: u.UploadID,
-			SeenAt:   time.Now(),
+			SeenAt:   time.Now(), // preserved for known files by SetUpstreamFiles
 		})
 	}
-	s.inv.SetUpstreamFiles(gameURL, newFiles)
-	logger.Debug("update-svc: %s — %d upstream file(s) recorded", gameURL, len(newFiles))
+	logger.Debug("update-svc: %s — %d upstream file(s) recorded", gameURL, len(files))
+	return files
 }
 
 func (s *UpdateService) checkPaidGame(gameURL string) {

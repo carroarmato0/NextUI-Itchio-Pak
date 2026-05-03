@@ -262,3 +262,57 @@ func TestUpdateService_DiffPrunesVanishedFile(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateService_DismissedUpdateDoesNotReappearOnRestart(t *testing.T) {
+	// Upstream has two files; user only downloaded one.
+	srv := freeGameServer(t, http.StatusOK, []string{"game.gb", "game-v2.gb"})
+	defer srv.Close()
+
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.gb")
+	os.WriteFile(romPath, []byte("ROM"), 0644)
+	artPath := inventory.CoverArtPath(srv.URL+"/cover.png", romPath)
+	os.MkdirAll(filepath.Dir(artPath), 0755)
+	os.WriteFile(artPath, minimalPNG(), 0644)
+
+	invPath := filepath.Join(dir, "inventory.json")
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	gameURL := srv.URL + "/game"
+	inv.Add(gameURL,
+		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
+		inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
+	inv.Save(invPath)
+
+	client := itchio.NewClientWithBase(srv.URL)
+
+	// First check: detect the pending update.
+	done := make(chan struct{})
+	svc := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc.Start(func() { close(done) })
+	<-done
+	svc.Stop()
+	if !inv.HasPendingUpdates(gameURL) {
+		t.Fatal("HasPendingUpdates: want true after first check")
+	}
+
+	// User dismisses the update and we save to disk.
+	inv.DismissUpdate(gameURL)
+	if err := inv.Save(invPath); err != nil {
+		t.Fatal(err)
+	}
+	if inv.HasPendingUpdates(gameURL) {
+		t.Fatal("HasPendingUpdates: want false immediately after dismiss")
+	}
+
+	// Simulate app restart: reload inventory from disk, run second check.
+	inv2, _ := inventory.Load(invPath)
+	done2 := make(chan struct{})
+	svc2 := inventory.NewUpdateService(inv2, invPath, client, nil)
+	svc2.Start(func() { close(done2) })
+	<-done2
+	svc2.Stop()
+
+	if inv2.HasPendingUpdates(gameURL) {
+		t.Error("HasPendingUpdates: want false — dismissed update must not reappear after restart + re-check")
+	}
+}

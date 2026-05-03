@@ -301,12 +301,25 @@ func (inv *Inventory) MarkReachable(gameURL string) {
 
 // SetUpstreamFiles replaces KnownUpstreamFiles for gameURL and sets
 // UpdateCheckedAt to now. Call this after each successful file-list scrape.
+//
+// SeenAt is PRESERVED for files that were already known so that a dismissed
+// update is not re-triggered on the next check cycle. Only genuinely new files
+// (not previously in KnownUpstreamFiles) receive SeenAt = now.
 func (inv *Inventory) SetUpstreamFiles(gameURL string, files []UpstreamFile) {
 	inv.mu.Lock()
 	defer inv.mu.Unlock()
 	e, ok := inv.Entries[gameURL]
 	if !ok {
 		return
+	}
+	prior := make(map[string]time.Time, len(e.KnownUpstreamFiles))
+	for _, f := range e.KnownUpstreamFiles {
+		prior[f.Filename] = f.SeenAt
+	}
+	for i := range files {
+		if t, ok := prior[files[i].Filename]; ok {
+			files[i].SeenAt = t // keep original first-seen time
+		}
 	}
 	e.KnownUpstreamFiles = files
 	e.UpdateCheckedAt = time.Now()
