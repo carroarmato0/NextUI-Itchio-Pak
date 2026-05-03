@@ -176,7 +176,7 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 	if !s.enable {
 		action = "Disabling"
 	}
-	r.DrawText(truncateToWidth(r, action+" title filename — "+s.gameTitle, r.W-24), 12, 8, mt[0], mt[1], mt[2])
+	r.DrawText(truncateToWidth(r, action+" title filename — "+s.gameTitle, r.W-24), 12, (headerH-fontH)/2, mt[0], mt[1], mt[2])
 
 	mid := headerH + (r.H-headerH-footerH)/2
 
