@@ -4,6 +4,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -71,7 +73,30 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			s.state = dlError
 		} else {
 			logger.Info("download: complete file=%s", upload.Filename)
-			if artErr := client.DownloadCoverArt(game.CoverURL, dest); artErr != nil {
+
+			// Apply unified naming if enabled for this game.
+			finalDest := dest
+			unifiedName := false
+			if cfg.UnifiedNaming {
+				entry, entryExists := inv.Lookup(game.URL)
+				disabled := entryExists && entry.UnifiedNamingDisabled
+				if !disabled {
+					newDest, didRename := roms.ResolveUnifiedDest(dest, game.Title)
+					if didRename {
+						if renameErr := os.Rename(dest, newDest); renameErr != nil {
+							logger.Warn("unified-naming: rename failed: %v", renameErr)
+						} else {
+							logger.Info("unified-naming: renamed %q → %q", filepath.Base(dest), filepath.Base(newDest))
+							finalDest = newDest
+							unifiedName = true
+						}
+					} else {
+						unifiedName = true // name already correct
+					}
+				}
+			}
+
+			if artErr := client.DownloadCoverArt(game.CoverURL, finalDest); artErr != nil {
 				logger.Warn("cover-art: game=%q url=%s: %v", game.Title, game.CoverURL, artErr)
 			}
 			s.inv.Add(game.URL, inventory.Entry{
@@ -82,14 +107,16 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 				IsFree:   game.IsFree,
 			}, inventory.DownloadedFile{
 				Filename:     upload.Filename,
-				DestPath:     dest,
+				DestPath:     finalDest,
 				DownloadedAt: time.Now(),
+				UnifiedName:  unifiedName,
 			})
 			if saveErr := s.inv.Save(s.inventoryPath); saveErr != nil {
 				logger.Warn("inventory: save failed: %v", saveErr)
 			} else {
-				logger.Info("inventory: recorded game=%q file=%s", game.Title, upload.Filename)
+				logger.Info("inventory: recorded game=%q file=%s unified=%v", game.Title, filepath.Base(finalDest), unifiedName)
 			}
+			s.dest = finalDest
 			s.state = dlDone
 		}
 	}()
