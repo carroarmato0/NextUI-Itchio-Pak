@@ -29,6 +29,7 @@ const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
 	sItemROMLocation
+	sItemUnifiedNaming
 	sItemNextUITheme
 	sItemLogLevel
 	sItemClearCache
@@ -170,6 +171,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	items = append(items, menuItem{sItemAPIKey, "API Key: "})
 	items = append(items, menuItem{sItemROMMode, "ROM Selection: " + s.cfg.ROMSelection})
 	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
+	unifiedNamingVal := "OFF"
+	if s.cfg.UnifiedNaming {
+		unifiedNamingVal = "ON"
+	}
+	items = append(items, menuItem{sItemUnifiedNaming, "Use game title as filename: " + unifiedNamingVal})
 	if s.themeAvailable {
 		items = append(items, menuItem{sItemNextUITheme, "NextUI Theme: " + nextUIThemeLabel})
 	}
@@ -377,6 +383,12 @@ func (s *SettingsScreen) activate() Screen {
 			s.cfg.ROMLocation = "auto"
 		}
 		s.cfg.Save(s.cfgPath)
+	case sItemUnifiedNaming:
+		s.cfg.UnifiedNaming = !s.cfg.UnifiedNaming
+		if err := s.cfg.Save(s.cfgPath); err != nil {
+			logger.Warn("settings: save failed: %v", err)
+		}
+		logger.Info("settings: unified naming changed to %v", s.cfg.UnifiedNaming)
 	case sItemNextUITheme:
 		s.cfg.NextUITheme = !s.cfg.NextUITheme
 		s.cfg.Save(s.cfgPath)
