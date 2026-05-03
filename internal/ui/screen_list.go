@@ -478,7 +478,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			sepRowTop := contentTop + int32(sepRowIdx)*rowH
 			sepY := sepRowTop + rowH
 			r.DrawRect(0, sepY, leftW, 1, 50, 50, 50)
-			r.DrawSmallText("— downloaded —", titleX, sepY-smallFH/2, 80, 80, 80)
+			r.DrawSmallText("— downloaded —", 16, sepY-smallFH/2, 80, 80, 80)
 		}
 	}
 
