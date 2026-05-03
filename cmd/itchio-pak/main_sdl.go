@@ -172,9 +172,14 @@ loop:
 				current = nil
 				break
 			}
-			// Intercept power UserEvents before screens see them.
+			// Intercept UserEvents before screens see them.
 			if uev, ok := e.(*sdl.UserEvent); ok {
 				switch uev.Code {
+				case userEventInventoryUpdate:
+					// Update-svc finished a check; rebuild the list view so
+					// new [UP]/[!] badges and DL-sort order are immediately visible.
+					listScreen.ScheduleRebuild()
+					continue
 				case userEventPowerSleep:
 					logger.Info("power: sleep requested, waiting for tasks")
 					pendingQuit = true

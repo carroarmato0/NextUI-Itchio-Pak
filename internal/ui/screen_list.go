@@ -466,12 +466,19 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		pillY := y + (fontH-pillH)/2
 		r.DrawPill(badgeX, pillY, pillW, pillH, badgeR, badgeG, badgeB)
 		r.DrawSmallText(badgeLabel, badgeX+5, pillY+2, 20, 20, 20)
+	}
 
-		// Section separator after last [UP]/[!] group row in [DL] mode.
-		if i == dlSepAfterUpdates {
-			sepY := rowTop + rowH
+	// Draw the DL-mode group separator AFTER all row content so the label
+	// renders on top instead of being covered by the next row's title.
+	// The label is vertically centred on the separator line so it sits at
+	// the row boundary without overlapping either neighbour's text.
+	if dlSepAfterUpdates >= 0 {
+		sepRowIdx := dlSepAfterUpdates - startIdx
+		if sepRowIdx >= 0 && sepRowIdx < int(visibleRows) {
+			sepRowTop := contentTop + int32(sepRowIdx)*rowH
+			sepY := sepRowTop + rowH
 			r.DrawRect(0, sepY, leftW, 1, 50, 50, 50)
-			r.DrawSmallText("— downloaded —", titleX, sepY+2, 80, 80, 80)
+			r.DrawSmallText("— downloaded —", titleX, sepY-smallFH/2, 80, 80, 80)
 		}
 	}
 
