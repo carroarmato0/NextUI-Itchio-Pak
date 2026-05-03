@@ -218,9 +218,15 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 	if !ok {
 		return false
 	}
-	downloaded := make(map[string]bool, len(e.Files))
+	downloaded := make(map[string]bool, len(e.Files)*2)
 	for _, f := range e.Files {
 		downloaded[f.Filename] = true
+		// Format-picker appends an extension the upload name doesn't carry (e.g.
+		// "Game Boy ROM.gbc" stored vs "Game Boy ROM" upstream). Also index the
+		// stem so the already-downloaded file isn't treated as a new upload.
+		if stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename)); stem != f.Filename {
+			downloaded[stem] = true
+		}
 	}
 	for _, u := range e.KnownUpstreamFiles {
 		if !downloaded[u.Filename] && u.SeenAt.After(e.UpdateDismissedAt) {

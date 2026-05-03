@@ -404,6 +404,35 @@ func TestHasPendingUpdates_NewFileAfterDismiss(t *testing.T) {
 	}
 }
 
+func TestHasPendingUpdates_FormatPickerExtensionMismatch(t *testing.T) {
+	// Format-picker appends ".gbc" to an upload that has no extension.
+	// Stored Filename = "Game Boy ROM.gbc", upstream Filename = "Game Boy ROM".
+	// The downloaded file must not be treated as a new upstream entry.
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "Game Boy ROM.gbc", DestPath: "/roms/Game Boy ROM.gbc"})
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "Game Boy ROM", UploadID: "1", SeenAt: time.Now()},
+	})
+	if inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want false — 'Game Boy ROM' is the already-downloaded file, extension just appended by format-picker")
+	}
+}
+
+func TestHasPendingUpdates_FormatPickerWithGenuineNewFile(t *testing.T) {
+	// Same format-picker scenario, but there is also a genuinely new upload.
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
+		inventory.DownloadedFile{Filename: "Game Boy ROM.gbc", DestPath: "/roms/Game Boy ROM.gbc"})
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "Game Boy ROM", UploadID: "1", SeenAt: time.Now()},
+		{Filename: "Analogue Pocket ROM", UploadID: "2", SeenAt: time.Now()},
+	})
+	if !inv.HasPendingUpdates("https://dev.itch.io/game") {
+		t.Error("HasPendingUpdates: want true — 'Analogue Pocket ROM' is a genuinely new upload")
+	}
+}
+
 // ── IsRemoved ────────────────────────────────────────────────────────────────
 
 func TestIsRemoved_NoEntry(t *testing.T) {
