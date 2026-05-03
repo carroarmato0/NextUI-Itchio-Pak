@@ -324,9 +324,55 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 
+	// In [DL] mode, compute where the group separator falls. Must be done
+	// before startIdx so the scroll calculation can account for the gap.
+	dlSepAfterUpdates := -1
+	if s.sortMode == itchio.SortModeDL && len(s.games) > 0 {
+		lastUpdateIdx := -1
+		for i, g := range s.games {
+			if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
+				lastUpdateIdx = i
+			}
+		}
+		if lastUpdateIdx >= 0 && lastUpdateIdx < len(s.games)-1 {
+			dlSepAfterUpdates = lastUpdateIdx
+		}
+	}
+
+	// Height of the separator bar. Rows in the downloaded group are shifted
+	// down by this amount so the bar occupies its own dedicated slot.
+	dlSepBarH := int32(0)
+	if dlSepAfterUpdates >= 0 {
+		dlSepBarH = smallFH + 8
+	}
+
+	// Compute startIdx to keep the cursor row on screen.
+	// When the cursor is in the downloaded group and the separator is still in
+	// the viewport, the separator consumes dlSepBarH pixels, so fewer rows fit.
+	contentH := r.H - footerH - contentTop
 	startIdx := 0
-	if s.cursor >= int(visibleRows) {
-		startIdx = s.cursor - int(visibleRows) + 1
+	if dlSepAfterUpdates >= 0 && s.cursor > dlSepAfterUpdates {
+		// Assume separator is visible; reduce available height accordingly.
+		effVis := int((contentH - dlSepBarH) / rowH)
+		if effVis < 1 {
+			effVis = 1
+		}
+		startIdx = s.cursor - effVis + 1
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		// If that pushes startIdx past the separator, the separator has
+		// scrolled off the top — yOff will be 0, so use the plain formula.
+		if startIdx > dlSepAfterUpdates {
+			startIdx = s.cursor - int(visibleRows) + 1
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+	} else {
+		if s.cursor >= int(visibleRows) {
+			startIdx = s.cursor - int(visibleRows) + 1
+		}
 	}
 
 	// Advance horizontal scroll for the selected title (1s pause, then 50px/s).
@@ -347,35 +393,17 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
-	// In [DL] mode, compute where group transitions occur for the separator.
-	dlSepAfterUpdates := -1
-	if s.sortMode == itchio.SortModeDL && len(s.games) > 0 {
-		lastUpdateIdx := -1
-		for i, g := range s.games {
-			if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
-				lastUpdateIdx = i
-			}
-		}
-		if lastUpdateIdx >= 0 && lastUpdateIdx < len(s.games)-1 {
-			dlSepAfterUpdates = lastUpdateIdx
-		}
-	}
-
-	// Height of the separator bar. Rows after the separator are shifted down
-	// by this amount so the bar occupies its own dedicated slot between groups.
-	dlSepBarH := int32(0)
-	if dlSepAfterUpdates >= 0 {
-		dlSepBarH = smallFH + 8
-	}
-
 	for i, g := range s.games {
 		if i < startIdx {
 			continue
 		}
 		rowIdx := i - startIdx
-		// Rows below the separator are shifted down by dlSepBarH.
+		// Shift rows in the downloaded group down by dlSepBarH, but only
+		// while the separator itself is still within the visible range.
+		// Once startIdx > dlSepAfterUpdates, the separator has scrolled off
+		// the top and the downloaded rows start cleanly from contentTop.
 		yOff := int32(0)
-		if dlSepAfterUpdates >= 0 && i > dlSepAfterUpdates {
+		if dlSepAfterUpdates >= 0 && i > dlSepAfterUpdates && startIdx <= dlSepAfterUpdates {
 			yOff = dlSepBarH
 		}
 		rowTop := contentTop + int32(rowIdx)*rowH + yOff
