@@ -195,6 +195,9 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				allGone, newFileCount := s.performDelete(s.gameURL, s.confirmFileIdx)
 				s.confirmActive = false
 				s.confirmFileIdx = -1
+				if r, ok := s.prev.(Rebuildable); ok {
+					r.ScheduleRebuild()
+				}
 				if allGone {
 					return s.prev
 				}
@@ -214,6 +217,9 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				allGone, newFileCount := s.performDelete(s.gameURL, s.confirmFileIdx)
 				s.confirmActive = false
 				s.confirmFileIdx = -1
+				if r, ok := s.prev.(Rebuildable); ok {
+					r.ScheduleRebuild()
+				}
 				if allGone {
 					return s.prev
 				}

@@ -74,8 +74,9 @@ type ListScreen struct {
 	jumpToEnd bool
 
 	// Sort/filter state
-	sortMode  itchio.SortMode
-	viewGames []itchio.Game // sorted/filtered view; paging operates on this
+	sortMode     itchio.SortMode
+	viewGames    []itchio.Game // sorted/filtered view; paging operates on this
+	needsRebuild bool         // set by ScheduleRebuild; consumed at next Draw
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -238,6 +239,10 @@ func (s *ListScreen) moveCursor(dir int) {
 }
 
 func (s *ListScreen) Draw(r *renderer.Renderer) {
+	if s.needsRebuild {
+		s.needsRebuild = false
+		s.rebuildView()
+	}
 	s.processAutoRepeat()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
@@ -851,6 +856,18 @@ func truncateBoldToWidth(r *renderer.Renderer, text string, maxW int32) string {
 	}
 	return strings.TrimRight(string(runes), " ") + "…"
 }
+
+// Rebuildable is implemented by screens that hold a sorted/filtered game view.
+// Sub-screens (detail, manage-downloads) call ScheduleRebuild on their prev
+// chain after any inventory mutation so the list reflects the change immediately
+// when control returns to it.
+type Rebuildable interface {
+	ScheduleRebuild()
+}
+
+// ScheduleRebuild marks the list view as stale; Draw will call rebuildView before
+// its next render.
+func (s *ListScreen) ScheduleRebuild() { s.needsRebuild = true }
 
 // rebuildView regenerates viewGames from cachedGames using the current sortMode,
 // then resets paging to page 1.

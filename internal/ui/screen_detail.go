@@ -804,6 +804,14 @@ func (s *DetailScreen) startUnifiedNamingToggle() Screen {
 		entry.Files[0], !newDisabled, formats, s)
 }
 
+// ScheduleRebuild implements Rebuildable by propagating up the prev chain so
+// ListScreen.needsRebuild is set after any inventory mutation on a sub-screen.
+func (s *DetailScreen) ScheduleRebuild() {
+	if r, ok := s.prev.(Rebuildable); ok {
+		r.ScheduleRebuild()
+	}
+}
+
 func (s *DetailScreen) triggerDelete() Screen {
 	entry, ok := s.inv.Lookup(s.game.URL)
 	if !ok {
@@ -856,6 +864,7 @@ func (s *DetailScreen) performSingleFileDelete() {
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Warn("inventory: save after delete failed: %v", err)
 	}
+	s.ScheduleRebuild()
 }
 
 // backHints returns standard "back + settings" footer hints scaled to screen width.
