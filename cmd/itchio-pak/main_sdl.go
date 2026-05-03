@@ -179,7 +179,9 @@ loop:
 					// Update-svc finished a check; rebuild the list view so
 					// new [UP]/[!] badges and DL-sort order are immediately visible.
 					listScreen.ScheduleRebuild()
-					continue
+					// Fall through — do NOT continue. FetchUploadsScreen also uses
+					// UserEvent code 0 for its goroutine-done signal, so the event
+					// must still reach current.HandleEvent(e).
 				case userEventPowerSleep:
 					logger.Info("power: sleep requested, waiting for tasks")
 					pendingQuit = true
