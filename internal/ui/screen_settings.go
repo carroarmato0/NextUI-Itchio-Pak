@@ -101,10 +101,11 @@ func (s *SettingsScreen) processAutoRepeat() {
 		return
 	}
 	now := time.Now()
-	if now.Sub(s.heldSince) < repeatDelay {
+	elapsed := now.Sub(s.heldSince)
+	if elapsed < repeatDelay {
 		return
 	}
-	if now.Sub(s.lastRepeat) < repeatInterval {
+	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
 	s.moveCursor(s.heldDir)

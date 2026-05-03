@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,10 +26,34 @@ const narrowScreenW = int32(640)
 
 // Auto-repeat timing for held D-pad buttons
 const (
-	repeatDelay    = 300 * time.Millisecond // initial delay before repeating
-	repeatInterval = 40 * time.Millisecond  // interval between repeats
-	cacheTTL       = 24 * time.Hour
+	repeatDelay = 300 * time.Millisecond // initial delay before repeating
+	accelStart  = 180 * time.Millisecond // repeat interval when acceleration begins
+	accelMin    = 30 * time.Millisecond  // repeat interval at full speed
+	accelRamp   = 1500 * time.Millisecond // time to reach accelMin from accelStart
+	cacheTTL    = 24 * time.Hour
+
+	// coverSettleDelay is how long the cursor must be stationary before cover
+	// art fetches are initiated. Below accelStart (180 ms) so normal browsing
+	// feels instant; well above accelMin (30 ms) so fast scrolling stays silent.
+	coverSettleDelay = 100 * time.Millisecond
+
+	// preloadRadius is the number of neighbours on each side of the cursor
+	// that are warmed after the cursor settles.
+	preloadRadius = 5
 )
+
+// currentRepeatInterval returns the repeat interval for a held button given how
+// long the repeat phase has been running (elapsed = hold time minus repeatDelay).
+// Uses the ease-out curve 1−(1−t)³ so the cursor accelerates quickly then
+// plateaus smoothly at accelMin, mirroring the easing used in NextUI transitions.
+func currentRepeatInterval(elapsed time.Duration) time.Duration {
+	t := float64(elapsed) / float64(accelRamp)
+	if t > 1 {
+		t = 1
+	}
+	eased := 1.0 - math.Pow(1.0-t, 3)
+	return accelStart - time.Duration(float64(accelStart-accelMin)*eased)
+}
 
 type ListScreen struct {
 	client     *itchio.Client
@@ -72,6 +97,12 @@ type ListScreen struct {
 	// jumpToEnd signals that the next loadPage call should place the cursor on
 	// the last item rather than the first. Set when navigating to a previous page.
 	jumpToEnd bool
+
+	// Cover-art fetch throttling: fetches are deferred until the cursor has
+	// been stationary for coverSettleDelay, then the current game plus
+	// preloadRadius neighbours are warmed.
+	lastCursorMove time.Time
+	warmedGameURL  string
 
 	// Sort/filter state
 	sortMode     itchio.SortMode
@@ -190,6 +221,8 @@ func (s *ListScreen) placeCursor() {
 		s.cursor = 0
 	}
 	s.jumpToEnd = false
+	s.lastCursorMove = time.Now()
+	s.warmedGameURL = ""
 }
 
 func (s *ListScreen) processAutoRepeat() {
@@ -201,7 +234,7 @@ func (s *ListScreen) processAutoRepeat() {
 	if elapsed < repeatDelay {
 		return
 	}
-	if now.Sub(s.lastRepeat) < repeatInterval {
+	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
 	s.moveCursor(s.heldDir)
@@ -216,6 +249,8 @@ func (s *ListScreen) moveCursor(dir int) {
 			s.titleScrollAt = time.Now()
 			s.tagScrollY = 0
 			s.tagScrollAt = time.Now()
+			s.lastCursorMove = time.Now()
+			s.warmedGameURL = ""
 		} else if s.totalPages == 0 || s.page < s.totalPages {
 			// At the last item on the page — advance to the next page.
 			s.page++
@@ -228,6 +263,8 @@ func (s *ListScreen) moveCursor(dir int) {
 			s.titleScrollAt = time.Now()
 			s.tagScrollY = 0
 			s.tagScrollAt = time.Now()
+			s.lastCursorMove = time.Now()
+			s.warmedGameURL = ""
 		} else if s.page > 1 {
 			// At the first item on the page — go back to the previous page,
 			// landing on its last item.
@@ -236,6 +273,27 @@ func (s *ListScreen) moveCursor(dir int) {
 			go s.loadPage(s.page, "")
 		}
 	}
+}
+
+// warmPreloadWindow warms cover art for the current game plus preloadRadius
+// neighbours on each side, indexed into viewGames so page boundaries are
+// handled transparently. Sets warmedGameURL so Draw does not re-warm until
+// the cursor moves again.
+func (s *ListScreen) warmPreloadWindow() {
+	if s.cursor >= len(s.games) {
+		return
+	}
+	absIdx := (s.page-1)*itchio.PerPage + s.cursor
+	for i := absIdx - preloadRadius; i <= absIdx+preloadRadius; i++ {
+		if i < 0 || i >= len(s.viewGames) {
+			continue
+		}
+		if url := s.viewGames[i].CoverURL; url != "" {
+			s.cache.Warm(url)
+		}
+	}
+	s.warmedGameURL = s.games[s.cursor].CoverURL
+	logger.Debug("cover: warmed window abs=%d ±%d (%d games in view)", absIdx, preloadRadius, len(s.viewGames))
 }
 
 func (s *ListScreen) Draw(r *renderer.Renderer) {
@@ -522,6 +580,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
+	// Settle check: once the cursor has been stationary for coverSettleDelay,
+	// warm the current game and its neighbours. Resets when cursor moves.
+	if s.cursor < len(s.games) &&
+		!s.lastCursorMove.IsZero() &&
+		time.Since(s.lastCursorMove) >= coverSettleDelay &&
+		s.games[s.cursor].CoverURL != s.warmedGameURL {
+		s.warmPreloadWindow()
+	}
+
 	// Right panel: cover art (or placeholder) + metadata
 	if s.cursor < len(s.games) {
 		g := s.games[s.cursor]
@@ -533,7 +600,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		r.DrawRect(rightX, metaY, boxW, boxH, bg[0], bg[1], bg[2])
 
 		if g.CoverURL != "" {
-			tex := s.cache.Get(r, g.CoverURL)
+			tex := s.cache.Peek(r, g.CoverURL)
 			if tex != nil {
 				_, _, tw, th, _ := tex.Query()
 				// Fit image within box, maintaining aspect ratio
@@ -936,9 +1003,16 @@ type Rebuildable interface {
 // its next render.
 func (s *ListScreen) ScheduleRebuild() { s.needsRebuild = true }
 
-// rebuildView regenerates viewGames from cachedGames using the current sortMode,
-// then resets paging to page 1.
+// rebuildView regenerates viewGames from cachedGames using the current sortMode.
+// It preserves the currently selected game's position where possible; falls back
+// to page 1, cursor 0 if the game is no longer in the view.
 func (s *ListScreen) rebuildView() {
+	var selectedURL string
+	selectedViewIdx := (s.page-1)*itchio.PerPage + s.cursor
+	if s.cursor < len(s.games) {
+		selectedURL = s.games[s.cursor].URL
+	}
+
 	downloaded := make(map[string]bool)
 	pendingUpdates := make(map[string]bool)
 	removed := make(map[string]bool)
@@ -956,6 +1030,48 @@ func (s *ListScreen) rebuildView() {
 	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed)
 	s.totalGames = len(s.viewGames)
 	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
+
+	if selectedURL != "" {
+		for i, g := range s.viewGames {
+			if g.URL == selectedURL {
+				page := i/itchio.PerPage + 1
+				cursor := i % itchio.PerPage
+				s.page = page
+				s.games = pageSlice(s.viewGames, page)
+				s.cursor = cursor
+				s.titleScrollX = 0
+				s.titleScrollAt = time.Now()
+				s.tagScrollY = 0
+				s.tagScrollAt = time.Now()
+				s.lastCursorMove = time.Now()
+				s.warmedGameURL = ""
+				logger.Debug("sort: view rebuilt — %d games visible (mode=%s), restored selection to %q (page=%d, cursor=%d)",
+					len(s.viewGames), itchio.SortModeBadge(s.sortMode), selectedURL, page, cursor)
+				return
+			}
+		}
+	}
+
+	// Selected game gone — land on the nearest position in the new view.
+	if len(s.viewGames) > 0 {
+		if selectedViewIdx >= len(s.viewGames) {
+			selectedViewIdx = len(s.viewGames) - 1
+		}
+		page := selectedViewIdx/itchio.PerPage + 1
+		cursor := selectedViewIdx % itchio.PerPage
+		s.page = page
+		s.games = pageSlice(s.viewGames, page)
+		s.cursor = cursor
+		s.titleScrollX = 0
+		s.titleScrollAt = time.Now()
+		s.tagScrollY = 0
+		s.tagScrollAt = time.Now()
+		s.lastCursorMove = time.Now()
+		s.warmedGameURL = ""
+		logger.Debug("sort: view rebuilt — %d games visible (mode=%s), selection gone; landing at nearest position (page=%d, cursor=%d)",
+			len(s.viewGames), itchio.SortModeBadge(s.sortMode), page, cursor)
+		return
+	}
 	s.page = 1
 	s.loadPage(1, "")
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))

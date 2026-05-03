@@ -118,6 +118,66 @@ func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
 	return nil
 }
 
+// Peek returns the cached SDL2 texture for url without starting a fetch.
+// Use this for rendering when fetch timing is controlled externally via Warm.
+// Returns nil if the URL is not yet in the cache.
+// Must be called from the SDL main thread.
+func (c *ImageCache) Peek(r *Renderer, url string) *sdl.Texture {
+	c.mu.Lock()
+	el, ok := c.items[url]
+	if !ok {
+		c.mu.Unlock()
+		return nil
+	}
+	c.lru.MoveToFront(el)
+	entry := el.Value.(*cacheEntry)
+	if entry.anim != nil {
+		if idx, advanced := entry.anim.advance(time.Now()); advanced {
+			framePix := entry.anim.frames[idx]
+			surface, surfErr := sdl.CreateRGBSurfaceFrom(
+				unsafe.Pointer(&framePix[0]),
+				entry.anim.w, entry.anim.h,
+				32, entry.anim.pitch,
+				0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
+			)
+			if surfErr != nil {
+				log.Printf("image cache: advance frame %d surface: %v", idx, surfErr)
+			} else {
+				newTex, texErr := r.Renderer.CreateTextureFromSurface(surface)
+				surface.Free()
+				runtime.KeepAlive(framePix)
+				if texErr != nil {
+					log.Printf("image cache: advance frame %d texture: %v", idx, texErr)
+				} else {
+					entry.texture.Destroy()
+					entry.texture = newTex
+				}
+			}
+		}
+	}
+	tex := entry.texture
+	c.mu.Unlock()
+	return tex
+}
+
+// Warm schedules a background fetch for url if it is not already cached or
+// in-flight. Returns immediately with no texture. Use alongside Peek to control
+// exactly when fetches are initiated.
+func (c *ImageCache) Warm(url string) {
+	c.mu.Lock()
+	_, cached := c.items[url]
+	_, fetching := c.fetching[url]
+	_, failed := c.failed[url]
+	if !cached && !fetching && !failed {
+		c.fetching[url] = struct{}{}
+		logger.Debug("image cache: warming %s", url)
+		c.mu.Unlock()
+		go c.fetchInBackground(url)
+		return
+	}
+	c.mu.Unlock()
+}
+
 // Failed reports whether the given URL permanently failed to load.
 func (c *ImageCache) Failed(url string) bool {
 	c.mu.Lock()

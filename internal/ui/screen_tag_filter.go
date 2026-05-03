@@ -147,10 +147,11 @@ func (s *TagFilterScreen) processAutoRepeat() {
 		return
 	}
 	now := time.Now()
-	if now.Sub(s.heldSince) < repeatDelay {
+	elapsed := now.Sub(s.heldSince)
+	if elapsed < repeatDelay {
 		return
 	}
-	if now.Sub(s.lastRepeat) < repeatInterval {
+	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
 	if s.heldDir > 0 && s.cursor < s.rowCount()-1 {

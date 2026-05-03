@@ -159,10 +159,11 @@ func (s *DetailScreen) processAutoScroll() {
 		return
 	}
 	now := time.Now()
-	if now.Sub(s.heldSince) < repeatDelay {
+	elapsed := now.Sub(s.heldSince)
+	if elapsed < repeatDelay {
 		return
 	}
-	if now.Sub(s.lastRepeat) < repeatInterval {
+	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
 	s.scrollY += int32(s.heldDir) * s.scrollStep()
