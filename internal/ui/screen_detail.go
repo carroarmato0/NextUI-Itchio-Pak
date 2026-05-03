@@ -489,6 +489,12 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgePill, Label: "L/R", Text: "Screenshots"},
 	}
+	if isPresent {
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "X", Text: "Delete"})
+		if s.cfg.UnifiedNaming {
+			hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "Y", Text: "Title filename"})
+		}
+	}
 	if r.W > narrowScreenW {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
@@ -761,10 +767,11 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
-		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete / unified naming toggle
+		case sdl.CONTROLLER_BUTTON_X: // physical Y = unified naming toggle
 			if s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
 				return s.startUnifiedNamingToggle()
 			}
+		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
