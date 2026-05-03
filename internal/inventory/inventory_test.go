@@ -485,3 +485,76 @@ func TestAdd_PreservesIsFree(t *testing.T) {
 		t.Error("IsFree should be true after Add with IsFree:true")
 	}
 }
+
+func TestDownloadedFile_UnifiedName_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"}, inventory.DownloadedFile{
+		Filename:    "Game Boy ROM.gb",
+		DestPath:    "/roms/Doomslinger Dungeon.gb",
+		UnifiedName: true,
+	})
+	if err := inv.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _ := inventory.Load(path)
+	e, _ := loaded.Lookup("https://dev.itch.io/game")
+	if !e.Files[0].UnifiedName {
+		t.Error("UnifiedName should survive round-trip")
+	}
+}
+
+func TestEntry_UnifiedNamingDisabled_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"}, inventory.DownloadedFile{
+		Filename: "g.gb", DestPath: "/g.gb",
+	})
+	inv.SetUnifiedNamingDisabled("https://dev.itch.io/game", true)
+	if err := inv.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, _ := inventory.Load(path)
+	e, _ := loaded.Lookup("https://dev.itch.io/game")
+	if !e.UnifiedNamingDisabled {
+		t.Error("UnifiedNamingDisabled should survive round-trip")
+	}
+}
+
+func TestUpdateFile_UpdatesDestPathAndUnifiedName(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"}, inventory.DownloadedFile{
+		Filename: "Game Boy ROM.gb", DestPath: "/roms/Game Boy ROM.gb",
+	})
+
+	ok := inv.UpdateFile("https://dev.itch.io/game", "/roms/Game Boy ROM.gb", inventory.DownloadedFile{
+		Filename:    "Game Boy ROM.gb",
+		DestPath:    "/roms/Doomslinger Dungeon.gb",
+		UnifiedName: true,
+	})
+	if !ok {
+		t.Fatal("UpdateFile returned false")
+	}
+	e, _ := inv.Lookup("https://dev.itch.io/game")
+	if e.Files[0].DestPath != "/roms/Doomslinger Dungeon.gb" {
+		t.Errorf("DestPath = %q", e.Files[0].DestPath)
+	}
+	if !e.Files[0].UnifiedName {
+		t.Error("UnifiedName should be true")
+	}
+}
+
+func TestUpdateFile_UnknownDestPath_ReturnsFalse(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"}, inventory.DownloadedFile{
+		Filename: "g.gb", DestPath: "/g.gb",
+	})
+	ok := inv.UpdateFile("https://dev.itch.io/game", "/nonexistent.gb", inventory.DownloadedFile{})
+	if ok {
+		t.Error("UpdateFile should return false for unknown dest path")
+	}
+}

@@ -16,6 +16,7 @@ type DownloadedFile struct {
 	Filename     string    `json:"filename"`
 	DestPath     string    `json:"dest_path"`
 	DownloadedAt time.Time `json:"downloaded_at"`
+	UnifiedName  bool      `json:"unified_name,omitempty"`
 }
 
 type UpstreamFile struct {
@@ -37,6 +38,7 @@ type Entry struct {
 	UpdateDismissedAt  time.Time      `json:"update_dismissed_at,omitempty"`
 	GameRemovedAt      time.Time      `json:"game_removed_at,omitempty"`
 	RemovalDismissedAt time.Time      `json:"removal_dismissed_at,omitempty"`
+	UnifiedNamingDisabled bool        `json:"unified_naming_disabled,omitempty"`
 }
 
 type Inventory struct {
@@ -331,4 +333,33 @@ func CoverArtPath(coverURL, romDestPath string) string {
 	base := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
 	dir := filepath.Dir(romDestPath)
 	return filepath.Join(dir, ".media", base+".png")
+}
+
+// SetUnifiedNamingDisabled sets the per-game unified-naming opt-out flag.
+func (inv *Inventory) SetUnifiedNamingDisabled(gameURL string, disabled bool) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return
+	}
+	e.UnifiedNamingDisabled = disabled
+}
+
+// UpdateFile replaces the DownloadedFile whose DestPath matches oldDestPath.
+// Returns false if the game URL or file is not found.
+func (inv *Inventory) UpdateFile(gameURL, oldDestPath string, file DownloadedFile) bool {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return false
+	}
+	for i, f := range e.Files {
+		if f.DestPath == oldDestPath {
+			e.Files[i] = file
+			return true
+		}
+	}
+	return false
 }
