@@ -424,6 +424,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			r.SetClipRect(0, contentTop, r.W, contentH)
 
 			y += cardH + 10
+
+			if s.cfg.UnifiedNaming {
+				toggleLabel := "Disable title filename"
+				if entry.UnifiedNamingDisabled {
+					toggleLabel = "Enable title filename"
+				}
+				drawActionRow("Y", toggleLabel, mt[0], mt[1], mt[2], ac[0], ac[1], ac[2], 0)
+			}
 		}
 	} else {
 		if s.game.IsFree {
@@ -710,6 +718,10 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_x:
 			return s.triggerDelete()
+		case sdl.K_y:
+			if s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
+				return s.startUnifiedNamingToggle()
+			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 
@@ -749,7 +761,10 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
-		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
+		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete / unified naming toggle
+			if s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
+				return s.startUnifiedNamingToggle()
+			}
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
@@ -770,6 +785,18 @@ func (s *DetailScreen) startDownload() Screen {
 	return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.inv, s.inventoryPath, s)
 }
 
+func (s *DetailScreen) startUnifiedNamingToggle() Screen {
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok || len(entry.Files) == 0 {
+		return s
+	}
+	newDisabled := !entry.UnifiedNamingDisabled
+	s.inv.SetUnifiedNamingDisabled(s.game.URL, newDisabled)
+	formats := inventory.ReadMigrateFormats(inventory.NXSettingsPath)
+	return NewMigrateFlowScreen(s.inv, s.inventoryPath, s.game.URL, s.game.Title,
+		entry.Files[0], !newDisabled, formats, s)
+}
+
 func (s *DetailScreen) triggerDelete() Screen {
 	entry, ok := s.inv.Lookup(s.game.URL)
 	if !ok {
@@ -779,7 +806,7 @@ func (s *DetailScreen) triggerDelete() Screen {
 		return s
 	}
 	if len(entry.Files) > 1 {
-		return NewManageDownloadsScreen(s.inv, s.inventoryPath, s.game.URL, s)
+		return NewManageDownloadsScreen(s.inv, s.inventoryPath, s.game.URL, s.cfg, s)
 	}
 	var bodyLines []string
 	if len(entry.Files) == 1 {

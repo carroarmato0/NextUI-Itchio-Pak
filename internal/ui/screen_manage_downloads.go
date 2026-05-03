@@ -10,6 +10,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -22,14 +23,16 @@ type ManageDownloadsScreen struct {
 	confirmActive  bool
 	confirmFileIdx int // -1 = delete all, otherwise index into entry.Files
 
+	cfg  *settings.Config
 	prev Screen
 }
 
-func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, gameURL string, prev Screen) *ManageDownloadsScreen {
+func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, gameURL string, cfg *settings.Config, prev Screen) *ManageDownloadsScreen {
 	return &ManageDownloadsScreen{
 		inv:            inv,
 		inventoryPath:  inventoryPath,
 		gameURL:        gameURL,
+		cfg:            cfg,
 		prev:           prev,
 		confirmFileIdx: -1,
 	}
@@ -89,6 +92,31 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 		r.DrawPill(4, deleteAllY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 	}
 	r.DrawText("Delete all", margin, deleteAllY, 200, 80, 80)
+
+	sep2Y := deleteAllY + rowH + 4
+	r.DrawRect(margin, sep2Y, r.W-margin*2, 1, 50, 50, 50)
+	toggleY := sep2Y + 8
+	toggleIdx := len(entry.Files) + 1
+	unifiedDisabled := entry.UnifiedNamingDisabled
+	toggleLabel := "Use game title as filename"
+	toggleVal := "ON"
+	if unifiedDisabled {
+		toggleVal = "OFF"
+	}
+	if s.cursor == toggleIdx && !s.confirmActive {
+		r.DrawPill(4, toggleY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		r.DrawText(toggleLabel, margin, toggleY, at[0], at[1], at[2])
+		tw, _ := r.TextSize(toggleLabel)
+		r.DrawText(toggleVal, margin+tw+16, toggleY, at[0], at[1], at[2])
+	} else {
+		textColor := [3]uint8{lt[0], lt[1], lt[2]}
+		if !s.cfg.UnifiedNaming {
+			textColor = [3]uint8{80, 80, 80}
+		}
+		r.DrawText(toggleLabel, margin, toggleY, textColor[0], textColor[1], textColor[2])
+		tw, _ := r.TextSize(toggleLabel)
+		r.DrawText(toggleVal, margin+tw+16, toggleY, textColor[0], textColor[1], textColor[2])
+	}
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
@@ -154,7 +182,7 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 	if !ok {
 		return s.prev
 	}
-	rowCount := len(entry.Files) + 1
+	rowCount := len(entry.Files) + 2 // +1 delete-all, +1 unified-naming toggle
 
 	if s.confirmActive {
 		switch ev := e.(type) {
@@ -215,10 +243,15 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				s.cursor--
 			}
 		case sdl.K_RETURN:
-			s.confirmActive = true
 			if s.cursor == len(entry.Files) {
+				s.confirmActive = true
 				s.confirmFileIdx = -1
+			} else if s.cursor == len(entry.Files)+1 {
+				if s.cfg.UnifiedNaming {
+					return s.startUnifiedNamingMigration(entry)
+				}
 			} else {
+				s.confirmActive = true
 				s.confirmFileIdx = s.cursor
 			}
 		case sdl.K_ESCAPE:
@@ -238,10 +271,15 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				s.cursor--
 			}
 		case sdl.CONTROLLER_BUTTON_B: // physical A = select
-			s.confirmActive = true
 			if s.cursor == len(entry.Files) {
+				s.confirmActive = true
 				s.confirmFileIdx = -1
+			} else if s.cursor == len(entry.Files)+1 {
+				if s.cfg.UnifiedNaming {
+					return s.startUnifiedNamingMigration(entry)
+				}
 			} else {
+				s.confirmActive = true
 				s.confirmFileIdx = s.cursor
 			}
 		case sdl.CONTROLLER_BUTTON_A: // physical B = back
@@ -302,4 +340,15 @@ func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool
 		logger.Warn("inventory: save after delete failed: %v", err)
 	}
 	return allGone, remaining
+}
+
+func (s *ManageDownloadsScreen) startUnifiedNamingMigration(entry inventory.Entry) Screen {
+	if len(entry.Files) == 0 {
+		return s
+	}
+	newDisabled := !entry.UnifiedNamingDisabled
+	s.inv.SetUnifiedNamingDisabled(s.gameURL, newDisabled)
+	formats := inventory.ReadMigrateFormats(inventory.NXSettingsPath)
+	return NewMigrateFlowScreen(s.inv, s.inventoryPath, s.gameURL, entry.Title,
+		entry.Files[0], !newDisabled, formats, s)
 }
