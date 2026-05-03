@@ -66,7 +66,7 @@ The selected sort mode is saved automatically and restored on the next launch.
 - Scrollable description (plain text, converted from the game's HTML)
 - QR code for every game — scan to open the itch.io page in a browser
 - Download button (A) — disabled for paid games when no API key is set
-- Downloaded files are listed with their on-device paths; press **Y** to manage or delete them
+- Downloaded files are listed with their on-device paths; press **Y** to manage, delete, or toggle title-based filename for the game
 - Game titles and descriptions in non-Latin scripts render correctly — the bundled font set covers Arabic, Cyrillic, Devanagari, Hebrew, Japanese/CJK, and Thai automatically, with no configuration required
 
 ### Downloading
@@ -87,6 +87,16 @@ The selected sort mode is saved automatically and restored on the next launch.
   - Single-file games show a confirmation prompt with the filename and path
   - Multi-file games open a **Manage Downloads** screen where you can delete files individually or all at once with **Delete all**
 - After deletion the `[DL]` badge is removed and the Download button becomes available again
+
+### Unified naming
+When **Use game title as filename** is enabled (the default), downloaded ROMs are automatically renamed to match the game's title on itch.io. For example, a file named `gb-studio-export.gb` becomes `Doomslinger Dungeon.gb`.
+
+- **Global toggle** — in Settings, **Use game title as filename** turns the feature on or off for all future downloads
+- **Per-game toggle** — press **Y** from a game's detail screen to enable or disable title-based naming for that specific game; this option appears only when a download exists and the global toggle is on
+  - Multi-file games have a **Use game title as filename** toggle row at the bottom of the **Manage Downloads** screen
+- When toggling a game that already has a ROM on device, a guided flow offers to rename the existing file and — if save data is detected — rename the matching SRAM save and save states at the same time
+  - Saves and states can be renamed or skipped independently; skipped files are left at their original paths and will need to be renamed manually before the emulator can load them
+- If two different games produce the same sanitised filename, a ` (2)` suffix is appended automatically to avoid collisions
 
 ### Content filters
 - **Adult Content**, **Heavy Themes**, and **Substance Use** are **on by default**.
@@ -115,6 +125,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 - **API Key** — shows `FOUND` (green) when an itch.io API key is configured, enabling paid game downloads
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
+- **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Refresh Game List** — re-fetches the full game list from itch.io with a live progress screen showing how many games have been retrieved; the cache is updated on completion
@@ -134,7 +145,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 | L / R shoulder | Previous/next screenshot in detail view |
 | A | Select / confirm / download |
 | B | Back |
-| Y | Manage / delete downloaded ROMs (game detail screen) |
+| Y | Manage / delete downloaded ROMs, or toggle title-based filename (game detail screen) |
 | X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
 | Select | Cycle sort mode (game list) |
 | Start | Open Settings from any screen |
@@ -385,6 +396,8 @@ in the Settings screen on the device.
 - **Free download scraping is brittle** — itch.io can change its page structure
   without notice, which would break the free download flow. The paid API path
   is more stable.
+
+- **Unified naming and save format changes** — the save/state migration flow reads your current `saveFormat` and `stateFormat` settings from `minuisettings.txt` at the time of migration. If you later change the save format in NextUI's settings, existing saves and states will not be automatically re-migrated to the new naming scheme. You would need to rename them manually or re-run the per-game toggle to trigger the flow again.
 
 ---
 
