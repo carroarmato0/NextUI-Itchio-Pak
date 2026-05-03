@@ -193,16 +193,16 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 			r.DrawSmallTextCentered("Overwrite it?", 0, mid+smallFH+4, r.W, ht[0], ht[1], ht[2])
 			ftrY := r.DrawFooterBar(footerH)
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "Overwrite"},
-				{Kind: renderer.BadgeCircle, Label: "A", Text: "Cancel"},
+				{Kind: renderer.BadgeCircle, Label: "A", Text: "Overwrite"},
+				{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
 			}, ftrY)
 		} else {
 			r.DrawSmallTextCentered("Rename it to match the new ROM name?", 0, mid, r.W, ht[0], ht[1], ht[2])
 			r.DrawSmallTextCentered("If you skip, your save will not load until renamed manually.", 0, mid+smallFH+4, r.W, 120, 120, 120)
 			ftrY := r.DrawFooterBar(footerH)
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "Rename save"},
-				{Kind: renderer.BadgeCircle, Label: "A", Text: "Skip"},
+				{Kind: renderer.BadgeCircle, Label: "A", Text: "Rename save"},
+				{Kind: renderer.BadgeCircle, Label: "B", Text: "Skip"},
 			}, ftrY)
 		}
 
@@ -213,8 +213,8 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 		r.DrawSmallTextCentered("If you skip, they will not load until renamed manually.", 0, mid+smallFH+4, r.W, 120, 120, 120)
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgeCircle, Label: "B", Text: "Rename states"},
-			{Kind: renderer.BadgeCircle, Label: "A", Text: "Skip"},
+			{Kind: renderer.BadgeCircle, Label: "A", Text: "Rename states"},
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "Skip"},
 		}, ftrY)
 
 	case mfsRunning:
