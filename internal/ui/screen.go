@@ -11,9 +11,13 @@ import (
 // Draw renders the current frame.
 // HandleEvent processes one SDL event and returns the next screen.
 // Returning nil exits the application. Returning self means no transition.
+// NeedsRedraw returns true when the screen has active time-based state
+// (auto-repeat, scroll animation, progress indicator) that requires the
+// render loop to keep calling Draw() without an incoming SDL event.
 type Screen interface {
 	Draw(r *renderer.Renderer)
 	HandleEvent(e sdl.Event) Screen
+	NeedsRedraw() bool
 }
 
 // BusyChecker is implemented by screens that must block safe power-off while

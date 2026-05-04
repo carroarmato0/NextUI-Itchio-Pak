@@ -18,6 +18,11 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+const (
+	pathScrollDelay = time.Second
+	pathScrollSpeed = int32(50)
+)
+
 type modalKind int
 
 const (
@@ -171,6 +176,16 @@ func (s *DetailScreen) processAutoScroll() {
 	s.lastRepeat = now
 }
 
+func (s *DetailScreen) NeedsRedraw() bool {
+	if s.heldDir != 0 {
+		return true
+	}
+	// Resume rendering 500ms before pathScrollDelay expires so the first
+	// animation frame is not missed when the cursor has been stationary.
+	return !s.pathScrollAt.IsZero() &&
+		time.Since(s.pathScrollAt) > pathScrollDelay/2
+}
+
 func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// Draw the modal overlay (if active) and call Present exactly once,
 	// regardless of which branch below renders the underlying content.
@@ -184,8 +199,6 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	s.processAutoScroll()
 
 	// Advance horizontal scroll for the on-device file path (1s pause then 50px/s).
-	const pathScrollDelay = time.Second
-	const pathScrollSpeed = int32(50)
 	if !s.pathScrollAt.IsZero() {
 		elapsed := time.Since(s.pathScrollAt)
 		if elapsed > pathScrollDelay {

@@ -188,13 +188,16 @@ func (c *ImageCache) Failed(url string) bool {
 
 // ProcessPending uploads any decoded images that background goroutines have
 // finished fetching. Must be called from the SDL main thread once per frame.
-func (c *ImageCache) ProcessPending(r *Renderer) {
+// Returns true if any images were uploaded.
+func (c *ImageCache) ProcessPending(r *Renderer) bool {
+	uploaded := false
 	for {
 		select {
 		case raw := <-c.readyCh:
 			c.uploadTexture(r, raw)
+			uploaded = true
 		default:
-			return
+			return uploaded
 		}
 	}
 }

@@ -36,6 +36,8 @@ func NewROMPickerScreen(client *itchio.Client, cfg *settings.Config, cfgPath str
 	}
 }
 
+func (s *ROMPickerScreen) NeedsRedraw() bool { return false }
+
 func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])

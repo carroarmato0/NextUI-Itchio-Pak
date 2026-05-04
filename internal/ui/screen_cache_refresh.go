@@ -84,6 +84,10 @@ func NewCacheRefreshScreen(
 	return s
 }
 
+func (s *CacheRefreshScreen) NeedsRedraw() bool {
+	return true
+}
+
 func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])

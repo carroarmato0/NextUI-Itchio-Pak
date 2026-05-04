@@ -124,6 +124,10 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 	return s
 }
 
+func (s *DownloadScreen) NeedsRedraw() bool {
+	return true
+}
+
 func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
@@ -159,7 +163,9 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 			r.DrawText(fmt.Sprintf("%d%%  (%s / %s)", dl*100/tot, humanBytes(dl), humanBytes(tot)),
 				40, mid+18, mt[0], mt[1], mt[2])
 		} else {
-			r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
+			if dl > 0 {
+				r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
+			}
 			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, mt[0], mt[1], mt[2])
 		}
 

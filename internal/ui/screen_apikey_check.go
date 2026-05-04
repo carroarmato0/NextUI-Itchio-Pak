@@ -49,6 +49,8 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen) 
 	return s
 }
 
+func (s *KeyTestScreen) NeedsRedraw() bool { return false }
+
 func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])

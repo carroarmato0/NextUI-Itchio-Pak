@@ -140,6 +140,10 @@ func (s *SettingsScreen) moveCursor(dir int) {
 	}
 }
 
+func (s *SettingsScreen) NeedsRedraw() bool {
+	return s.heldDir != 0
+}
+
 func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
 	bg := r.Theme.Background
@@ -187,8 +191,32 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	items = append(items, menuItem{sItemContentModeration, "Content Moderation >"})
 	items = append(items, menuItem{sItemAbout, "About"})
 
+	// Find where the cursor sits in the rendered items slice (theme row may be absent).
+	cursorIdx := 0
+	for j, item := range items {
+		if item.id == s.cursor {
+			cursorIdx = j
+			break
+		}
+	}
+
+	visibleRows := int((r.H - headerH - 10 - footerH) / rowH)
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	scrollOffset := 0
+	if cursorIdx >= visibleRows {
+		scrollOffset = cursorIdx - visibleRows + 1
+	}
+
 	for i, item := range items {
-		y := headerH + 10 + int32(i)*rowH
+		if i < scrollOffset {
+			continue
+		}
+		y := headerH + 10 + int32(i-scrollOffset)*rowH
+		if y >= r.H-footerH {
+			break
+		}
 		isSelected := item.id == s.cursor
 		if isSelected {
 			ac := r.Theme.Accent

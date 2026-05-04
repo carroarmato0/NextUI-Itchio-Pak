@@ -95,6 +95,8 @@ func NewFormatPickerScreen(
 	}
 }
 
+func (s *FormatPickerScreen) NeedsRedraw() bool { return false }
+
 func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
