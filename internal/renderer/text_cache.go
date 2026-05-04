@@ -10,6 +10,15 @@ import (
 
 const maxTextCacheEntries = 256
 
+// sizeKey is the cache key for text measurement results (SizeUTF8 CGo calls).
+// bold is included because the primary font's bold style changes measurements.
+type sizeKey struct {
+	text   string
+	fontID uint8
+	small  bool
+	bold   bool
+}
+
 type textRunKey struct {
 	text   string
 	fontID uint8

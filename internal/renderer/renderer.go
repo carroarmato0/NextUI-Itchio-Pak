@@ -47,6 +47,7 @@ type Renderer struct {
 	W, H          int32
 	Theme         theme.Theme
 	texts         *textCache
+	sizes         map[sizeKey][2]int32 // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -96,6 +97,7 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		primaryRanges: buildGlyphRanges("assets/font.ttf"),
 		Theme:         th,
 		texts:         newTextCache(maxTextCacheEntries),
+		sizes:         make(map[sizeKey][2]int32),
 	}
 	if r.primaryRanges == nil {
 		logger.Warn("renderer: could not parse primary font cmap; fallback fonts disabled")
@@ -254,15 +256,35 @@ func (r *Renderer) DrawText(text string, x, y int32, red, green, blue uint8) err
 	return nil
 }
 
-// TextSize returns the pixel width and height of text without drawing it.
-func (r *Renderer) TextSize(text string) (int32, int32) {
+// textSizeImpl measures text width and height, caching SizeUTF8 results per run
+// to avoid redundant CGo crossings when the same strings are measured every frame.
+func (r *Renderer) textSizeImpl(text string, small, bold bool) (int32, int32) {
+	if bold {
+		r.Font.SetStyle(ttf.STYLE_BOLD)
+		defer r.Font.SetStyle(ttf.STYLE_NORMAL)
+	}
 	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
 	var totalW, maxH int32
 	for _, run := range runs {
-		w, h, err := r.mainFont(run.fontIdx).SizeUTF8(run.text)
+		key := sizeKey{text: run.text, fontID: uint8(run.fontIdx), small: small, bold: bold}
+		if v, ok := r.sizes[key]; ok {
+			totalW += v[0]
+			if v[1] > maxH {
+				maxH = v[1]
+			}
+			continue
+		}
+		var font *ttf.Font
+		if small {
+			font = r.smallFont(run.fontIdx)
+		} else {
+			font = r.mainFont(run.fontIdx)
+		}
+		w, h, err := font.SizeUTF8(run.text)
 		if err != nil {
 			continue
 		}
+		r.sizes[key] = [2]int32{int32(w), int32(h)}
 		totalW += int32(w)
 		if int32(h) > maxH {
 			maxH = int32(h)
@@ -271,6 +293,9 @@ func (r *Renderer) TextSize(text string) (int32, int32) {
 	return totalW, maxH
 }
 
+// TextSize returns the pixel width and height of text without drawing it.
+func (r *Renderer) TextSize(text string) (int32, int32) { return r.textSizeImpl(text, false, false) }
+
 // DrawBoldText renders text using SDL_ttf bold style synthesis.
 func (r *Renderer) DrawBoldText(text string, x, y int32, red, green, blue uint8) error {
 	r.drawRuns(text, x, y, sdl.Color{R: red, G: green, B: blue, A: 255}, false, true)
@@ -278,11 +303,7 @@ func (r *Renderer) DrawBoldText(text string, x, y int32, red, green, blue uint8)
 }
 
 // BoldTextSize returns the pixel width and height of text measured in bold style.
-func (r *Renderer) BoldTextSize(text string) (int32, int32) {
-	r.Font.SetStyle(ttf.STYLE_BOLD)
-	defer r.Font.SetStyle(ttf.STYLE_NORMAL)
-	return r.TextSize(text)
-}
+func (r *Renderer) BoldTextSize(text string) (int32, int32) { return r.textSizeImpl(text, false, true) }
 
 // DrawTextCentered draws text horizontally centered within a region [x, x+w].
 func (r *Renderer) DrawTextCentered(text string, x, y, w int32, red, green, blue uint8) {
@@ -377,19 +398,7 @@ func (r *Renderer) DrawSmallText(text string, x, y int32, red, green, blue uint8
 
 // SmallTextSize returns the pixel width and height of text in the small font.
 func (r *Renderer) SmallTextSize(text string) (int32, int32) {
-	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
-	var totalW, maxH int32
-	for _, run := range runs {
-		w, h, err := r.smallFont(run.fontIdx).SizeUTF8(run.text)
-		if err != nil {
-			continue
-		}
-		totalW += int32(w)
-		if int32(h) > maxH {
-			maxH = int32(h)
-		}
-	}
-	return totalW, maxH
+	return r.textSizeImpl(text, true, false)
 }
 
 // DrawHeaderBar draws the header bar using theme colors and returns the
@@ -445,17 +454,26 @@ func (r *Renderer) DrawCircleBadge(cx, cy, d int32, red, green, blue uint8) {
 	drawFilledCircle(r.Renderer, cx, cy, d/2, red, green, blue)
 }
 
+// maxCircleRadius is the largest radius drawFilledCircle will receive.
+// Devices range from 640×480 to 1280×720; footer badges are h/32 ≈ 15–22 px radius.
+// 128 gives a safe margin without wasting stack space.
+const maxCircleRadius = 128
+
 // drawFilledCircle draws a filled circle using a single FillRects call.
-// Batching all scanlines into one CGo round-trip replaces the per-row DrawLine loop.
+// Uses a fixed-size stack buffer to avoid the heap allocation that make() caused.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
+	if radius > maxCircleRadius {
+		radius = maxCircleRadius
+	}
 	ren.SetDrawColor(red, green, blue, 255)
-	rects := make([]sdl.Rect, radius*2+1)
-	for i := range rects {
+	var buf [maxCircleRadius*2 + 1]sdl.Rect
+	n := int(radius*2 + 1)
+	for i := 0; i < n; i++ {
 		dy := int32(i) - radius
 		dx := int32(math.Round(math.Sqrt(float64(radius*radius - dy*dy))))
-		rects[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
+		buf[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
 	}
-	ren.FillRects(rects)
+	ren.FillRects(buf[:n])
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume

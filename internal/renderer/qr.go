@@ -3,34 +3,30 @@
 package renderer
 
 import (
-	"bytes"
 	"fmt"
 	"image"
-	"image/png"
+	"runtime"
 	"unsafe"
 
 	"github.com/skip2/go-qrcode"
 	"github.com/veandco/go-sdl2/sdl"
-	"golang.org/x/image/draw"
+	stdraw "image/draw"
 )
 
-// QRTexture generates a QR code PNG for the given URL and returns an SDL2 texture.
+// QRTexture generates a QR code for the given URL and returns an SDL2 texture.
 // size is the pixel dimensions of the QR code (e.g. 128).
 // The caller must call texture.Destroy() when done.
+// Uses qrcode.Image() directly to avoid the encode→PNG→decode round-trip.
 func (r *Renderer) QRTexture(url string, size int) (*sdl.Texture, error) {
-	pngBytes, err := qrcode.Encode(url, qrcode.Medium, size)
+	qr, err := qrcode.New(url, qrcode.Medium)
 	if err != nil {
 		return nil, fmt.Errorf("qr encode: %w", err)
 	}
-
-	img, err := png.Decode(bytes.NewReader(pngBytes))
-	if err != nil {
-		return nil, fmt.Errorf("qr png decode: %w", err)
-	}
+	img := qr.Image(size)
 
 	bounds := img.Bounds()
 	rgba := image.NewRGBA(bounds)
-	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+	stdraw.Draw(rgba, bounds, img, bounds.Min, stdraw.Src)
 
 	surface, err := sdl.CreateRGBSurfaceFrom(
 		unsafe.Pointer(&rgba.Pix[0]),
@@ -41,9 +37,9 @@ func (r *Renderer) QRTexture(url string, size int) (*sdl.Texture, error) {
 	if err != nil {
 		return nil, fmt.Errorf("qr surface: %w", err)
 	}
-	defer surface.Free()
-
 	tex, err := r.Renderer.CreateTextureFromSurface(surface)
+	surface.Free()
+	runtime.KeepAlive(rgba)
 	if err != nil {
 		return nil, fmt.Errorf("qr texture: %w", err)
 	}
