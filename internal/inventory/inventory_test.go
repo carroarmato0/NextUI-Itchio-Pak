@@ -163,6 +163,33 @@ func TestIsPresent_EntryWithFiles(t *testing.T) {
 	}
 }
 
+func TestVerifyAndClean_SetsVerifiedAtWhenAllFilesExist(t *testing.T) {
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.gb")
+	if err := os.WriteFile(romPath, []byte("rom"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "inventory.json")
+	before := time.Now()
+
+	inv := &inventory.Inventory{Entries: map[string]*inventory.Entry{
+		"https://dev.itch.io/game": {
+			GameURL: "https://dev.itch.io/game",
+			Title:   "Game",
+			Files:   []inventory.DownloadedFile{{Filename: "game.gb", DestPath: romPath}},
+		},
+	}}
+	inv.VerifyAndClean(path)
+
+	e, ok := inv.Lookup("https://dev.itch.io/game")
+	if !ok {
+		t.Fatal("entry should still exist")
+	}
+	if !e.VerifiedAt.After(before) {
+		t.Errorf("VerifiedAt = %v, want a time after %v", e.VerifiedAt, before)
+	}
+}
+
 func TestVerifyAndClean_KeepsExistingFiles(t *testing.T) {
 	dir := t.TempDir()
 	romPath := filepath.Join(dir, "game.gb")

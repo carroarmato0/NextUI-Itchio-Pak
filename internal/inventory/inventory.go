@@ -179,6 +179,7 @@ func (inv *Inventory) RemoveFile(gameURL, destPath string) bool {
 // any changes were made, and returns the count of removed DownloadedFile rows.
 func (inv *Inventory) VerifyAndClean(path string) int {
 	removed := 0
+	changed := false
 	inv.mu.Lock()
 	for gameURL, entry := range inv.Entries {
 		var kept []DownloadedFile
@@ -193,15 +194,16 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 		if len(kept) == 0 {
 			logger.Debug("inventory: removing empty entry game=%q", entry.Title)
 			delete(inv.Entries, gameURL)
-		} else if len(kept) < len(entry.Files) {
+			changed = true
+		} else {
 			entry.Files = kept
 			entry.VerifiedAt = time.Now()
+			changed = true
 		}
-		// No else — VerifiedAt is only updated when files are actually removed
 	}
 	inv.mu.Unlock()
 	logger.Info("inventory: cleaned %d stale file(s)", removed)
-	if removed > 0 {
+	if changed {
 		if err := inv.Save(path); err != nil {
 			logger.Error("inventory: failed to save after clean: %v", err)
 		}

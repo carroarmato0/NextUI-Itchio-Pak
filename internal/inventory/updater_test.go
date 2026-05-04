@@ -263,6 +263,71 @@ func TestUpdateService_DiffPrunesVanishedFile(t *testing.T) {
 	}
 }
 
+func TestUpdateService_MarksRemovedWhenDownloadedFileVanishesFromStore(t *testing.T) {
+	// Upstream now only has game-v2.gb — the originally downloaded game.gb is gone.
+	srv := freeGameServer(t, http.StatusOK, []string{"game-v2.gb"})
+	defer srv.Close()
+
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.gb")
+	os.WriteFile(romPath, []byte("ROM"), 0644)
+	artPath := inventory.CoverArtPath(srv.URL+"/cover.png", romPath)
+	os.MkdirAll(filepath.Dir(artPath), 0755)
+	os.WriteFile(artPath, minimalPNG(), 0644)
+
+	invPath := filepath.Join(dir, "inventory.json")
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add(srv.URL+"/game",
+		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
+		inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
+	inv.Save(invPath)
+
+	client := itchio.NewClientWithBase(srv.URL)
+	done := make(chan struct{})
+	svc := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc.Start(func() { close(done) })
+	<-done
+	svc.Stop()
+
+	if !inv.IsRemoved(srv.URL + "/game") {
+		t.Error("IsRemoved: want true when downloaded file is no longer available upstream")
+	}
+}
+
+func TestUpdateService_ClearsRemovedWhenDownloadedFileReappearsInStore(t *testing.T) {
+	// Upstream has game.gb again after it was previously removed.
+	srv := freeGameServer(t, http.StatusOK, []string{"game.gb"})
+	defer srv.Close()
+
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.gb")
+	os.WriteFile(romPath, []byte("ROM"), 0644)
+	artPath := inventory.CoverArtPath(srv.URL+"/cover.png", romPath)
+	os.MkdirAll(filepath.Dir(artPath), 0755)
+	os.WriteFile(artPath, minimalPNG(), 0644)
+
+	invPath := filepath.Join(dir, "inventory.json")
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	gameURL := srv.URL + "/game"
+	inv.Add(gameURL,
+		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
+		inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
+	// Seed a prior removal state.
+	inv.MarkRemoved(gameURL)
+	inv.Save(invPath)
+
+	client := itchio.NewClientWithBase(srv.URL)
+	done := make(chan struct{})
+	svc := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc.Start(func() { close(done) })
+	<-done
+	svc.Stop()
+
+	if inv.IsRemoved(gameURL) {
+		t.Error("IsRemoved: want false when downloaded file has reappeared upstream")
+	}
+}
+
 func TestUpdateService_DismissedUpdateDoesNotReappearOnRestart(t *testing.T) {
 	// Upstream has two files; user only downloaded one.
 	srv := freeGameServer(t, http.StatusOK, []string{"game.gb", "game-v2.gb"})

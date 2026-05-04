@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -161,7 +162,7 @@ func (s *UpdateService) checkEntry(gameURL string) []UpstreamFile {
 
 	// 2. Upstream check.
 	if isFree {
-		return s.checkFreeGame(gameURL)
+		return s.checkFreeGame(gameURL, files)
 	}
 	s.checkPaidGame(gameURL)
 	return nil
@@ -178,7 +179,7 @@ func isGameRemoved(err error) bool {
 
 // checkFreeGame fetches the current upload list and returns it for the caller
 // to apply via SetUpstreamFiles (batched at end-of-check). Returns nil on error.
-func (s *UpdateService) checkFreeGame(gameURL string) []UpstreamFile {
+func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []DownloadedFile) []UpstreamFile {
 	uploads, err := s.client.FetchUploads(gameURL)
 	if err != nil {
 		if isGameRemoved(err) {
@@ -189,19 +190,35 @@ func (s *UpdateService) checkFreeGame(gameURL string) []UpstreamFile {
 		}
 		return nil
 	}
-	// Game is reachable — clear any stale removal state.
-	s.inv.MarkReachable(gameURL)
 
-	files := make([]UpstreamFile, 0, len(uploads))
+	upstreamFiles := make([]UpstreamFile, 0, len(uploads))
+	upstreamNames := make(map[string]bool, len(uploads)*2)
 	for _, u := range uploads {
-		files = append(files, UpstreamFile{
+		upstreamFiles = append(upstreamFiles, UpstreamFile{
 			Filename: u.Filename,
 			UploadID: u.UploadID,
 			SeenAt:   time.Now(), // preserved for known files by SetUpstreamFiles
 		})
+		upstreamNames[u.Filename] = true
+		if stem := strings.TrimSuffix(u.Filename, filepath.Ext(u.Filename)); stem != u.Filename {
+			upstreamNames[stem] = true
+		}
 	}
-	logger.Debug("update-svc: %s — %d upstream file(s) recorded", gameURL, len(files))
-	return files
+
+	// Warn if any downloaded file is no longer offered upstream.
+	for _, f := range downloadedFiles {
+		stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename))
+		if !upstreamNames[f.Filename] && !upstreamNames[stem] {
+			s.inv.MarkRemoved(gameURL)
+			logger.Warn("update-svc: downloaded file %q no longer available upstream for %s", f.Filename, gameURL)
+			return upstreamFiles
+		}
+	}
+
+	// All downloaded files still available — clear any stale removal state.
+	s.inv.MarkReachable(gameURL)
+	logger.Debug("update-svc: %s — %d upstream file(s) recorded", gameURL, len(upstreamFiles))
+	return upstreamFiles
 }
 
 func (s *UpdateService) checkPaidGame(gameURL string) {
