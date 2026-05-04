@@ -49,7 +49,14 @@ type ImageCache struct {
 	client   *http.Client
 	readyCh  chan rawImage      // pixel data ready for main-thread texture upload
 	sem      chan struct{}      // concurrency limiter for background fetches
+	notify   func()            // optional: called when an image lands in readyCh
 }
+
+// SetNotify registers a callback invoked once each time a decoded image is
+// queued for upload. Use it to push an SDL UserEvent so the main loop can
+// block in WaitEvent() instead of polling with a short timeout.
+// Safe to call before any fetches start; not safe to change while fetches run.
+func (c *ImageCache) SetNotify(fn func()) { c.notify = fn }
 
 const maxConcurrentFetches = 2
 
@@ -278,6 +285,9 @@ func (c *ImageCache) fetchInBackground(url string) {
 
 	if err == nil {
 		c.readyCh <- raw
+		if c.notify != nil {
+			c.notify()
+		}
 	}
 }
 

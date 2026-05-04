@@ -107,6 +107,9 @@ func runSDL() {
 
 	cache := renderer.NewImageCache(50)
 	defer cache.Clear()
+	cache.SetNotify(func() {
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	})
 
 	client := itchio.NewClient()
 
@@ -164,11 +167,20 @@ loop:
 		// Returns true if at least one texture was uploaded this call.
 		newImages := cache.ProcessPending(r)
 
-		// Block until an SDL event arrives or 16ms elapses.
-		// When the screen is idle (NeedsRedraw false, no events, no new images)
-		// this keeps the loop sleeping at near-zero CPU.
+		// Block until an SDL event arrives.
+		// Use an infinite wait when the screen is idle so the loop consumes no
+		// CPU between inputs. Fall back to a 16ms timeout only when the screen
+		// requests continuous redraws (download progress, loading spinners etc.)
+		// — in that case background goroutines also push UserEvents when done,
+		// and the image cache pushes one whenever a cover arrives, so we never
+		// miss a frame that matters.
 		gotEvent := false
-		e := sdl.WaitEventTimeout(16)
+		var e sdl.Event
+		if current.NeedsRedraw() {
+			e = sdl.WaitEventTimeout(16)
+		} else {
+			e = sdl.WaitEvent()
+		}
 		for e != nil {
 			gotEvent = true
 			if pendingQuit {
