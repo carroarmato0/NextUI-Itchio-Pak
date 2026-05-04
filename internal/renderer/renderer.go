@@ -445,13 +445,17 @@ func (r *Renderer) DrawCircleBadge(cx, cy, d int32, red, green, blue uint8) {
 	drawFilledCircle(r.Renderer, cx, cy, d/2, red, green, blue)
 }
 
-// drawFilledCircle draws a filled circle using a midpoint scanline algorithm.
+// drawFilledCircle draws a filled circle using a single FillRects call.
+// Batching all scanlines into one CGo round-trip replaces the per-row DrawLine loop.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	ren.SetDrawColor(red, green, blue, 255)
-	for dy := -radius; dy <= radius; dy++ {
+	rects := make([]sdl.Rect, radius*2+1)
+	for i := range rects {
+		dy := int32(i) - radius
 		dx := int32(math.Round(math.Sqrt(float64(radius*radius - dy*dy))))
-		ren.DrawLine(cx-dx, cy+dy, cx+dx, cy+dy)
+		rects[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
 	}
+	ren.FillRects(rects)
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume
