@@ -53,6 +53,7 @@ type DetailScreen struct {
 	viewportH     int32 // visible content area height (set during Draw)
 	advisoryTriggered bool // true when a filter match is found after loading
 	modal         detailModal
+	qrTex         *sdl.Texture // cached QR texture; generated once, destroyed on back
 
 	// Held-button auto-repeat state for scrolling
 	heldDir       int       // -1 = up, +1 = down, 0 = none
@@ -596,6 +597,8 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 }
 
 // drawQR renders the QR code centered within the given box.
+// The texture is generated once and cached in s.qrTex for the lifetime of the
+// screen — destroyed in goBack() when the user navigates away.
 func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	qrSize := int(w - 20)
 	if qrSize > int(h-40) {
@@ -609,16 +612,31 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	}
 	qrS := int32(qrSize)
 
-	tex, err := r.QRTexture(s.game.URL, qrSize)
-	if err == nil && tex != nil {
-		_, smallFH := r.SmallTextSize("Ag")
-		qrX := x + (w-qrS)/2
-		qrY := y + (h-qrS)/2 - smallFH - 4
-		r.DrawTextureAt(tex, qrX, qrY, qrS, qrS)
-		tex.Destroy()
-		r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
-		r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, 120, 120, 120)
+	if s.qrTex == nil {
+		tex, err := r.QRTexture(s.game.URL, qrSize)
+		if err != nil {
+			logger.Warn("detail: QR generate: %v", err)
+			return
+		}
+		s.qrTex = tex
+		logger.Debug("detail: QR texture generated for %s (%dpx)", s.game.URL, qrSize)
 	}
+
+	_, smallFH := r.SmallTextSize("Ag")
+	qrX := x + (w-qrS)/2
+	qrY := y + (h-qrS)/2 - smallFH - 4
+	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
+	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
+	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, 120, 120, 120)
+}
+
+// goBack destroys any cached SDL resources and returns the previous screen.
+func (s *DetailScreen) goBack() Screen {
+	if s.qrTex != nil {
+		s.qrTex.Destroy()
+		s.qrTex = nil
+	}
+	return s.prev
 }
 
 // scrollStep returns ~5 % of the visible content area height per tick so that
@@ -721,7 +739,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Keysym.Sym {
 		case sdl.K_ESCAPE:
-			return s.prev
+			return s.goBack()
 		case sdl.K_LEFT:
 			if s.detail != nil && s.screenshotIdx > 0 {
 				s.screenshotIdx--
@@ -766,7 +784,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_A:
-			return s.prev
+			return s.goBack()
 		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
 			if s.detail != nil && s.screenshotIdx > 0 {
 				s.screenshotIdx--
