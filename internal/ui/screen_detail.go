@@ -116,6 +116,7 @@ func NewDetailScreen(
 				logger.Error("detail: PANIC in FetchGameDetail goroutine: %v", r)
 				s.err = fmt.Errorf("internal error: %v", r)
 				s.loading = false
+				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 			}
 		}()
 		logger.Debug("detail: fetching %s", game.URL)
@@ -154,7 +155,8 @@ func NewDetailScreen(
 				},
 			)
 		}
-		s.loading = false  // publish last — renderer sees consistent state
+		s.loading = false // publish last — renderer sees consistent state
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 	}()
 	return s
 }
