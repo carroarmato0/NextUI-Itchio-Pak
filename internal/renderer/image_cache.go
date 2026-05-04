@@ -11,7 +11,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
-	"log"
 	"net/http"
 	"runtime"
 	"strings"
@@ -25,9 +24,23 @@ import (
 )
 
 type cacheEntry struct {
-	key     string
-	texture *sdl.Texture
-	anim    *gifAnim // nil for static images
+	key      string
+	texture  *sdl.Texture   // current displayed texture (points into textures[] for GIFs)
+	textures []*sdl.Texture // pre-uploaded frame textures; nil for static images
+	anim     *gifAnim       // nil for static images
+}
+
+// destroyTextures destroys all GPU textures held by this entry.
+func (e *cacheEntry) destroyTextures() {
+	if len(e.textures) > 0 {
+		for _, t := range e.textures {
+			if t != nil {
+				t.Destroy()
+			}
+		}
+	} else if e.texture != nil {
+		e.texture.Destroy()
+	}
 }
 
 // rawImage holds decoded pixel data ready to be uploaded to a GPU texture.
@@ -47,9 +60,9 @@ type ImageCache struct {
 	failed   map[string]struct{} // URLs that permanently failed (bad format)
 	max      int
 	client   *http.Client
-	readyCh  chan rawImage      // pixel data ready for main-thread texture upload
-	sem      chan struct{}      // concurrency limiter for background fetches
-	notify   func()            // optional: called when an image lands in readyCh
+	readyCh  chan rawImage // pixel data ready for main-thread texture upload
+	sem      chan struct{} // concurrency limiter for background fetches
+	notify   func()       // optional: called when an image lands in readyCh
 }
 
 // SetNotify registers a callback invoked once each time a decoded image is
@@ -73,6 +86,23 @@ func NewImageCache(maxEntries int) *ImageCache {
 	}
 }
 
+// advanceGIFFrame advances the animation for entry if the current frame has
+// expired and swaps entry.texture to the next pre-uploaded GPU texture.
+// Zero-allocation: no surface or texture creation — pure pointer swap.
+// Must be called with c.mu held.
+func advanceGIFFrame(entry *cacheEntry) {
+	if entry.anim == nil || len(entry.textures) == 0 {
+		return
+	}
+	idx, advanced := entry.anim.advance(time.Now())
+	if !advanced {
+		return
+	}
+	if idx < len(entry.textures) && entry.textures[idx] != nil {
+		entry.texture = entry.textures[idx]
+	}
+}
+
 // Get returns the cached SDL2 texture for url, or nil if not yet loaded.
 // When nil is returned a background fetch is started; call Get again on the
 // next Draw cycle to pick up the result once it arrives.
@@ -82,30 +112,7 @@ func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
 	if el, ok := c.items[url]; ok {
 		c.lru.MoveToFront(el)
 		entry := el.Value.(*cacheEntry)
-		if entry.anim != nil {
-			if idx, advanced := entry.anim.advance(time.Now()); advanced {
-				framePix := entry.anim.frames[idx]
-				surface, surfErr := sdl.CreateRGBSurfaceFrom(
-					unsafe.Pointer(&framePix[0]),
-					entry.anim.w, entry.anim.h,
-					32, entry.anim.pitch,
-					0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
-				)
-				if surfErr != nil {
-					log.Printf("image cache: advance frame %d surface: %v", idx, surfErr)
-				} else {
-					newTex, texErr := r.Renderer.CreateTextureFromSurface(surface)
-					surface.Free()
-					runtime.KeepAlive(framePix)
-					if texErr != nil {
-						log.Printf("image cache: advance frame %d texture: %v", idx, texErr)
-					} else {
-						entry.texture.Destroy()
-						entry.texture = newTex
-					}
-				}
-			}
-		}
+		advanceGIFFrame(entry)
 		tex := entry.texture
 		c.mu.Unlock()
 		return tex
@@ -138,30 +145,7 @@ func (c *ImageCache) Peek(r *Renderer, url string) *sdl.Texture {
 	}
 	c.lru.MoveToFront(el)
 	entry := el.Value.(*cacheEntry)
-	if entry.anim != nil {
-		if idx, advanced := entry.anim.advance(time.Now()); advanced {
-			framePix := entry.anim.frames[idx]
-			surface, surfErr := sdl.CreateRGBSurfaceFrom(
-				unsafe.Pointer(&framePix[0]),
-				entry.anim.w, entry.anim.h,
-				32, entry.anim.pitch,
-				0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
-			)
-			if surfErr != nil {
-				log.Printf("image cache: advance frame %d surface: %v", idx, surfErr)
-			} else {
-				newTex, texErr := r.Renderer.CreateTextureFromSurface(surface)
-				surface.Free()
-				runtime.KeepAlive(framePix)
-				if texErr != nil {
-					log.Printf("image cache: advance frame %d texture: %v", idx, texErr)
-				} else {
-					entry.texture.Destroy()
-					entry.texture = newTex
-				}
-			}
-		}
-	}
+	advanceGIFFrame(entry)
 	tex := entry.texture
 	c.mu.Unlock()
 	return tex
@@ -210,43 +194,86 @@ func (c *ImageCache) ProcessPending(r *Renderer) bool {
 }
 
 func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
-	if len(raw.pix) == 0 || raw.w <= 0 || raw.h <= 0 {
+	if raw.w <= 0 || raw.h <= 0 {
 		return
 	}
 
-	surface, surfErr := sdl.CreateRGBSurfaceFrom(
-		unsafe.Pointer(&raw.pix[0]),
-		raw.w, raw.h,
-		32, raw.pitch,
-		0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
-	)
-	if surfErr != nil {
-		log.Printf("image cache: create surface: %v", surfErr)
-		return
-	}
-	tex, err := r.Renderer.CreateTextureFromSurface(surface)
-	surface.Free()
-	runtime.KeepAlive(raw.pix)
-	if err != nil {
-		log.Printf("image cache: create texture from surface: %v", err)
-		return
-	}
+	var tex *sdl.Texture
+	var textures []*sdl.Texture
 
-	if raw.anim != nil {
-		// Initialize nextAt so frame 0 is displayed for its full delay before advancing.
+	if raw.anim != nil && len(raw.anim.frames) > 0 {
+		// Animated GIF: pre-upload every frame as a GPU texture in one shot.
+		// After upload, raw.anim.frames is set to nil — GPU VRAM holds all frames,
+		// eliminating the 272 MB live heap and the per-tick surface/texture churn.
+		textures = make([]*sdl.Texture, len(raw.anim.frames))
+		for i, framePix := range raw.anim.frames {
+			if len(framePix) == 0 {
+				continue
+			}
+			surface, surfErr := sdl.CreateRGBSurfaceFrom(
+				unsafe.Pointer(&framePix[0]),
+				raw.anim.w, raw.anim.h,
+				32, raw.anim.pitch,
+				0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
+			)
+			if surfErr != nil {
+				logger.Warn("image cache: GIF frame %d surface: %v", i, surfErr)
+				continue
+			}
+			t, texErr := r.Renderer.CreateTextureFromSurface(surface)
+			surface.Free()
+			runtime.KeepAlive(framePix)
+			if texErr != nil {
+				logger.Warn("image cache: GIF frame %d texture: %v", i, texErr)
+				continue
+			}
+			textures[i] = t
+		}
+		raw.anim.frames = nil // free pixel slices — all frames live on GPU now
+		tex = textures[0]
 		raw.anim.nextAt = time.Now().Add(raw.anim.delays[0])
-		logger.Debug("image cache: uploaded animated %s (%d frames, %dx%d)", raw.url, len(raw.anim.frames), raw.w, raw.h)
+		logger.Debug("image cache: uploaded animated %s (%d frames, %dx%d)", raw.url, len(textures), raw.anim.w, raw.anim.h)
 	} else {
+		if len(raw.pix) == 0 {
+			return
+		}
+		surface, surfErr := sdl.CreateRGBSurfaceFrom(
+			unsafe.Pointer(&raw.pix[0]),
+			raw.w, raw.h,
+			32, raw.pitch,
+			0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000,
+		)
+		if surfErr != nil {
+			logger.Warn("image cache: create surface: %v", surfErr)
+			return
+		}
+		var err error
+		tex, err = r.Renderer.CreateTextureFromSurface(surface)
+		surface.Free()
+		runtime.KeepAlive(raw.pix)
+		if err != nil {
+			logger.Warn("image cache: create texture: %v", err)
+			return
+		}
 		logger.Debug("image cache: uploaded static %s (%dx%d)", raw.url, raw.w, raw.h)
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, exists := c.items[raw.url]; exists {
-		tex.Destroy()
+		// Race: another goroutine uploaded this URL concurrently; discard ours.
+		if len(textures) > 0 {
+			for _, t := range textures {
+				if t != nil {
+					t.Destroy()
+				}
+			}
+		} else if tex != nil {
+			tex.Destroy()
+		}
 		return
 	}
-	entry := &cacheEntry{key: raw.url, texture: tex, anim: raw.anim}
+	entry := &cacheEntry{key: raw.url, texture: tex, textures: textures, anim: raw.anim}
 	el := c.lru.PushFront(entry)
 	c.items[raw.url] = el
 	for c.lru.Len() > c.max {
@@ -255,14 +282,13 @@ func (c *ImageCache) uploadTexture(r *Renderer, raw rawImage) {
 			break
 		}
 		evicted := back.Value.(*cacheEntry)
-		evicted.texture.Destroy()
+		evicted.destroyTextures()
 		delete(c.items, evicted.key)
 		c.lru.Remove(back)
 	}
 }
 
 func (c *ImageCache) fetchInBackground(url string) {
-	// Acquire semaphore slot — blocks if maxConcurrentFetches are already running.
 	c.sem <- struct{}{}
 	defer func() { <-c.sem }()
 
@@ -272,13 +298,11 @@ func (c *ImageCache) fetchInBackground(url string) {
 	delete(c.fetching, url)
 	if err != nil {
 		errMsg := err.Error()
-		// Permanent failure: image format not supported (won't succeed on retry).
-		// Transient failure (timeout, network): allow retry on next Get call.
 		if isDecodingError(errMsg) {
-			log.Printf("image cache (permanent): %s: %v", url, err)
+			logger.Warn("image cache (permanent): %s: %v", url, err)
 			c.failed[url] = struct{}{}
 		} else {
-			log.Printf("image cache (transient): %s: %v", url, err)
+			logger.Warn("image cache (transient): %s: %v", url, err)
 		}
 	}
 	c.mu.Unlock()
@@ -321,23 +345,23 @@ func (c *ImageCache) fetchRaw(url string) (rawImage, error) {
 	}
 	logger.Debug("image cache: decoded %s as %s (%d bytes)", url, format, len(data))
 
-	// Detect animated GIF: re-decode with gif.DecodeAll and render all frames.
 	if format == "gif" {
 		if g, err2 := gif.DecodeAll(bytes.NewReader(data)); err2 == nil && len(g.Image) > 1 {
 			logger.Debug("image cache: animated GIF %s (%d frames)", url, len(g.Image))
 			anim := renderGIFFrames(g)
-			return rawImage{
-				url:   url,
-				pix:   anim.frames[0],
-				w:     anim.w,
-				h:     anim.h,
-				pitch: anim.pitch,
-				anim:  anim,
-			}, nil
+			if len(anim.frames) > 0 {
+				return rawImage{
+					url:   url,
+					pix:   anim.frames[0],
+					w:     anim.w,
+					h:     anim.h,
+					pitch: anim.pitch,
+					anim:  anim,
+				}, nil
+			}
 		}
 	}
 
-	// Static image path.
 	logger.Debug("image cache: static %s", url)
 	img = resizeMax(img, 640)
 	bounds := img.Bounds()
@@ -358,7 +382,7 @@ func (c *ImageCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, el := range c.items {
-		el.Value.(*cacheEntry).texture.Destroy()
+		el.Value.(*cacheEntry).destroyTextures()
 	}
 	c.lru.Init()
 	c.items = make(map[string]*list.Element)
