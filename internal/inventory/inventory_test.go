@@ -268,6 +268,49 @@ func TestVerifyAndClean_RemovesEmptyEntry(t *testing.T) {
 	}
 }
 
+func TestVerifyAndClean_DeduplicatesSameFilename(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+
+	// Three on-disk files for the same upload — simulates the pre-fix duplicate bug.
+	older := filepath.Join(dir, "Capybara Village (2).gb")
+	older2 := filepath.Join(dir, "Capybara Village (3).gb")
+	newest := filepath.Join(dir, "Capybara Village.gb")
+	for _, p := range []string{older, older2, newest} {
+		os.WriteFile(p, []byte("ROM"), 0644)
+	}
+
+	t1 := time.Now().Add(-2 * time.Hour)
+	t2 := time.Now().Add(-time.Hour)
+	t3 := time.Now()
+
+	inv := &inventory.Inventory{Entries: map[string]*inventory.Entry{
+		"https://dev.itch.io/capybara": {
+			GameURL: "https://dev.itch.io/capybara",
+			Title:   "Capybara Village",
+			Files: []inventory.DownloadedFile{
+				{Filename: "Capybara-Village-Update1.gb", DestPath: older, DownloadedAt: t1},
+				{Filename: "Capybara-Village-Update1.gb", DestPath: older2, DownloadedAt: t2},
+				{Filename: "Capybara-Village-Update1.gb", DestPath: newest, DownloadedAt: t3},
+			},
+		},
+	}}
+	removed := inv.VerifyAndClean(path)
+	if removed != 2 {
+		t.Errorf("removed = %d, want 2 (duplicates)", removed)
+	}
+	e, ok := inv.Lookup("https://dev.itch.io/capybara")
+	if !ok {
+		t.Fatal("entry should still exist")
+	}
+	if len(e.Files) != 1 {
+		t.Fatalf("files = %d, want 1", len(e.Files))
+	}
+	if e.Files[0].DestPath != newest {
+		t.Errorf("kept wrong file: got %s, want %s", e.Files[0].DestPath, newest)
+	}
+}
+
 func TestRemoveFile_PartialRemoval(t *testing.T) {
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
 	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{Filename: "v1.gb", DestPath: "/v1.gb"})

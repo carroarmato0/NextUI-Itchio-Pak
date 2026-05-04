@@ -195,34 +195,54 @@ func (inv *Inventory) RemoveFile(gameURL, destPath string) bool {
 }
 
 // VerifyAndClean walks all entries, removes DownloadedFile rows whose DestPath no
-// longer exists on disk, removes Entry values with no remaining files, saves if
-// any changes were made, and returns the count of removed DownloadedFile rows.
+// longer exists on disk, deduplicates rows with the same Filename (keeping the
+// most recently downloaded), removes Entry values with no remaining files, saves
+// if any changes were made, and returns the count of removed DownloadedFile rows.
 func (inv *Inventory) VerifyAndClean(path string) int {
 	removed := 0
 	changed := false
 	inv.mu.Lock()
 	for gameURL, entry := range inv.Entries {
-		var kept []DownloadedFile
+		// Pass 1: drop files missing from disk.
+		var present []DownloadedFile
 		for _, f := range entry.Files {
 			if _, err := os.Stat(f.DestPath); err == nil {
-				kept = append(kept, f)
+				present = append(present, f)
 			} else {
 				logger.Debug("inventory: removing stale file=%s", f.DestPath)
 				removed++
+				changed = true
 			}
 		}
+
+		// Pass 2: deduplicate by Filename, keeping the most recently downloaded.
+		best := make(map[string]DownloadedFile, len(present))
+		for _, f := range present {
+			if cur, ok := best[f.Filename]; !ok || f.DownloadedAt.After(cur.DownloadedAt) {
+				best[f.Filename] = f
+			}
+		}
+		if len(best) < len(present) {
+			dropped := len(present) - len(best)
+			logger.Debug("inventory: deduplicating %d file(s) for game=%q", dropped, entry.Title)
+			removed += dropped
+			changed = true
+		}
+		var kept []DownloadedFile
+		for _, f := range best {
+			kept = append(kept, f)
+		}
+
 		if len(kept) == 0 {
 			logger.Debug("inventory: removing empty entry game=%q", entry.Title)
 			delete(inv.Entries, gameURL)
-			changed = true
 		} else {
 			entry.Files = kept
 			entry.VerifiedAt = time.Now()
-			changed = true
 		}
 	}
 	inv.mu.Unlock()
-	logger.Info("inventory: cleaned %d stale file(s)", removed)
+	logger.Info("inventory: cleaned %d stale/duplicate file(s)", removed)
 	if changed {
 		if err := inv.Save(path); err != nil {
 			logger.Error("inventory: failed to save after clean: %v", err)
