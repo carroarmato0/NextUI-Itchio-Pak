@@ -99,6 +99,8 @@ func (s *UpdateService) LatestCheckedAt() time.Time {
 }
 
 func (s *UpdateService) runCheck() {
+	s.inv.VerifyAndClean(s.inventoryPath)
+
 	s.inv.mu.Lock()
 	urls := make([]string, 0, len(s.inv.Entries))
 	for url := range s.inv.Entries {
