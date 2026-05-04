@@ -46,6 +46,7 @@ type Renderer struct {
 	fallbacks     []fallbackFont
 	W, H          int32
 	Theme         theme.Theme
+	texts         *textCache
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -94,6 +95,7 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		W: int32(w), H: int32(h),
 		primaryRanges: buildGlyphRanges("assets/font.ttf"),
 		Theme:         th,
+		texts:         newTextCache(maxTextCacheEntries),
 	}
 	if r.primaryRanges == nil {
 		logger.Warn("renderer: could not parse primary font cmap; fallback fonts disabled")
@@ -140,6 +142,9 @@ func (r *Renderer) Close() {
 	}
 	if r.Font != nil {
 		r.Font.Close()
+	}
+	if r.texts != nil {
+		r.texts.clear() // must precede Renderer.Destroy to avoid double-free
 	}
 	if r.Renderer != nil {
 		r.Renderer.Destroy()
@@ -196,26 +201,56 @@ func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
 	r.Renderer.FillRect(&sdl.Rect{X: x, Y: y, W: w, H: h})
 }
 
-func (r *Renderer) DrawText(text string, x, y int32, red, green, blue uint8) error {
+// drawRuns renders text with per-run texture caching. Each unique
+// (run text, fontIdx, small, bold, color) tuple is uploaded to the GPU once
+// and reused on every subsequent frame — eliminating the per-frame
+// RenderUTF8Blended → CreateTextureFromSurface → Destroy cycle.
+func (r *Renderer) drawRuns(text string, x, y int32, color sdl.Color, small, bold bool) {
+	if bold {
+		r.Font.SetStyle(ttf.STYLE_BOLD)
+		defer r.Font.SetStyle(ttf.STYLE_NORMAL)
+	}
 	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
-	color := sdl.Color{R: red, G: green, B: blue, A: 255}
 	cx := x
 	for _, run := range runs {
-		font := r.mainFont(run.fontIdx)
+		key := textRunKey{
+			text:   run.text,
+			fontID: uint8(run.fontIdx),
+			small:  small,
+			bold:   bold,
+			r:      color.R,
+			g:      color.G,
+			b:      color.B,
+		}
+		if val, ok := r.texts.get(key); ok {
+			r.Renderer.Copy(val.tex, nil, &sdl.Rect{X: cx, Y: y, W: val.w, H: val.h})
+			cx += val.w
+			continue
+		}
+		var font *ttf.Font
+		if small {
+			font = r.smallFont(run.fontIdx)
+		} else {
+			font = r.mainFont(run.fontIdx)
+		}
 		surface, err := font.RenderUTF8Blended(run.text, color)
 		if err != nil {
-			return err
+			continue
 		}
-		texture, err := r.Renderer.CreateTextureFromSurface(surface)
+		tex, err := r.Renderer.CreateTextureFromSurface(surface)
 		surface.Free()
 		if err != nil {
-			return err
+			continue
 		}
-		_, _, tw, th, _ := texture.Query()
-		r.Renderer.Copy(texture, nil, &sdl.Rect{X: cx, Y: y, W: tw, H: th})
-		texture.Destroy()
+		_, _, tw, th, _ := tex.Query()
+		r.Renderer.Copy(tex, nil, &sdl.Rect{X: cx, Y: y, W: tw, H: th})
+		r.texts.put(key, textRunVal{tex: tex, w: tw, h: th})
 		cx += tw
 	}
+}
+
+func (r *Renderer) DrawText(text string, x, y int32, red, green, blue uint8) error {
+	r.drawRuns(text, x, y, sdl.Color{R: red, G: green, B: blue, A: 255}, false, false)
 	return nil
 }
 
@@ -238,9 +273,8 @@ func (r *Renderer) TextSize(text string) (int32, int32) {
 
 // DrawBoldText renders text using SDL_ttf bold style synthesis.
 func (r *Renderer) DrawBoldText(text string, x, y int32, red, green, blue uint8) error {
-	r.Font.SetStyle(ttf.STYLE_BOLD)
-	defer r.Font.SetStyle(ttf.STYLE_NORMAL)
-	return r.DrawText(text, x, y, red, green, blue)
+	r.drawRuns(text, x, y, sdl.Color{R: red, G: green, B: blue, A: 255}, false, true)
+	return nil
 }
 
 // BoldTextSize returns the pixel width and height of text measured in bold style.
@@ -337,25 +371,7 @@ func splitWords(s string) []string {
 
 // DrawSmallText draws text using the small hint font.
 func (r *Renderer) DrawSmallText(text string, x, y int32, red, green, blue uint8) error {
-	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
-	color := sdl.Color{R: red, G: green, B: blue, A: 255}
-	cx := x
-	for _, run := range runs {
-		font := r.smallFont(run.fontIdx)
-		surface, err := font.RenderUTF8Blended(run.text, color)
-		if err != nil {
-			return err
-		}
-		texture, err := r.Renderer.CreateTextureFromSurface(surface)
-		surface.Free()
-		if err != nil {
-			return err
-		}
-		_, _, tw, th, _ := texture.Query()
-		r.Renderer.Copy(texture, nil, &sdl.Rect{X: cx, Y: y, W: tw, H: th})
-		texture.Destroy()
-		cx += tw
-	}
+	r.drawRuns(text, x, y, sdl.Color{R: red, G: green, B: blue, A: 255}, true, false)
 	return nil
 }
 
