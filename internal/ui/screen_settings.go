@@ -143,6 +143,7 @@ func (s *SettingsScreen) moveCursor(dir int) {
 func (s *SettingsScreen) NeedsRedraw() bool {
 	return s.heldDir != 0
 }
+func (s *SettingsScreen) HasPendingAnimation() bool { return false }
 
 func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()

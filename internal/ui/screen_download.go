@@ -127,6 +127,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 func (s *DownloadScreen) NeedsRedraw() bool {
 	return true
 }
+func (s *DownloadScreen) HasPendingAnimation() bool { return false }
 
 func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

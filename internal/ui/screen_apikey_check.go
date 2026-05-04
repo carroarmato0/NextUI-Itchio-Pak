@@ -50,6 +50,7 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen) 
 }
 
 func (s *KeyTestScreen) NeedsRedraw() bool { return false }
+func (s *KeyTestScreen) HasPendingAnimation() bool { return false }
 
 func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

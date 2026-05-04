@@ -87,6 +87,7 @@ func NewCacheRefreshScreen(
 func (s *CacheRefreshScreen) NeedsRedraw() bool {
 	return true
 }
+func (s *CacheRefreshScreen) HasPendingAnimation() bool { return false }
 
 func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

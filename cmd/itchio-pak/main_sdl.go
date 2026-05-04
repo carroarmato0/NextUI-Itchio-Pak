@@ -168,16 +168,19 @@ loop:
 		newImages := cache.ProcessPending(r)
 
 		// Block until an SDL event arrives.
-		// Use an infinite wait when the screen is idle so the loop consumes no
-		// CPU between inputs. Fall back to a 16ms timeout only when the screen
-		// requests continuous redraws (download progress, loading spinners etc.)
-		// — in that case background goroutines also push UserEvents when done,
-		// and the image cache pushes one whenever a cover arrives, so we never
-		// miss a frame that matters.
+		// Three modes:
+		//   16ms  — screen needs continuous redraws (download progress, spinners)
+		//  500ms  — screen is static but has a pending timed animation (e.g. title
+		//           scroll delay). This guarantees the loop wakes before the
+		//           animation window opens even if no other events fire.
+		//  ∞      — truly idle: no redraws needed, image-cache notify and user
+		//           input are the only expected wakeups.
 		gotEvent := false
 		var e sdl.Event
 		if current.NeedsRedraw() {
 			e = sdl.WaitEventTimeout(16)
+		} else if current.HasPendingAnimation() {
+			e = sdl.WaitEventTimeout(500)
 		} else {
 			e = sdl.WaitEvent()
 		}

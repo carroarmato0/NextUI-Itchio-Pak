@@ -83,6 +83,10 @@ func (s *devAutoDetailScreen) NeedsRedraw() bool {
 	return s.list.NeedsRedraw()
 }
 
+func (s *devAutoDetailScreen) HasPendingAnimation() bool {
+	return s.list.HasPendingAnimation()
+}
+
 func (s *devAutoDetailScreen) Draw(r *renderer.Renderer) {
 	s.list.Draw(r)
 }

@@ -157,6 +157,7 @@ func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 func (s *FetchUploadsScreen) NeedsRedraw() bool {
 	return true
 }
+func (s *FetchUploadsScreen) HasPendingAnimation() bool { return false }
 
 func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

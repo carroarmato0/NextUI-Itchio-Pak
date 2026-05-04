@@ -62,6 +62,7 @@ func (s *ContentModerationScreen) processAutoRepeat() {
 func (s *ContentModerationScreen) NeedsRedraw() bool {
 	return s.heldDir != 0
 }
+func (s *ContentModerationScreen) HasPendingAnimation() bool { return false }
 
 func (s *ContentModerationScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()

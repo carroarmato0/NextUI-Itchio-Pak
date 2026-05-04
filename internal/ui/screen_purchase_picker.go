@@ -59,6 +59,7 @@ func NewPurchasePickerScreen(
 }
 
 func (s *PurchasePickerScreen) NeedsRedraw() bool { return false }
+func (s *PurchasePickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

@@ -96,6 +96,7 @@ func NewFormatPickerScreen(
 }
 
 func (s *FormatPickerScreen) NeedsRedraw() bool { return false }
+func (s *FormatPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

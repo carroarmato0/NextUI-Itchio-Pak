@@ -189,6 +189,7 @@ func (s *TagFilterScreen) stopHold(dir int) {
 func (s *TagFilterScreen) NeedsRedraw() bool {
 	return s.heldDir != 0
 }
+func (s *TagFilterScreen) HasPendingAnimation() bool { return false }
 
 func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()

@@ -168,6 +168,7 @@ func (s *LocationPickerScreen) clampScroll(visibleCount int) {
 }
 
 func (s *LocationPickerScreen) NeedsRedraw() bool { return false }
+func (s *LocationPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

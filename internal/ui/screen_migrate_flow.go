@@ -157,6 +157,7 @@ func (s *MigrateFlowScreen) runMigration() {
 }
 
 func (s *MigrateFlowScreen) NeedsRedraw() bool { return false }
+func (s *MigrateFlowScreen) HasPendingAnimation() bool { return false }
 
 func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background

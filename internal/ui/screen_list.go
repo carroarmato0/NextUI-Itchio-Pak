@@ -290,6 +290,17 @@ func (s *ListScreen) NeedsRedraw() bool {
 		time.Since(s.titleScrollAt) > scrollDelay/2
 }
 
+// HasPendingAnimation returns true while the title-scroll delay is counting
+// down but hasn't yet crossed the NeedsRedraw threshold. This tells the main
+// loop to use a medium timeout instead of blocking indefinitely, so the
+// animation fires on schedule even when no SDL events arrive.
+func (s *ListScreen) HasPendingAnimation() bool {
+	if s.titleScrollAt.IsZero() {
+		return false
+	}
+	return time.Since(s.titleScrollAt) <= scrollDelay/2
+}
+
 // warmPreloadWindow warms cover art for the current game plus preloadRadius
 // neighbours on each side, indexed into viewGames so page boundaries are
 // handled transparently. Sets warmedGameURL so Draw does not re-warm until

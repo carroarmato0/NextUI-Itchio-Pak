@@ -28,6 +28,7 @@ func NewAboutScreen(prev Screen) *AboutScreen {
 }
 
 func (s *AboutScreen) NeedsRedraw() bool { return false }
+func (s *AboutScreen) HasPendingAnimation() bool { return false }
 
 func (s *AboutScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
