@@ -161,16 +161,24 @@ func runSDL() {
 loop:
 	for current != nil {
 		// Upload any images that background goroutines finished fetching.
-		_ = cache.ProcessPending(r)
+		// Returns true if at least one texture was uploaded this call.
+		newImages := cache.ProcessPending(r)
 
-		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+		// Block until an SDL event arrives or 16ms elapses.
+		// When the screen is idle (NeedsRedraw false, no events, no new images)
+		// this keeps the loop sleeping at near-zero CPU.
+		gotEvent := false
+		e := sdl.WaitEventTimeout(16)
+		for e != nil {
+			gotEvent = true
 			if pendingQuit {
+				e = sdl.PollEvent()
 				continue // drain input while waiting for tasks
 			}
 			// Intercept SDL_QUIT (SIGTERM from NextUI) before screens see it.
 			if _, ok := e.(*sdl.QuitEvent); ok {
 				current = nil
-				break
+				break loop
 			}
 			// Intercept UserEvents before screens see them.
 			if uev, ok := e.(*sdl.UserEvent); ok {
@@ -187,69 +195,72 @@ loop:
 					pendingQuit = true
 					pendingAction = power.ActionSleep
 					updateSvc.Stop()
+					e = sdl.PollEvent()
 					continue
 				case userEventPowerShutdown:
 					logger.Info("power: shutdown requested, waiting for tasks")
 					pendingQuit = true
 					pendingAction = power.ActionShutdown
 					updateSvc.Stop()
+					e = sdl.PollEvent()
 					continue
 				}
 			}
 			current = current.HandleEvent(e)
 			if current == nil {
-				break
+				break loop
 			}
+			e = sdl.PollEvent()
 		}
-		if current != nil {
-			if pendingQuit {
-				var busy bool
-				if bc, ok := current.(ui.BusyChecker); ok {
-					busy = bc.IsBusy()
+		if current == nil {
+			break loop
+		}
+		if pendingQuit {
+			var busy bool
+			if bc, ok := current.(ui.BusyChecker); ok {
+				busy = bc.IsBusy()
+			}
+			if !busy && !updateSvc.IsRunning() {
+				if pendingAction == power.ActionShutdown {
+					logger.Info("power: all tasks done, writing /tmp/poweroff")
+					if err := os.WriteFile("/tmp/poweroff", []byte{}, 0644); err != nil {
+						logger.Error("power: /tmp/poweroff: %v", err)
+					}
+					break loop // exit cleanly; NextUI detects /tmp/poweroff and shuts down
 				}
-				if !busy && !updateSvc.IsRunning() {
-					if pendingAction == power.ActionShutdown {
-						logger.Info("power: all tasks done, writing /tmp/poweroff")
-						if err := os.WriteFile("/tmp/poweroff", []byte{}, 0644); err != nil {
-							logger.Error("power: /tmp/poweroff: %v", err)
-						}
-						break loop // exit cleanly; NextUI detects /tmp/poweroff and shuts down
-					}
-					suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
-					if _, err := os.Stat(suspendPath); err != nil {
-						logger.Warn("power: suspend script not found at %s, exiting instead", suspendPath)
-						current = nil
-					} else {
-						logger.Info("power: all tasks done, calling %s", suspendPath)
-						if err := exec.Command(suspendPath).Run(); err != nil {
-							logger.Error("power: suspend: %v", err)
-						}
-						logger.Info("power: resumed from sleep")
-						powerMgr.PostWake()
-						// Flush any power UserEvents the goroutine queued while
-						// processing the wake-up key press. They arrived before
-						// suspend.Run() returned, so PostWake() alone is too late.
-						for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
-							if uev, ok := e.(*sdl.UserEvent); ok &&
-								(uev.Code == userEventPowerSleep || uev.Code == userEventPowerShutdown) {
-								logger.Info("power: discarding buffered wake-up event")
-								continue
-							}
-							current = current.HandleEvent(e)
-							if current == nil {
-								break loop
-							}
-						}
-						pendingQuit = false
-					}
+				suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
+				if _, err := os.Stat(suspendPath); err != nil {
+					logger.Warn("power: suspend script not found at %s, exiting instead", suspendPath)
+					current = nil
 				} else {
-					drawPowerPendingOverlay(r, pendingAction)
+					logger.Info("power: all tasks done, calling %s", suspendPath)
+					if err := exec.Command(suspendPath).Run(); err != nil {
+						logger.Error("power: suspend: %v", err)
+					}
+					logger.Info("power: resumed from sleep")
+					powerMgr.PostWake()
+					// Flush any power UserEvents the goroutine queued while
+					// processing the wake-up key press. They arrived before
+					// suspend.Run() returned, so PostWake() alone is too late.
+					for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
+						if uev, ok := e.(*sdl.UserEvent); ok &&
+							(uev.Code == userEventPowerSleep || uev.Code == userEventPowerShutdown) {
+							logger.Info("power: discarding buffered wake-up event")
+							continue
+						}
+						current = current.HandleEvent(e)
+						if current == nil {
+							break loop
+						}
+					}
+					pendingQuit = false
 				}
 			} else {
-				current.Draw(r)
+				drawPowerPendingOverlay(r, pendingAction)
 			}
+		} else if gotEvent || newImages || current.NeedsRedraw() {
+			current.Draw(r)
 		}
-		sdl.Delay(16) // ~60 fps
 	}
 }
 
