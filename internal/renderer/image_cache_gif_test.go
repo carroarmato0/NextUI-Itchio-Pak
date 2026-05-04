@@ -91,13 +91,14 @@ func TestGIFAnimNonZeroDelay(t *testing.T) {
 func TestGIFAnimFrameAdvance(t *testing.T) {
 	base := time.Now()
 	a := &gifAnim{
-		frames: [][]uint8{make([]uint8, 4), make([]uint8, 4), make([]uint8, 4)},
-		delays: []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 150 * time.Millisecond},
-		w:      1,
-		h:      1,
-		pitch:  4,
-		cur:    0,
-		nextAt: base,
+		frames:     [][]uint8{make([]uint8, 4), make([]uint8, 4), make([]uint8, 4)},
+		delays:     []time.Duration{100 * time.Millisecond, 200 * time.Millisecond, 150 * time.Millisecond},
+		w:          1,
+		h:          1,
+		pitch:      4,
+		cur:        0,
+		nextAt:     base,
+		frameCount: 3,
 	}
 
 	// time.After is strict: not after base itself → no advance.
@@ -167,13 +168,14 @@ func TestRenderGIFFramesSamplingPreservesDuration(t *testing.T) {
 
 func TestGIFAnimAdvanceSingleFrame(t *testing.T) {
 	a := &gifAnim{
-		frames: [][]uint8{make([]uint8, 4)},
-		delays: []time.Duration{100 * time.Millisecond},
-		w:      1,
-		h:      1,
-		pitch:  4,
-		cur:    0,
-		nextAt: time.Now().Add(-time.Second),
+		frames:     [][]uint8{make([]uint8, 4)},
+		delays:     []time.Duration{100 * time.Millisecond},
+		w:          1,
+		h:          1,
+		pitch:      4,
+		cur:        0,
+		nextAt:     time.Now().Add(-time.Second),
+		frameCount: 1,
 	}
 	idx, ok := a.advance(time.Now())
 	if !ok || idx != 0 {
