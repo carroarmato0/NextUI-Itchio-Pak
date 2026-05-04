@@ -629,14 +629,18 @@ func TestUpdateFile_UnknownDestPath_ReturnsFalse(t *testing.T) {
 
 func TestAdd_UpdatesExistingOnSameFilename(t *testing.T) {
 	inv, _ := inventory.Load("/nonexistent")
+	now := time.Now().Add(-time.Hour)
 	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
-		Filename: "game-v1.gb",
-		DestPath: "/roms/Game.gb",
+		Filename:     "game-v1.gb",
+		DestPath:     "/roms/Game.gb",
+		DownloadedAt: now,
 	})
-	// Re-download: same upload filename, same dest path: no-op
+	// Re-download: same upload filename, same dest path — overwrite record (no duplicate)
+	later := time.Now()
 	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
-		Filename: "game-v1.gb",
-		DestPath: "/roms/Game.gb",
+		Filename:     "game-v1.gb",
+		DestPath:     "/roms/Game.gb",
+		DownloadedAt: later,
 	})
 	e, ok := inv.Lookup("https://example.itch.io/game")
 	if !ok {
@@ -644,6 +648,9 @@ func TestAdd_UpdatesExistingOnSameFilename(t *testing.T) {
 	}
 	if len(e.Files) != 1 {
 		t.Errorf("expected 1 file, got %d (duplicate created)", len(e.Files))
+	}
+	if !e.Files[0].DownloadedAt.Equal(later) {
+		t.Error("DownloadedAt not updated on re-download")
 	}
 }
 

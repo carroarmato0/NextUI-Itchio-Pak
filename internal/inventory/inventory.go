@@ -113,11 +113,8 @@ func (inv *Inventory) Add(gameURL string, e Entry, file DownloadedFile) {
 		existing.CoverURL = e.CoverURL
 	}
 	for i, f := range existing.Files {
-		if f.DestPath == file.DestPath {
-			return // exact same path, no-op
-		}
-		if f.Filename == file.Filename {
-			existing.Files[i] = file // same upload, new dest path — update in place
+		if f.DestPath == file.DestPath || f.Filename == file.Filename {
+			existing.Files[i] = file // overwrite in place (re-download or path change)
 			return
 		}
 	}
