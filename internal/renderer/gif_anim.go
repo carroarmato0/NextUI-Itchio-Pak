@@ -43,6 +43,8 @@ func (a *gifAnim) advance(now time.Time) (int, bool) {
 // the complete duration is preserved rather than truncating at frame N. The
 // delay of each stored frame is the sum of the delays of all source frames it
 // covers. All frames are scaled to at most 640 px wide.
+const maxGIFSourcePixels = 1280 * 1280 // ~6 MB canvas; skip larger GIFs to avoid OOM
+
 func renderGIFFrames(g *gif.GIF) *gifAnim {
 	if len(g.Image) == 0 {
 		return &gifAnim{}
@@ -52,6 +54,9 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 	if srcW == 0 || srcH == 0 {
 		b := g.Image[0].Bounds()
 		srcW, srcH = b.Dx(), b.Dy()
+	}
+	if srcW*srcH > maxGIFSourcePixels {
+		return &gifAnim{} // too large to render safely on constrained hardware
 	}
 	srcBounds := image.Rect(0, 0, srcW, srcH)
 
@@ -126,7 +131,7 @@ func renderGIFFrames(g *gif.GIF) *gifAnim {
 			if srcW == dstW {
 				stdraw.Draw(dst, dstBounds, canvas, image.Point{}, stdraw.Src)
 			} else {
-				draw.BiLinear.Scale(dst, dstBounds, canvas, srcBounds, draw.Src, nil)
+				draw.NearestNeighbor.Scale(dst, dstBounds, canvas, srcBounds, draw.Src, nil)
 			}
 			pix := make([]uint8, len(dst.Pix))
 			copy(pix, dst.Pix)
