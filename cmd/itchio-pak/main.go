@@ -3,9 +3,13 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/pprof"
 	"strings"
 	"syscall"
 
@@ -23,7 +27,10 @@ var version = "dev"
 var gitCommit = "unknown"
 
 func main() {
-	headless := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
+	headless    := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
+	cpuProfile  := flag.String("cpuprofile", "", "write CPU profile to `file`")
+	memProfile  := flag.String("memprofile", "", "write memory profile to `file` on exit")
+	pprofAddr   := flag.String("pprof", "", "start pprof HTTP server on `addr` (e.g. :6060)")
 	flag.Parse()
 
 	logPath := logFilePath()
@@ -48,12 +55,83 @@ func main() {
 	logger.Info("itchio-pak %s starting", version)
 	logger.Info("Git commit: %s", gitCommit)
 
+	if *pprofAddr != "" {
+		go func() {
+			logger.Info("pprof: listening on %s", *pprofAddr)
+			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
+				logger.Error("pprof: %v", err)
+			}
+		}()
+	}
+
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			logger.Error("cpuprofile: %v", err)
+			os.Exit(1)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			logger.Error("cpuprofile start: %v", err)
+			f.Close()
+			os.Exit(1)
+		}
+		logger.Info("cpuprofile: writing to %s", *cpuProfile)
+		defer func() {
+			pprof.StopCPUProfile()
+			f.Close()
+			logger.Info("cpuprofile: written to %s", *cpuProfile)
+		}()
+	}
+
+	// When profiling to files, install a signal handler so that SIGTERM/SIGINT/
+	// SIGHUP (e.g. Ctrl-C in the terminal, adb disconnect, or NextUI killing the
+	// process) still flushes profiles before exit. Without this, Go's deferred
+	// cleanup is skipped and the profile files are never written.
+	if *cpuProfile != "" || *memProfile != "" {
+		cpuProf := *cpuProfile
+		memProf := *memProfile
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+		go func() {
+			sig := <-sigCh
+			logger.Info("profiling: caught signal %v — flushing profiles", sig)
+			pprof.StopCPUProfile() // no-op if not started; flushes the file
+			if cpuProf != "" {
+				logger.Info("cpuprofile: written to %s", cpuProf)
+			}
+			if memProf != "" {
+				if f, err := os.Create(memProf); err == nil {
+					pprof.WriteHeapProfile(f)
+					f.Close()
+					logger.Info("memprofile: written to %s", memProf)
+				} else {
+					logger.Error("memprofile: %v", err)
+				}
+			}
+			os.Exit(0)
+		}()
+	}
+
 	if *headless {
 		logger.Info("headless mode: exiting cleanly")
 		os.Exit(0)
 	}
 
 	runSDL()
+
+	if *memProfile != "" {
+		f, err := os.Create(*memProfile)
+		if err != nil {
+			logger.Error("memprofile: %v", err)
+		} else {
+			defer f.Close()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				logger.Error("memprofile write: %v", err)
+			} else {
+				logger.Info("memprofile: written to %s", *memProfile)
+			}
+		}
+	}
 }
 
 // logFilePath returns the path for the log file.

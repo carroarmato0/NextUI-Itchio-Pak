@@ -38,4 +38,12 @@ export PATH="$PAK_DIR:$PATH"
 export SSL_CERT_FILE="$PAK_DIR/assets/ca-certificates.crt"
 mkdir -p "$HOME"
 cd "$PAK_DIR"
-exec "$PAK_DIR/itchio-pak"
+# Optional profiling flags written by ./scripts/debug.sh profile commands.
+# Absent in normal operation; present only during a profiling session.
+# Word-splitting is intentional — the file contains space-separated flags.
+PROFILE_FLAGS=""
+if [ -f "$PAK_DIR/.profile-flags" ]; then
+    PROFILE_FLAGS="$(cat "$PAK_DIR/.profile-flags")"
+fi
+# shellcheck disable=SC2086
+exec "$PAK_DIR/itchio-pak" $PROFILE_FLAGS "$@"

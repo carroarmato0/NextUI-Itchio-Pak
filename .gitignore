@@ -22,6 +22,10 @@ cmd/itchio-pak/itchio-pak
 .go_cache/
 tmp/
 
+# ADB debug output
+debug-cache/
+debug-profiles/
+
 # Git worktrees
 .worktrees/
 itchio-pak.log
