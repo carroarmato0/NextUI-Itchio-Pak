@@ -270,6 +270,9 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 			}
 			ext := strings.ToLower(filepath.Ext(upload.Filename))
 			dest := roms.DestinationDir(ext) + upload.Filename
+			if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
+				dest = existing
+			}
 			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 		}
 		return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)

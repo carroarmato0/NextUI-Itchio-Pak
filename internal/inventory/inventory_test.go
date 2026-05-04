@@ -387,12 +387,17 @@ func TestHasPendingUpdates_NewFile(t *testing.T) {
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
 	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
 		inventory.DownloadedFile{Filename: "g.gb", DestPath: "/g.gb"})
+	// First check: only g.gb is available (no pending update yet).
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "g.gb", UploadID: "1", SeenAt: time.Now()},
+	})
+	// Second check: developer published g-v2.gb — genuinely new.
 	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
 		{Filename: "g.gb", UploadID: "1", SeenAt: time.Now()},
 		{Filename: "g-v2.gb", UploadID: "2", SeenAt: time.Now()},
 	})
 	if !inv.HasPendingUpdates("https://dev.itch.io/game") {
-		t.Error("HasPendingUpdates: want true when upstream has file not in downloaded set")
+		t.Error("HasPendingUpdates: want true when upstream has genuinely new file not in downloaded set")
 	}
 }
 
@@ -451,6 +456,11 @@ func TestHasPendingUpdates_FormatPickerWithGenuineNewFile(t *testing.T) {
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
 	inv.Add("https://dev.itch.io/game", inventory.Entry{Title: "G"},
 		inventory.DownloadedFile{Filename: "Game Boy ROM.gbc", DestPath: "/roms/Game Boy ROM.gbc"})
+	// First check: only the original upload exists.
+	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "Game Boy ROM", UploadID: "1", SeenAt: time.Now()},
+	})
+	// Second check: developer added an Analogue Pocket ROM — genuinely new.
 	inv.SetUpstreamFiles("https://dev.itch.io/game", []inventory.UpstreamFile{
 		{Filename: "Game Boy ROM", UploadID: "1", SeenAt: time.Now()},
 		{Filename: "Analogue Pocket ROM", UploadID: "2", SeenAt: time.Now()},
@@ -612,5 +622,106 @@ func TestUpdateFile_UnknownDestPath_ReturnsFalse(t *testing.T) {
 	ok := inv.UpdateFile("https://dev.itch.io/game", "/nonexistent.gb", inventory.DownloadedFile{})
 	if ok {
 		t.Error("UpdateFile should return false for unknown dest path")
+	}
+}
+
+// ── Bug 1: Re-downloading creates duplicate files ─────────────────────────────
+
+func TestAdd_UpdatesExistingOnSameFilename(t *testing.T) {
+	inv, _ := inventory.Load("/nonexistent")
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
+		Filename: "game-v1.gb",
+		DestPath: "/roms/Game.gb",
+	})
+	// Re-download: same upload filename, same dest path: no-op
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
+		Filename: "game-v1.gb",
+		DestPath: "/roms/Game.gb",
+	})
+	e, ok := inv.Lookup("https://example.itch.io/game")
+	if !ok {
+		t.Fatal("entry missing")
+	}
+	if len(e.Files) != 1 {
+		t.Errorf("expected 1 file, got %d (duplicate created)", len(e.Files))
+	}
+}
+
+func TestAdd_ReplacesDestPathOnSameFilename(t *testing.T) {
+	inv, _ := inventory.Load("/nonexistent")
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
+		Filename: "game-v1.gb",
+		DestPath: "/roms/Game (raw).gb",
+	})
+	// Same filename, different dest (unified rename happened)
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
+		Filename: "game-v1.gb",
+		DestPath: "/roms/Game.gb",
+	})
+	e, _ := inv.Lookup("https://example.itch.io/game")
+	if len(e.Files) != 1 {
+		t.Fatalf("expected 1 file after upsert, got %d", len(e.Files))
+	}
+	if e.Files[0].DestPath != "/roms/Game.gb" {
+		t.Errorf("DestPath not updated: %s", e.Files[0].DestPath)
+	}
+}
+
+func TestExistingDestPath(t *testing.T) {
+	inv, _ := inventory.Load("/nonexistent")
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game"}, inventory.DownloadedFile{
+		Filename: "Capybara-Village-Update1.gb",
+		DestPath: "/roms/Capybara Village.gb",
+	})
+	got := inv.ExistingDestPath("https://example.itch.io/game", "Capybara-Village-Update1.gb")
+	if got != "/roms/Capybara Village.gb" {
+		t.Errorf("ExistingDestPath = %q, want %q", got, "/roms/Capybara Village.gb")
+	}
+	if inv.ExistingDestPath("https://example.itch.io/game", "other.gb") != "" {
+		t.Error("ExistingDestPath should return empty for unknown filename")
+	}
+	if inv.ExistingDestPath("https://other.itch.io/other", "Capybara-Village-Update1.gb") != "" {
+		t.Error("ExistingDestPath should return empty for unknown game")
+	}
+}
+
+// ── Bug 2: False update badge for files present since first check ─────────────
+
+func TestHasPendingUpdates_FalseForFirstCheckFiles(t *testing.T) {
+	inv, _ := inventory.Load("/nonexistent")
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game", IsFree: true},
+		inventory.DownloadedFile{Filename: "game-v1.gb", DestPath: "/roms/Game.gb"})
+
+	// First update check discovers two files (game-v1.gb downloaded, old-jam.gb not)
+	inv.SetUpstreamFiles("https://example.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "game-v1.gb", UploadID: "1"},
+		{Filename: "old-jam.gb", UploadID: "2"},
+	})
+
+	// old-jam.gb was present from the very first check — should NOT trigger update badge
+	if inv.HasPendingUpdates("https://example.itch.io/game") {
+		t.Error("HasPendingUpdates = true for file seen on first check, want false")
+	}
+}
+
+func TestHasPendingUpdates_TrueForSubsequentNewFile(t *testing.T) {
+	inv, _ := inventory.Load("/nonexistent")
+	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game", IsFree: true},
+		inventory.DownloadedFile{Filename: "game-v1.gb", DestPath: "/roms/Game.gb"})
+
+	// First check: only v1 available
+	inv.SetUpstreamFiles("https://example.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "game-v1.gb", UploadID: "1"},
+	})
+
+	// Second check: developer published v2
+	inv.SetUpstreamFiles("https://example.itch.io/game", []inventory.UpstreamFile{
+		{Filename: "game-v1.gb", UploadID: "1"},
+		{Filename: "game-v2.gb", UploadID: "3"},
+	})
+
+	// game-v2.gb is genuinely new — should trigger update badge
+	if !inv.HasPendingUpdates("https://example.itch.io/game") {
+		t.Error("HasPendingUpdates = false for genuinely new upload, want true")
 	}
 }

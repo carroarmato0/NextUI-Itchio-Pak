@@ -248,5 +248,8 @@ func (s *FormatPickerScreen) confirm() Screen {
 		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 	}
 	dest := roms.DestinationDir(chosenExt) + upload.Filename
+	if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
+		dest = existing
+	}
 	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 }

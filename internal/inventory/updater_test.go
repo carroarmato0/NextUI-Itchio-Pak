@@ -163,6 +163,40 @@ func freeGameServer(t *testing.T, status int, filenames []string) *httptest.Serv
 	return srv
 }
 
+// freeGameServerDynamic is like freeGameServer but reads filenames from the
+// pointed-to slice at request time, so callers can mutate it between runs.
+func freeGameServerDynamic(t *testing.T, filenames *[]string) *httptest.Server {
+	t.Helper()
+	var srvURL string
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><head><meta name="csrf_token" value="TESTCSRF"/></head></html>`))
+	})
+	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		data, _ := json.Marshal(map[string]string{"url": srvURL + "/dl/TESTKEY"})
+		w.Write(data)
+	})
+	mux.HandleFunc("/dl/TESTKEY", func(w http.ResponseWriter, r *http.Request) {
+		var body bytes.Buffer
+		body.WriteString(`<html><head><meta name="csrf_token" value="DLCSRF"/></head><body>`)
+		for i, fn := range *filenames {
+			body.WriteString(`<div class="upload"><div class="info_column"><div class="upload_name">`)
+			body.WriteString(`<strong class="name" title="` + fn + `">` + fn + `</strong>`)
+			body.WriteString(`</div></div><div class="actions">`)
+			body.WriteString(fmt.Sprintf(`<a class="button download_btn" href="javascript:void(0);" data-upload_id="%d">Download</a>`, 100+i))
+			body.WriteString(`</div></div>`)
+		}
+		body.WriteString(`</body></html>`)
+		w.Write(body.Bytes())
+	})
+
+	srv := httptest.NewServer(mux)
+	srvURL = srv.URL
+	return srv
+}
+
 func TestUpdateService_Marks404AsRemoved(t *testing.T) {
 	srv := freeGameServer(t, http.StatusNotFound, nil)
 	defer srv.Close()
@@ -195,7 +229,9 @@ func TestUpdateService_Marks404AsRemoved(t *testing.T) {
 }
 
 func TestUpdateService_DiffAddsNewFile(t *testing.T) {
-	srv := freeGameServer(t, http.StatusOK, []string{"game.gb", "game-v2.gb"})
+	// First check: only game.gb is available. Second check: game-v2.gb is added.
+	filenames := []string{"game.gb"}
+	srv := freeGameServerDynamic(t, &filenames)
 	defer srv.Close()
 
 	dir := t.TempDir()
@@ -213,14 +249,30 @@ func TestUpdateService_DiffAddsNewFile(t *testing.T) {
 	inv.Save(invPath)
 
 	client := itchio.NewClientWithBase(srv.URL)
-	done := make(chan struct{})
-	svc := inventory.NewUpdateService(inv, invPath, client, nil)
-	svc.Start(func() { close(done) })
-	<-done
-	svc.Stop()
+
+	// First check: establishes baseline (game.gb only, IsNew=false for all).
+	done1 := make(chan struct{})
+	svc1 := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc1.Start(func() { close(done1) })
+	<-done1
+	svc1.Stop()
+
+	if inv.HasPendingUpdates(srv.URL + "/game") {
+		t.Error("HasPendingUpdates: want false after first check (no genuinely new files yet)")
+	}
+
+	// Developer publishes game-v2.gb.
+	filenames = append(filenames, "game-v2.gb")
+
+	// Second check: game-v2.gb appears and is flagged as genuinely new.
+	done2 := make(chan struct{})
+	svc2 := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc2.Start(func() { close(done2) })
+	<-done2
+	svc2.Stop()
 
 	if !inv.HasPendingUpdates(srv.URL + "/game") {
-		t.Error("HasPendingUpdates: want true after new file detected upstream")
+		t.Error("HasPendingUpdates: want true after new file detected upstream on second check")
 	}
 }
 
@@ -329,8 +381,9 @@ func TestUpdateService_ClearsRemovedWhenDownloadedFileReappearsInStore(t *testin
 }
 
 func TestUpdateService_DismissedUpdateDoesNotReappearOnRestart(t *testing.T) {
-	// Upstream has two files; user only downloaded one.
-	srv := freeGameServer(t, http.StatusOK, []string{"game.gb", "game-v2.gb"})
+	// Start with only game.gb; game-v2.gb appears after first check.
+	filenames := []string{"game.gb"}
+	srv := freeGameServerDynamic(t, &filenames)
 	defer srv.Close()
 
 	dir := t.TempDir()
@@ -350,14 +403,27 @@ func TestUpdateService_DismissedUpdateDoesNotReappearOnRestart(t *testing.T) {
 
 	client := itchio.NewClientWithBase(srv.URL)
 
-	// First check: detect the pending update.
-	done := make(chan struct{})
-	svc := inventory.NewUpdateService(inv, invPath, client, nil)
-	svc.Start(func() { close(done) })
-	<-done
-	svc.Stop()
+	// First check: baseline (game.gb only), no pending updates yet.
+	done1 := make(chan struct{})
+	svc1 := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc1.Start(func() { close(done1) })
+	<-done1
+	svc1.Stop()
+	if inv.HasPendingUpdates(gameURL) {
+		t.Fatal("HasPendingUpdates: want false after first check (no new files yet)")
+	}
+
+	// Developer publishes game-v2.gb.
+	filenames = append(filenames, "game-v2.gb")
+
+	// Second check: game-v2.gb detected as genuinely new.
+	done2 := make(chan struct{})
+	svc2 := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc2.Start(func() { close(done2) })
+	<-done2
+	svc2.Stop()
 	if !inv.HasPendingUpdates(gameURL) {
-		t.Fatal("HasPendingUpdates: want true after first check")
+		t.Fatal("HasPendingUpdates: want true after new file detected on second check")
 	}
 
 	// User dismisses the update and we save to disk.
@@ -369,15 +435,15 @@ func TestUpdateService_DismissedUpdateDoesNotReappearOnRestart(t *testing.T) {
 		t.Fatal("HasPendingUpdates: want false immediately after dismiss")
 	}
 
-	// Simulate app restart: reload inventory from disk, run second check.
-	inv2, _ := inventory.Load(invPath)
-	done2 := make(chan struct{})
-	svc2 := inventory.NewUpdateService(inv2, invPath, client, nil)
-	svc2.Start(func() { close(done2) })
-	<-done2
-	svc2.Stop()
+	// Simulate app restart: reload inventory from disk, run third check.
+	inv3, _ := inventory.Load(invPath)
+	done3 := make(chan struct{})
+	svc3 := inventory.NewUpdateService(inv3, invPath, client, nil)
+	svc3.Start(func() { close(done3) })
+	<-done3
+	svc3.Stop()
 
-	if inv2.HasPendingUpdates(gameURL) {
+	if inv3.HasPendingUpdates(gameURL) {
 		t.Error("HasPendingUpdates: want false — dismissed update must not reappear after restart + re-check")
 	}
 }

@@ -23,6 +23,7 @@ type UpstreamFile struct {
 	Filename string    `json:"filename"`
 	UploadID string    `json:"upload_id"`
 	SeenAt   time.Time `json:"seen_at"`
+	IsNew    bool      `json:"is_new,omitempty"`
 }
 
 type Entry struct {
@@ -111,8 +112,12 @@ func (inv *Inventory) Add(gameURL string, e Entry, file DownloadedFile) {
 		existing.Author = e.Author
 		existing.CoverURL = e.CoverURL
 	}
-	for _, f := range existing.Files {
+	for i, f := range existing.Files {
 		if f.DestPath == file.DestPath {
+			return // exact same path, no-op
+		}
+		if f.Filename == file.Filename {
+			existing.Files[i] = file // same upload, new dest path — update in place
 			return
 		}
 	}
@@ -137,6 +142,24 @@ func (inv *Inventory) Lookup(gameURL string) (Entry, bool) {
 	snap := *e
 	snap.Files = append([]DownloadedFile(nil), e.Files...)
 	return snap, true
+}
+
+// ExistingDestPath returns the dest_path of an already-downloaded file matching
+// the given upload filename, or "" if not found. Used to overwrite an existing
+// download rather than creating a duplicate.
+func (inv *Inventory) ExistingDestPath(gameURL, uploadFilename string) string {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	e, ok := inv.Entries[gameURL]
+	if !ok {
+		return ""
+	}
+	for _, f := range e.Files {
+		if f.Filename == uploadFilename {
+			return f.DestPath
+		}
+	}
+	return ""
 }
 
 // IsPresent reports whether gameURL has an inventory entry with at least one file.
@@ -211,8 +234,9 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 	return removed
 }
 
-// HasPendingUpdates returns true when any UpstreamFile for gameURL has a
-// filename not in the downloaded set and was seen after UpdateDismissedAt.
+// HasPendingUpdates returns true when any UpstreamFile for gameURL is marked
+// as a new upload (appeared after the first check), has a filename not in the
+// downloaded set, and was seen after UpdateDismissedAt.
 func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 	inv.mu.Lock()
 	defer inv.mu.Unlock()
@@ -231,7 +255,9 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 		}
 	}
 	for _, u := range e.KnownUpstreamFiles {
-		if !downloaded[u.Filename] && u.SeenAt.After(e.UpdateDismissedAt) {
+		// Only flag genuinely new uploads (IsNew = true means appeared after first check).
+		// Files discovered on first check were present when the user downloaded the game.
+		if u.IsNew && !downloaded[u.Filename] && u.SeenAt.After(e.UpdateDismissedAt) {
 			return true
 		}
 	}
@@ -314,14 +340,29 @@ func (inv *Inventory) SetUpstreamFiles(gameURL string, files []UpstreamFile) {
 	if !ok {
 		return
 	}
-	prior := make(map[string]time.Time, len(e.KnownUpstreamFiles))
+	// isFirstCheck: no previous update run — files were already present when the
+	// user downloaded the game and are not genuine new uploads.
+	isFirstCheck := e.UpdateCheckedAt.IsZero()
+	type priorInfo struct {
+		seenAt time.Time
+		isNew  bool
+	}
+	prior := make(map[string]priorInfo, len(e.KnownUpstreamFiles))
 	for _, f := range e.KnownUpstreamFiles {
-		prior[f.Filename] = f.SeenAt
+		prior[f.Filename] = priorInfo{seenAt: f.SeenAt, isNew: f.IsNew}
 	}
 	for i := range files {
-		if t, ok := prior[files[i].Filename]; ok {
-			files[i].SeenAt = t // keep original first-seen time
+		if p, ok := prior[files[i].Filename]; ok {
+			files[i].SeenAt = p.seenAt // preserve original first-seen time
+			files[i].IsNew = p.isNew   // preserve new-upload flag
+		} else if !isFirstCheck {
+			// Genuinely new file appearing after the first check — flag it.
+			files[i].IsNew = true
+			if files[i].SeenAt.IsZero() {
+				files[i].SeenAt = time.Now()
+			}
 		}
+		// if isFirstCheck: IsNew stays false (zero value); file was already present at download time
 	}
 	e.KnownUpstreamFiles = files
 	e.UpdateCheckedAt = time.Now()
