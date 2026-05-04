@@ -161,7 +161,7 @@ func runSDL() {
 loop:
 	for current != nil {
 		// Upload any images that background goroutines finished fetching.
-		cache.ProcessPending(r)
+		_ = cache.ProcessPending(r)
 
 		for e := sdl.PollEvent(); e != nil; e = sdl.PollEvent() {
 			if pendingQuit {
