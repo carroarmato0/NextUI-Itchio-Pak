@@ -79,6 +79,10 @@ func (s *devAutoDetailScreen) pollForGames() {
 	}
 }
 
+func (s *devAutoDetailScreen) NeedsRedraw() bool {
+	return s.list.NeedsRedraw()
+}
+
 func (s *devAutoDetailScreen) Draw(r *renderer.Renderer) {
 	s.list.Draw(r)
 }

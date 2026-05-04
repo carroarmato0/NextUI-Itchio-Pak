@@ -154,6 +154,10 @@ func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 	s.state = fetchDone
 }
 
+func (s *FetchUploadsScreen) NeedsRedraw() bool {
+	return true
+}
+
 func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])

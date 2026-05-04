@@ -24,6 +24,11 @@ import (
 // are abbreviated at or below this width to prevent overflow.
 const narrowScreenW = int32(640)
 
+const (
+	scrollDelay = time.Second
+	scrollSpeed = int32(50)
+)
+
 // Auto-repeat timing for held D-pad buttons
 const (
 	repeatDelay = 300 * time.Millisecond // initial delay before repeating
@@ -275,6 +280,16 @@ func (s *ListScreen) moveCursor(dir int) {
 	}
 }
 
+func (s *ListScreen) NeedsRedraw() bool {
+	if s.heldDir != 0 {
+		return true
+	}
+	// Resume rendering 500ms before scrollDelay expires so the first
+	// animation frame is not missed when the cursor has been stationary.
+	return !s.titleScrollAt.IsZero() &&
+		time.Since(s.titleScrollAt) > scrollDelay/2
+}
+
 // warmPreloadWindow warms cover art for the current game plus preloadRadius
 // neighbours on each side, indexed into viewGames so page boundaries are
 // handled transparently. Sets warmedGameURL so Draw does not re-warm until
@@ -434,8 +449,6 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	}
 
 	// Advance horizontal scroll for the selected title (1s pause, then 50px/s).
-	const scrollDelay = time.Second
-	const scrollSpeed = int32(50) // pixels per second
 	if !s.titleScrollAt.IsZero() {
 		elapsed := time.Since(s.titleScrollAt)
 		if elapsed > scrollDelay {

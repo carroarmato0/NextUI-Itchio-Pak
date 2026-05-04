@@ -59,6 +59,10 @@ func (s *ContentModerationScreen) processAutoRepeat() {
 	s.lastRepeat = now
 }
 
+func (s *ContentModerationScreen) NeedsRedraw() bool {
+	return s.heldDir != 0
+}
+
 func (s *ContentModerationScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
 	bg := r.Theme.Background

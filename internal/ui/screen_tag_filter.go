@@ -186,6 +186,10 @@ func (s *TagFilterScreen) stopHold(dir int) {
 	}
 }
 
+func (s *TagFilterScreen) NeedsRedraw() bool {
+	return s.heldDir != 0
+}
+
 func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	s.processAutoRepeat()
 	bg := r.Theme.Background

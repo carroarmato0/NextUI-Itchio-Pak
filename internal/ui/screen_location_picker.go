@@ -167,6 +167,8 @@ func (s *LocationPickerScreen) clampScroll(visibleCount int) {
 	}
 }
 
+func (s *LocationPickerScreen) NeedsRedraw() bool { return false }
+
 func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])

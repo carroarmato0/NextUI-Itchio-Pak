@@ -124,6 +124,10 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 	return s
 }
 
+func (s *DownloadScreen) NeedsRedraw() bool {
+	return true
+}
+
 func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])

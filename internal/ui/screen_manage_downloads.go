@@ -38,6 +38,8 @@ func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, ga
 	}
 }
 
+func (s *ManageDownloadsScreen) NeedsRedraw() bool { return false }
+
 func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 	entry, ok := s.inv.Lookup(s.gameURL)
 	if !ok {

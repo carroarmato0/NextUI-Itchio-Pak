@@ -156,6 +156,8 @@ func (s *MigrateFlowScreen) runMigration() {
 	}
 }
 
+func (s *MigrateFlowScreen) NeedsRedraw() bool { return false }
+
 func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
