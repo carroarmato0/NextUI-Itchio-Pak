@@ -454,17 +454,26 @@ func (r *Renderer) DrawCircleBadge(cx, cy, d int32, red, green, blue uint8) {
 	drawFilledCircle(r.Renderer, cx, cy, d/2, red, green, blue)
 }
 
+// maxCircleRadius is the largest radius drawFilledCircle will receive.
+// Devices range from 640×480 to 1280×720; footer badges are h/32 ≈ 15–22 px radius.
+// 128 gives a safe margin without wasting stack space.
+const maxCircleRadius = 128
+
 // drawFilledCircle draws a filled circle using a single FillRects call.
-// Batching all scanlines into one CGo round-trip replaces the per-row DrawLine loop.
+// Uses a fixed-size stack buffer to avoid the heap allocation that make() caused.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
+	if radius > maxCircleRadius {
+		radius = maxCircleRadius
+	}
 	ren.SetDrawColor(red, green, blue, 255)
-	rects := make([]sdl.Rect, radius*2+1)
-	for i := range rects {
+	var buf [maxCircleRadius*2 + 1]sdl.Rect
+	n := int(radius*2 + 1)
+	for i := 0; i < n; i++ {
 		dy := int32(i) - radius
 		dx := int32(math.Round(math.Sqrt(float64(radius*radius - dy*dy))))
-		rects[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
+		buf[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
 	}
-	ren.FillRects(rects)
+	ren.FillRects(buf[:n])
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume
