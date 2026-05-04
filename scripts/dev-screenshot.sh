@@ -140,7 +140,7 @@ _keepawake &
 _KEEPAWAKE_PID=$!
 _cleanup() {
     kill "$_KEEPAWAKE_PID" 2>/dev/null
-    wait "$_KEEPAWAKE_PID" 2>/dev/null
+    wait "$_KEEPAWAKE_PID" 2>/dev/null || true
     adb shell "echo 'dev-screenshot' > /sys/power/wake_unlock 2>/dev/null" || true
 }
 trap "_cleanup" EXIT INT TERM
