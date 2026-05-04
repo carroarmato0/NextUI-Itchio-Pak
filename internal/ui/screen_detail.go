@@ -180,12 +180,13 @@ func (s *DetailScreen) NeedsRedraw() bool {
 	if s.heldDir != 0 {
 		return true
 	}
-func (s *DetailScreen) HasPendingAnimation() bool { return false }
 	// Resume rendering 500ms before pathScrollDelay expires so the first
 	// animation frame is not missed when the cursor has been stationary.
 	return !s.pathScrollAt.IsZero() &&
 		time.Since(s.pathScrollAt) > pathScrollDelay/2
 }
+
+func (s *DetailScreen) HasPendingAnimation() bool { return false }
 
 func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// Draw the modal overlay (if active) and call Present exactly once,
