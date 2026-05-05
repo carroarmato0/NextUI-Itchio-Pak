@@ -459,21 +459,43 @@ func (r *Renderer) DrawCircleBadge(cx, cy, d int32, red, green, blue uint8) {
 // 128 gives a safe margin without wasting stack space.
 const maxCircleRadius = 128
 
-// drawFilledCircle draws a filled circle using a single FillRects call.
-// Uses a fixed-size stack buffer to avoid the heap allocation that make() caused.
+// circleRectBuf is a reusable scratch buffer for drawFilledCircle.
+// Solid rects occupy [0 : radius*2+1]; fringe rects follow immediately.
+// Maximum total: (radius*2+1) + (radius*4+2) = radius*6+3.
+// Package-level so CGo escape analysis never allocates it per call.
+// Only accessed from the SDL main goroutine — no locking needed.
+var circleRectBuf [maxCircleRadius*6 + 3]sdl.Rect
+
+// drawFilledCircle draws a filled anti-aliased circle.
+// The solid interior uses floor-quantised extents; a 1px fringe at 50% alpha
+// softens the staircase edge. Two FillRects calls; no per-pixel alpha variation.
+// Safe to call inside DrawPill — blend mode is restored to NONE on return.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	if radius > maxCircleRadius {
 		radius = maxCircleRadius
 	}
-	ren.SetDrawColor(red, green, blue, 255)
-	var buf [maxCircleRadius*2 + 1]sdl.Rect
 	n := int(radius*2 + 1)
+	r2 := float64(radius * radius)
+
+	// Solid rects at [0:n]; fringe rects at [n : n+n*2].
 	for i := 0; i < n; i++ {
-		dy := int32(i) - radius
-		dx := int32(math.Round(math.Sqrt(float64(radius*radius - dy*dy))))
-		buf[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
+		iy := cy + int32(i) - radius
+		dy := float64(int32(i) - radius)
+		dxi := int32(math.Sqrt(math.Max(0, r2-dy*dy))) // floor: solid body inside circle
+		circleRectBuf[i] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
+		// Fringe pixels one step outside the solid body.
+		circleRectBuf[n+i*2] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
+		circleRectBuf[n+i*2+1] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
 	}
-	ren.FillRects(buf[:n])
+
+	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	ren.SetDrawColor(red, green, blue, 255)
+	ren.FillRects(circleRectBuf[:n])
+
+	ren.SetDrawBlendMode(sdl.BLENDMODE_BLEND)
+	ren.SetDrawColor(red, green, blue, 128)
+	ren.FillRects(circleRectBuf[n : n+n*2])
+	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume

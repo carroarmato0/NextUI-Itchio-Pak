@@ -395,7 +395,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawFooterHints([]renderer.FooterHint{
 				{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"},
 				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
-				{Kind: renderer.BadgePill, Label: "⚙", Text: ""},
+				{Kind: renderer.BadgePill, Label: "START", Text: "Set"},
 			}, ftrY)
 		} else {
 			r.DrawFooterHints([]renderer.FooterHint{
@@ -674,15 +674,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					r.DrawSmallTextCenteredInRect(pillLabel, pillX, pillY, pillW, pillH, textR, textG, textB)
 				}
 			} else if s.cache.Failed(g.CoverURL) {
-				r.DrawText("No Image", rightX+boxW/2-40, metaY+boxH/2-10, 80, 80, 80)
+				r.DrawTextCenteredInRect("No Image", rightX, metaY, boxW, boxH, 80, 80, 80)
 			} else {
-				r.DrawText("Loading...", rightX+boxW/2-40, metaY+boxH/2-10, 80, 80, 80)
+				r.DrawTextCenteredInRect("Loading...", rightX, metaY, boxW, boxH, 80, 80, 80)
 			}
 		} else {
 			// No cover URL — wireframe border
 			r.DrawRect(rightX+2, metaY+2, boxW-4, boxH-4, bg[0], bg[1], bg[2])
 			r.DrawRect(rightX+3, metaY+3, boxW-6, boxH-6, 35, 35, 35)
-			r.DrawText("No Image", rightX+boxW/2-40, metaY+boxH/2-10, 80, 80, 80)
+			r.DrawTextCenteredInRect("No Image", rightX, metaY, boxW, boxH, 80, 80, 80)
 		}
 		metaY += boxH + 12
 
@@ -763,7 +763,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	}
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	if r.W <= narrowScreenW {
-		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
+		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Set"})
 	} else {
 		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}

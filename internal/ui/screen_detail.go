@@ -332,8 +332,13 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			margin, y, 140, 140, 140)
 		y += fontH + 6
 	} else {
-		// No screenshots — just QR code
-		qrBoxH := contentH / 3
+		// No screenshots — show QR full-width at the same pixel size as the
+		// right-column version (qrColW-20).  Back-calculate the box height so
+		// drawQR produces that exact size instead of being constrained by h.
+		_, smallFH := r.SmallTextSize("Ag")
+		const qrVMargin = int32(8) // must match vMargin inside drawQR
+		captionH := int32(4) + smallFH + int32(2) + smallFH
+		qrBoxH := (qrColW - 20) + captionH + qrVMargin*2
 		s.drawQR(r, margin, y, usableW, qrBoxH)
 		y += qrBoxH + 10
 	}
@@ -600,12 +605,19 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 // The texture is generated once and cached in s.qrTex for the lifetime of the
 // screen — destroyed in goBack() when the user navigates away.
 func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
-	qrSize := int(w - 20)
-	if qrSize > int(h-40) {
-		qrSize = int(h - 40)
+	// Measure caption first so the QR size accounts for it.
+	_, smallFH := r.SmallTextSize("Ag")
+	captionH := int32(4) + smallFH + int32(2) + smallFH // gap + "Scan to open" + gap + "in browser"
+
+	// Reserve equal top/bottom margins plus the caption below the QR.
+	const vMargin = int32(8)
+	maxH := h - captionH - vMargin*2
+	if maxH < 80 {
+		maxH = 80
 	}
-	if qrSize < 80 {
-		qrSize = 80
+	qrSize := int(w - 20)
+	if qrSize > int(maxH) {
+		qrSize = int(maxH)
 	}
 	if qrSize > 512 {
 		qrSize = 512
@@ -622,9 +634,13 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 		logger.Debug("detail: QR texture generated for %s (%dpx)", s.game.URL, qrSize)
 	}
 
-	_, smallFH := r.SmallTextSize("Ag")
+	// Center the [QR + caption] block vertically within the box.
+	blockH := qrS + captionH
 	qrX := x + (w-qrS)/2
-	qrY := y + (h-qrS)/2 - smallFH - 4
+	qrY := y + (h-blockH)/2
+	if qrY < y+vMargin {
+		qrY = y + vMargin
+	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
 	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
 	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, 120, 120, 120)
