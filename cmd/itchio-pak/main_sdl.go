@@ -168,17 +168,24 @@ loop:
 		newImages := cache.ProcessPending(r)
 
 		// Block until an SDL event arrives.
-		// Three modes:
+		// Four modes:
 		//   16ms  — screen needs continuous redraws (download progress, spinners)
+		//   poll  — textures just uploaded; draw them before blocking again
 		//  500ms  — screen is static but has a pending timed animation (e.g. title
 		//           scroll delay). This guarantees the loop wakes before the
 		//           animation window opens even if no other events fire.
 		//  ∞      — truly idle: no redraws needed, image-cache notify and user
 		//           input are the only expected wakeups.
+		//
+		// The poll case fixes a race where ProcessPending uploads a texture in
+		// iteration N+1 (after the notify UserEvent woke iteration N's WaitEvent),
+		// but then WaitEvent blocks indefinitely because no further event arrives.
 		gotEvent := false
 		var e sdl.Event
 		if current.NeedsRedraw() {
 			e = sdl.WaitEventTimeout(16)
+		} else if newImages {
+			e = sdl.PollEvent()
 		} else if current.HasPendingAnimation() {
 			e = sdl.WaitEventTimeout(500)
 		} else {
