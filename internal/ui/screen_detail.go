@@ -332,8 +332,13 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			margin, y, 140, 140, 140)
 		y += fontH + 6
 	} else {
-		// No screenshots — just QR code
-		qrBoxH := contentH / 3
+		// No screenshots — show QR full-width at the same pixel size as the
+		// right-column version (qrColW-20).  Back-calculate the box height so
+		// drawQR produces that exact size instead of being constrained by h.
+		_, smallFH := r.SmallTextSize("Ag")
+		const qrVMargin = int32(8) // must match vMargin inside drawQR
+		captionH := int32(4) + smallFH + int32(2) + smallFH
+		qrBoxH := (qrColW - 20) + captionH + qrVMargin*2
 		s.drawQR(r, margin, y, usableW, qrBoxH)
 		y += qrBoxH + 10
 	}
