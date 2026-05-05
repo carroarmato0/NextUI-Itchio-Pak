@@ -71,7 +71,7 @@ func (s *devAutoDetailScreen) pollForGames() {
 		case <-s.stopPoll:
 			return
 		case <-time.After(100 * time.Millisecond):
-			if len(s.list.games) > 0 {
+			if len(s.list.viewGames) > 0 {
 				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: DevNavEventCode})
 				return
 			}
@@ -98,11 +98,11 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 		default:
 			close(s.stopPoll)
 		}
-		if len(s.list.games) > 0 {
-			logger.Info("dev:detail-ready %q", s.list.games[0].Title)
+		if len(s.list.viewGames) > 0 {
+			logger.Info("dev:detail-ready %q", s.list.viewGames[0].Title)
 			return NewDetailScreen(
 				s.client, s.cfg, s.cfgPath, s.cache,
-				s.list.games[0], s.inv, s.inventoryPath, s.list,
+				s.list.viewGames[0], s.inv, s.inventoryPath, s.list,
 				s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle,
 			)
 		}
