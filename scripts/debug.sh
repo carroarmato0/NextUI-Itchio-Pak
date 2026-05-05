@@ -74,8 +74,21 @@ EOF
         ;;
     logs)
         check_adb
-        echo "==> Streaming log (Ctrl-C to stop)..."
-        adb shell "tail -f $LOG_PATH"
+        echo "==> Streaming log from last startup (Ctrl-C to stop)..."
+        LINE=$(adb shell "grep -n 'itchio-pak .* starting' $LOG_PATH 2>/dev/null | tail -1 | cut -d: -f1" 2>/dev/null | tr -d '\r')
+        if [ -n "$LINE" ]; then
+            adb shell "tail -n +$LINE -f $LOG_PATH" | awk '
+                BEGIN { ts0 = ""; show = 0 }
+                /itchio-pak .* starting/ {
+                    ts = substr($0, 1, 19)
+                    if (ts0 == "" || ts > ts0) { ts0 = ts; show = 1; print } else { show = 0 }
+                    next
+                }
+                show { print }
+            '
+        else
+            adb shell "tail -f $LOG_PATH"
+        fi
         ;;
     push)
         check_adb
