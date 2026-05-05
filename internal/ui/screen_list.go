@@ -207,7 +207,6 @@ func (s *ListScreen) loadPage(page int, query string) {
 	s.loading = false
 }
 
-
 func (s *ListScreen) processAutoRepeat() {
 	if s.heldDir == 0 {
 		return
@@ -252,7 +251,7 @@ func (s *ListScreen) moveCursor(dir int) {
 // Used by L1/R1 shoulder buttons to jump by one visible screen at a time.
 func (s *ListScreen) jumpCursor(n int) {
 	if n == 0 {
-		n = 1
+		return
 	}
 	newPos := s.cursor + n
 	if newPos < 0 {
@@ -1052,7 +1051,9 @@ func (s *ListScreen) rebuildView() {
 		return
 	}
 	s.cursor = 0
-	s.loadPage(1, "")
+	if !s.cacheReady {
+		s.loadPage(1, "")
+	}
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }
 
@@ -1061,7 +1062,6 @@ func (s *ListScreen) rebuildView() {
 func (s *ListScreen) IsBusy() bool {
 	return s.cacheBuilding.Load()
 }
-
 
 // buildCache fetches the complete game list and writes it to disk.
 // Called as a goroutine. On success, future page turns use the local cache.
