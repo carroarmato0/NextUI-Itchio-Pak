@@ -459,21 +459,44 @@ func (r *Renderer) DrawCircleBadge(cx, cy, d int32, red, green, blue uint8) {
 // 128 gives a safe margin without wasting stack space.
 const maxCircleRadius = 128
 
-// drawFilledCircle draws a filled circle using a single FillRects call.
-// Uses a fixed-size stack buffer to avoid the heap allocation that make() caused.
+// drawFilledCircle draws a filled anti-aliased circle.
+// The solid interior uses floor-quantised extents; a 1px fringe at 50% alpha
+// softens the staircase edge. Two FillRects calls; no per-pixel alpha variation.
+// Safe to call inside DrawPill — blend mode is restored to NONE on return.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	if radius > maxCircleRadius {
 		radius = maxCircleRadius
 	}
-	ren.SetDrawColor(red, green, blue, 255)
-	var buf [maxCircleRadius*2 + 1]sdl.Rect
 	n := int(radius*2 + 1)
+	r2 := float64(radius * radius)
+
+	var solidBuf [maxCircleRadius*2 + 1]sdl.Rect
+	// Up to 2 fringe pixels per row (left + right edge).
+	var fringeBuf [maxCircleRadius*4 + 2]sdl.Rect
+	ns, nf := 0, 0
+
 	for i := 0; i < n; i++ {
-		dy := int32(i) - radius
-		dx := int32(math.Round(math.Sqrt(float64(radius*radius - dy*dy))))
-		buf[i] = sdl.Rect{X: cx - dx, Y: cy + dy, W: dx*2 + 1, H: 1}
+		iy := cy + int32(i) - radius
+		dy := float64(int32(i) - radius)
+		exactDx := math.Sqrt(math.Max(0, r2-dy*dy))
+		dxi := int32(exactDx) // floor: solid body strictly inside the circle
+		solidBuf[ns] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
+		ns++
+		// Fringe pixels one step outside the solid body.
+		fringeBuf[nf] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
+		nf++
+		fringeBuf[nf] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
+		nf++
 	}
-	ren.FillRects(buf[:n])
+
+	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	ren.SetDrawColor(red, green, blue, 255)
+	ren.FillRects(solidBuf[:ns])
+
+	ren.SetDrawBlendMode(sdl.BLENDMODE_BLEND)
+	ren.SetDrawColor(red, green, blue, 128)
+	ren.FillRects(fringeBuf[:nf])
+	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume

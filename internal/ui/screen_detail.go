@@ -623,8 +623,15 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	}
 
 	_, smallFH := r.SmallTextSize("Ag")
+	// Center the QR + caption block vertically so the QR sits equidistant from
+	// the top and bottom of the box rather than being pushed upward.
+	captionH := int32(4) + smallFH + int32(2) + smallFH // gap + line1 + gap + line2
+	blockH := qrS + captionH
 	qrX := x + (w-qrS)/2
-	qrY := y + (h-qrS)/2 - smallFH - 4
+	qrY := y + (h-blockH)/2
+	if qrY < y {
+		qrY = y
+	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
 	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
 	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, 120, 120, 120)
