@@ -459,6 +459,13 @@ func (r *Renderer) DrawCircleBadge(cx, cy, d int32, red, green, blue uint8) {
 // 128 gives a safe margin without wasting stack space.
 const maxCircleRadius = 128
 
+// circleRectBuf is a reusable scratch buffer for drawFilledCircle.
+// Solid rects occupy [0 : radius*2+1]; fringe rects follow immediately.
+// Maximum total: (radius*2+1) + (radius*4+2) = radius*6+3.
+// Package-level so CGo escape analysis never allocates it per call.
+// Only accessed from the SDL main goroutine — no locking needed.
+var circleRectBuf [maxCircleRadius*6 + 3]sdl.Rect
+
 // drawFilledCircle draws a filled anti-aliased circle.
 // The solid interior uses floor-quantised extents; a 1px fringe at 50% alpha
 // softens the staircase edge. Two FillRects calls; no per-pixel alpha variation.
@@ -470,32 +477,24 @@ func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue 
 	n := int(radius*2 + 1)
 	r2 := float64(radius * radius)
 
-	var solidBuf [maxCircleRadius*2 + 1]sdl.Rect
-	// Up to 2 fringe pixels per row (left + right edge).
-	var fringeBuf [maxCircleRadius*4 + 2]sdl.Rect
-	ns, nf := 0, 0
-
+	// Solid rects at [0:n]; fringe rects at [n : n+n*2].
 	for i := 0; i < n; i++ {
 		iy := cy + int32(i) - radius
 		dy := float64(int32(i) - radius)
-		exactDx := math.Sqrt(math.Max(0, r2-dy*dy))
-		dxi := int32(exactDx) // floor: solid body strictly inside the circle
-		solidBuf[ns] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
-		ns++
+		dxi := int32(math.Sqrt(math.Max(0, r2-dy*dy))) // floor: solid body inside circle
+		circleRectBuf[i] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
 		// Fringe pixels one step outside the solid body.
-		fringeBuf[nf] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
-		nf++
-		fringeBuf[nf] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
-		nf++
+		circleRectBuf[n+i*2] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
+		circleRectBuf[n+i*2+1] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
 	}
 
 	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 	ren.SetDrawColor(red, green, blue, 255)
-	ren.FillRects(solidBuf[:ns])
+	ren.FillRects(circleRectBuf[:n])
 
 	ren.SetDrawBlendMode(sdl.BLENDMODE_BLEND)
 	ren.SetDrawColor(red, green, blue, 128)
-	ren.FillRects(fringeBuf[:nf])
+	ren.FillRects(circleRectBuf[n : n+n*2])
 	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 }
 
