@@ -600,12 +600,19 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 // The texture is generated once and cached in s.qrTex for the lifetime of the
 // screen — destroyed in goBack() when the user navigates away.
 func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
-	qrSize := int(w - 20)
-	if qrSize > int(h-40) {
-		qrSize = int(h - 40)
+	// Measure caption first so the QR size accounts for it.
+	_, smallFH := r.SmallTextSize("Ag")
+	captionH := int32(4) + smallFH + int32(2) + smallFH // gap + "Scan to open" + gap + "in browser"
+
+	// Reserve equal top/bottom margins plus the caption below the QR.
+	const vMargin = int32(8)
+	maxH := h - captionH - vMargin*2
+	if maxH < 80 {
+		maxH = 80
 	}
-	if qrSize < 80 {
-		qrSize = 80
+	qrSize := int(w - 20)
+	if qrSize > int(maxH) {
+		qrSize = int(maxH)
 	}
 	if qrSize > 512 {
 		qrSize = 512
@@ -622,15 +629,12 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 		logger.Debug("detail: QR texture generated for %s (%dpx)", s.game.URL, qrSize)
 	}
 
-	_, smallFH := r.SmallTextSize("Ag")
-	// Center the QR + caption block vertically so the QR sits equidistant from
-	// the top and bottom of the box rather than being pushed upward.
-	captionH := int32(4) + smallFH + int32(2) + smallFH // gap + line1 + gap + line2
+	// Center the [QR + caption] block vertically within the box.
 	blockH := qrS + captionH
 	qrX := x + (w-qrS)/2
 	qrY := y + (h-blockH)/2
-	if qrY < y {
-		qrY = y
+	if qrY < y+vMargin {
+		qrY = y + vMargin
 	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
 	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
