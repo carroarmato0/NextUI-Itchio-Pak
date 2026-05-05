@@ -258,7 +258,7 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	// ── Footer ────────────────────────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgePill, Label: "L/R", Text: "Skip"},
+		{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Skip"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Toggle"},
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
 	}, ftrY)

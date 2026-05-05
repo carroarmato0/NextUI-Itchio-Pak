@@ -52,6 +52,9 @@ func ResolveUnifiedDest(currentPath, gameTitle string) (string, bool) {
 			if _, err := os.Stat(target); os.IsNotExist(err) {
 				break
 			}
+			if target == currentPath {
+				return currentPath, false
+			}
 		}
 	}
 	return target, target != currentPath

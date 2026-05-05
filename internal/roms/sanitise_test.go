@@ -86,6 +86,32 @@ func TestResolveUnifiedDest_Collision(t *testing.T) {
 	}
 }
 
+func TestResolveUnifiedDest_CollisionCurrentPathIsSlot(t *testing.T) {
+	// Re-download scenario: currentPath is already "Game (2).gb" because "Game.gb"
+	// was taken by another file. The download overwrote "Game (2).gb" in place, so
+	// both "Game.gb" and "Game (2).gb" exist on disk. ResolveUnifiedDest must
+	// recognise that currentPath already occupies the best available slot and return
+	// (currentPath, false) — not rename to "Game (3).gb".
+	dir := t.TempDir()
+	current := filepath.Join(dir, "Doomslinger Dungeon (2).gb")
+	if err := os.WriteFile(current, []byte("rom"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// "Doomslinger Dungeon.gb" is taken by a different file.
+	other := filepath.Join(dir, "Doomslinger Dungeon.gb")
+	if err := os.WriteFile(other, []byte("other"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, renamed := roms.ResolveUnifiedDest(current, "Doomslinger Dungeon")
+	if got != current {
+		t.Errorf("got %q, want %q (currentPath)", got, current)
+	}
+	if renamed {
+		t.Error("renamed should be false — file is already at best available slot")
+	}
+}
+
 func TestResolveUnifiedDest_EmptyTitle_NoRename(t *testing.T) {
 	dir := t.TempDir()
 	current := filepath.Join(dir, "Game Boy ROM.gb")

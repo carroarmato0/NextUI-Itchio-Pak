@@ -378,6 +378,9 @@ func (s *LocationPickerScreen) confirm() Screen {
 	s.cfg.LastROMDirs[s.ext] = s.currentDir
 	s.cfg.Save(s.cfgPath) //nolint:errcheck — best-effort persistence
 	dest := s.currentDir + s.upload.Filename
+	if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
+		dest = existing
+	}
 	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.upload, dest, s.inv, s.inventoryPath, s.prev)
 }
 
