@@ -328,7 +328,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		s.drawQR(r, qrX, y, qrColW, imgBoxH)
 
 		y += imgBoxH + 6
-		r.DrawText(fmt.Sprintf("Image %d/%d  (L/R)", s.screenshotIdx+1, len(s.detail.ScreenshotURLs)),
+		r.DrawText(fmt.Sprintf("Image %d/%d  (L1/R1)", s.screenshotIdx+1, len(s.detail.ScreenshotURLs)),
 			margin, y, 140, 140, 140)
 		y += fontH + 6
 	} else {
@@ -511,7 +511,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
-		{Kind: renderer.BadgePill, Label: "L/R", Text: "Screenshots"},
+		{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Screenshots"},
 	}
 	if r.W > narrowScreenW {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})

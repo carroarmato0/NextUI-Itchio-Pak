@@ -753,7 +753,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	var footerHints []renderer.FooterHint
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L/R", Text: "Page"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Page"})
 	if s.cacheReady {
 		if r.W <= narrowScreenW {
 			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"})
