@@ -56,8 +56,8 @@ func NewCacheRefreshScreen(
 	}
 	go func() {
 		// TODO: use a cancelable context tied to screen lifetime
-		games, err := client.FetchAllGames(context.Background(), func(fetched int) {
-			atomic.StoreInt64(&s.fetched, int64(fetched))
+		games, err := client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
+			atomic.StoreInt64(&s.fetched, int64(len(partial)))
 		})
 		if err != nil {
 			logger.Error("cache refresh: failed after %d games: %v", len(games), err)

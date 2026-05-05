@@ -1130,8 +1130,8 @@ func (s *ListScreen) buildCache() {
 	logger.Info("cache: starting background full fetch")
 	// context.Background() is intentional: this goroutine is not cancellable on
 	// app exit. A future improvement could thread an app-level context here.
-	games, err := s.client.FetchAllGames(context.Background(), func(fetched int) {
-		logger.Debug("cache: fetched %d games so far", fetched)
+	games, err := s.client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
+		logger.Debug("cache: fetched %d games so far", len(partial))
 	})
 	if err != nil {
 		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
