@@ -35,7 +35,7 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderRepeatInterval = 300 * time.Millisecond // fixed repeat interval for L1/R1 page jumps
+	shoulderAccelMin = 150 * time.Millisecond // minimum repeat interval for L1/R1 page jumps
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -225,7 +225,11 @@ func (s *ListScreen) processAutoRepeat() {
 	}
 	if s.heldShoulderDir != 0 {
 		elapsed := now.Sub(s.heldShoulderSince)
-		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= shoulderRepeatInterval {
+		interval := currentRepeatInterval(elapsed - repeatDelay)
+		if interval < shoulderAccelMin {
+			interval = shoulderAccelMin
+		}
+		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= interval {
 			s.jumpCursor(s.heldShoulderDir * s.lastVisibleRows)
 			s.lastShoulderRepeat = now
 		}
