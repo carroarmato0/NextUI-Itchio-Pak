@@ -31,11 +31,12 @@ const (
 
 // Auto-repeat timing for held D-pad buttons
 const (
-	repeatDelay = 300 * time.Millisecond // initial delay before repeating
-	accelStart  = 180 * time.Millisecond // repeat interval when acceleration begins
-	accelMin    = 30 * time.Millisecond  // repeat interval at full speed
-	accelRamp   = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	cacheTTL    = 24 * time.Hour
+	repeatDelay           = 300 * time.Millisecond  // initial delay before repeating
+	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
+	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
+	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
+	shoulderAccelMin = 150 * time.Millisecond // minimum repeat interval for L1/R1 page jumps
+	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
 	// art fetches are initiated. Below accelStart (180 ms) so normal browsing
@@ -64,9 +65,7 @@ type ListScreen struct {
 	client     *itchio.Client
 	cfg        *settings.Config
 	cache      *renderer.ImageCache
-	games      []itchio.Game
 	cursor     int
-	page       int
 	loading    bool
 	err        error
 	cfgPath    string
@@ -99,15 +98,23 @@ type ListScreen struct {
 	// cacheBuilding is set while buildCache / refreshCacheIfStale runs.
 	cacheBuilding atomic.Bool
 
-	// jumpToEnd signals that the next loadPage call should place the cursor on
-	// the last item rather than the first. Set when navigating to a previous page.
-	jumpToEnd bool
+	// cacheUpdateCh carries game-slice updates from background goroutines to the SDL thread.
+	// Capacity 1: old unseen updates are overwritten rather than queued.
+	cacheUpdateCh chan []itchio.Game
 
 	// Cover-art fetch throttling: fetches are deferred until the cursor has
 	// been stationary for coverSettleDelay, then the current game plus
 	// preloadRadius neighbours are warmed.
 	lastCursorMove time.Time
 	warmedGameURL  string
+
+	// Shoulder button (L1/R1 / PgDn/PgUp) auto-repeat state — mirrors heldDir/heldSince/lastRepeat
+	heldShoulderDir    int
+	heldShoulderSince  time.Time
+	lastShoulderRepeat time.Time
+
+	// lastVisibleRows is set each Draw so HandleEvent can jump by a screen's worth.
+	lastVisibleRows int
 
 	// Sort/filter state
 	sortMode     itchio.SortMode
@@ -135,19 +142,20 @@ func NewListScreen(
 	onThemeToggle func(bool),
 ) *ListScreen {
 	s := &ListScreen{
-		client:         client,
-		cfg:            cfg,
-		cache:          cache,
-		page:           1,
-		cfgPath:        cfgPath,
-		cachePath:      cachePath,
-		inv:            inv,
-		inventoryPath:  inventoryPath,
-		updateSvc:      updateSvc,
-		nextUITheme:    nextUITheme,
-		defaultTheme:   defaultTheme,
-		themeAvailable: themeAvailable,
-		onThemeToggle:  onThemeToggle,
+		client:          client,
+		cfg:             cfg,
+		cache:           cache,
+		cfgPath:         cfgPath,
+		cachePath:       cachePath,
+		inv:             inv,
+		inventoryPath:   inventoryPath,
+		updateSvc:       updateSvc,
+		nextUITheme:     nextUITheme,
+		defaultTheme:    defaultTheme,
+		themeAvailable:  themeAvailable,
+		onThemeToggle:   onThemeToggle,
+		lastVisibleRows: 10,
+		cacheUpdateCh:   make(chan []itchio.Game, 1),
 	}
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
@@ -185,18 +193,6 @@ func NewListScreen(
 }
 
 func (s *ListScreen) loadPage(page int, query string) {
-	if s.cacheReady && query == "" {
-		// Serve from local cache — no network, instant.
-		logger.Debug("cache: serving page %d from view (%d games)", page, len(s.viewGames))
-		s.games = pageSlice(s.viewGames, page)
-		s.placeCursor()
-		s.titleScrollX = 0
-		s.titleScrollAt = time.Now()
-		s.tagScrollY = 0
-		s.tagScrollAt = time.Now()
-		return
-	}
-	// Live network fetch (existing behaviour).
 	s.loading = true
 	s.err = nil
 	logger.Debug("feed: loading page %d query=%q", page, query)
@@ -206,49 +202,43 @@ func (s *ListScreen) loadPage(page int, query string) {
 	} else {
 		logger.Info("feed: page %d returned %d games", page, len(games))
 	}
-	s.games = games
+	s.viewGames = games
 	s.err = err
-	s.placeCursor()
+	s.cursor = 0
 	s.titleScrollX = 0
 	s.titleScrollAt = time.Now()
 	s.tagScrollY = 0
 	s.tagScrollAt = time.Now()
+	s.lastCursorMove = time.Now()
+	s.warmedGameURL = ""
 	s.loading = false
 }
 
-// placeCursor sets the cursor position after a page load.
-// If jumpToEnd is set the cursor lands on the last item (used when navigating
-// to a previous page); otherwise it lands on the first item.
-func (s *ListScreen) placeCursor() {
-	if s.jumpToEnd && len(s.games) > 0 {
-		s.cursor = len(s.games) - 1
-	} else {
-		s.cursor = 0
-	}
-	s.jumpToEnd = false
-	s.lastCursorMove = time.Now()
-	s.warmedGameURL = ""
-}
-
 func (s *ListScreen) processAutoRepeat() {
-	if s.heldDir == 0 {
-		return
-	}
 	now := time.Now()
-	elapsed := now.Sub(s.heldSince)
-	if elapsed < repeatDelay {
-		return
+	if s.heldDir != 0 {
+		elapsed := now.Sub(s.heldSince)
+		if elapsed >= repeatDelay && now.Sub(s.lastRepeat) >= currentRepeatInterval(elapsed-repeatDelay) {
+			s.moveCursor(s.heldDir)
+			s.lastRepeat = now
+		}
 	}
-	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
-		return
+	if s.heldShoulderDir != 0 {
+		elapsed := now.Sub(s.heldShoulderSince)
+		interval := currentRepeatInterval(elapsed - repeatDelay)
+		if interval < shoulderAccelMin {
+			interval = shoulderAccelMin
+		}
+		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= interval {
+			s.jumpCursor(s.heldShoulderDir * s.lastVisibleRows)
+			s.lastShoulderRepeat = now
+		}
 	}
-	s.moveCursor(s.heldDir)
-	s.lastRepeat = now
 }
 
 func (s *ListScreen) moveCursor(dir int) {
 	if dir > 0 {
-		if s.cursor < len(s.games)-1 {
+		if s.cursor < len(s.viewGames)-1 {
 			s.cursor++
 			s.titleScrollX = 0
 			s.titleScrollAt = time.Now()
@@ -256,10 +246,6 @@ func (s *ListScreen) moveCursor(dir int) {
 			s.tagScrollAt = time.Now()
 			s.lastCursorMove = time.Now()
 			s.warmedGameURL = ""
-		} else if s.totalPages == 0 || s.page < s.totalPages {
-			// At the last item on the page — advance to the next page.
-			s.page++
-			go s.loadPage(s.page, "")
 		}
 	} else if dir < 0 {
 		if s.cursor > 0 {
@@ -270,18 +256,37 @@ func (s *ListScreen) moveCursor(dir int) {
 			s.tagScrollAt = time.Now()
 			s.lastCursorMove = time.Now()
 			s.warmedGameURL = ""
-		} else if s.page > 1 {
-			// At the first item on the page — go back to the previous page,
-			// landing on its last item.
-			s.page--
-			s.jumpToEnd = true
-			go s.loadPage(s.page, "")
 		}
 	}
 }
 
+// jumpCursor moves the cursor by n items, clamping to the list bounds.
+// Used by L1/R1 shoulder buttons to jump by one visible screen at a time.
+func (s *ListScreen) jumpCursor(n int) {
+	if n == 0 {
+		return
+	}
+	newPos := s.cursor + n
+	if newPos < 0 {
+		newPos = 0
+	}
+	if newPos >= len(s.viewGames) {
+		newPos = len(s.viewGames) - 1
+	}
+	if newPos < 0 {
+		newPos = 0 // viewGames may be empty
+	}
+	s.cursor = newPos
+	s.titleScrollX = 0
+	s.titleScrollAt = time.Now()
+	s.tagScrollY = 0
+	s.tagScrollAt = time.Now()
+	s.lastCursorMove = time.Now()
+	s.warmedGameURL = ""
+}
+
 func (s *ListScreen) NeedsRedraw() bool {
-	if s.heldDir != 0 {
+	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
 	}
 	// Resume rendering 500ms before scrollDelay expires so the first
@@ -306,10 +311,10 @@ func (s *ListScreen) HasPendingAnimation() bool {
 // handled transparently. Sets warmedGameURL so Draw does not re-warm until
 // the cursor moves again.
 func (s *ListScreen) warmPreloadWindow() {
-	if s.cursor >= len(s.games) {
+	if s.cursor >= len(s.viewGames) {
 		return
 	}
-	absIdx := (s.page-1)*itchio.PerPage + s.cursor
+	absIdx := s.cursor
 	for i := absIdx - preloadRadius; i <= absIdx+preloadRadius; i++ {
 		if i < 0 || i >= len(s.viewGames) {
 			continue
@@ -318,11 +323,19 @@ func (s *ListScreen) warmPreloadWindow() {
 			s.cache.Warm(url)
 		}
 	}
-	s.warmedGameURL = s.games[s.cursor].CoverURL
+	s.warmedGameURL = s.viewGames[s.cursor].CoverURL
 	logger.Debug("cover: warmed window abs=%d ±%d (%d games in view)", absIdx, preloadRadius, len(s.viewGames))
 }
 
 func (s *ListScreen) Draw(r *renderer.Renderer) {
+	select {
+	case games := <-s.cacheUpdateCh:
+		s.cachedGames = games
+		s.cacheReady = true
+		s.needsRebuild = false
+		s.rebuildView()
+	default:
+	}
 	if s.needsRebuild {
 		s.needsRebuild = false
 		s.rebuildView()
@@ -385,6 +398,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	rowH := fontH + 12 // measured font height + padding
 	footerH := int32(52)
 	visibleRows := (r.H - contentTop - footerH) / rowH
+	s.lastVisibleRows = int(visibleRows)
 
 	if len(s.viewGames) == 0 && s.cacheReady {
 		ht := r.Theme.HintText
@@ -411,14 +425,14 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// In [DL] mode, compute where the group separator falls. Must be done
 	// before startIdx so the scroll calculation can account for the gap.
 	dlSepAfterUpdates := -1
-	if s.sortMode == itchio.SortModeDL && len(s.games) > 0 {
+	if s.sortMode == itchio.SortModeDL && len(s.viewGames) > 0 {
 		lastUpdateIdx := -1
-		for i, g := range s.games {
+		for i, g := range s.viewGames {
 			if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
 				lastUpdateIdx = i
 			}
 		}
-		if lastUpdateIdx >= 0 && lastUpdateIdx < len(s.games)-1 {
+		if lastUpdateIdx >= 0 && lastUpdateIdx < len(s.viewGames)-1 {
 			dlSepAfterUpdates = lastUpdateIdx
 		}
 	}
@@ -475,7 +489,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
-	for i, g := range s.games {
+	for i, g := range s.viewGames {
 		if i < startIdx {
 			continue
 		}
@@ -606,16 +620,17 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	// Settle check: once the cursor has been stationary for coverSettleDelay,
 	// warm the current game and its neighbours. Resets when cursor moves.
-	if s.cursor < len(s.games) &&
+	if s.cursor < len(s.viewGames) &&
 		!s.lastCursorMove.IsZero() &&
+		s.heldShoulderDir == 0 &&
 		time.Since(s.lastCursorMove) >= coverSettleDelay &&
-		s.games[s.cursor].CoverURL != s.warmedGameURL {
+		s.viewGames[s.cursor].CoverURL != s.warmedGameURL {
 		s.warmPreloadWindow()
 	}
 
 	// Right panel: cover art (or placeholder) + metadata
-	if s.cursor < len(s.games) {
-		g := s.games[s.cursor]
+	if s.cursor < len(s.viewGames) {
+		g := s.viewGames[s.cursor]
 		metaY := contentTop
 		boxW := rightW
 		boxH := rightW * 3 / 4 // 4:3 aspect ratio box
@@ -753,7 +768,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	var footerHints []renderer.FooterHint
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Page"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Jump"})
 	if s.cacheReady {
 		if r.W <= narrowScreenW {
 			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"})
@@ -770,9 +785,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	r.DrawFooterHints(footerHints, ftrY)
 
 	// Pagination info right-aligned.
-	pageInfo := fmt.Sprintf("Page %d", s.page)
+	currentPage := s.cursor/itchio.PerPage + 1
+	pageInfo := fmt.Sprintf("Page %d", currentPage)
 	if s.totalPages > 0 {
-		pageInfo = fmt.Sprintf("Page %d/%d", s.page, s.totalPages)
+		pageInfo = fmt.Sprintf("Page %d/%d", currentPage, s.totalPages)
 	}
 	ht := r.Theme.HintText
 	piW, _ := r.SmallTextSize(pageInfo)
@@ -802,6 +818,19 @@ func (s *ListScreen) stopHold(dir int) {
 	}
 }
 
+func (s *ListScreen) startShoulderHold(dir int) {
+	s.jumpCursor(dir * s.lastVisibleRows)
+	s.heldShoulderDir = dir
+	s.heldShoulderSince = time.Now()
+	s.lastShoulderRepeat = s.heldShoulderSince
+}
+
+func (s *ListScreen) stopShoulderHold(dir int) {
+	if s.heldShoulderDir == dir {
+		s.heldShoulderDir = 0
+	}
+}
+
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
@@ -820,6 +849,20 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.stopHold(-1)
 			}
 			return s
+		case sdl.K_PAGEDOWN:
+			if ev.Type == sdl.KEYDOWN {
+				s.startShoulderHold(1)
+			} else {
+				s.stopShoulderHold(1)
+			}
+			return s
+		case sdl.K_PAGEUP:
+			if ev.Type == sdl.KEYDOWN {
+				s.startShoulderHold(-1)
+			} else {
+				s.stopShoulderHold(-1)
+			}
+			return s
 		}
 		if ev.Type != sdl.KEYDOWN {
 			return s
@@ -827,31 +870,15 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Keysym.Sym {
 		case sdl.K_ESCAPE:
 			return nil
-		case sdl.K_PAGEDOWN:
-			if len(s.viewGames) == 0 {
-				return s
-			}
-			if s.totalPages == 0 || s.page < s.totalPages {
-				s.page++
-				go s.loadPage(s.page, "")
-			}
-		case sdl.K_PAGEUP:
-			if len(s.viewGames) == 0 {
-				return s
-			}
-			if s.page > 1 {
-				s.page--
-				go s.loadPage(s.page, "")
-			}
 		case sdl.K_RETURN:
-			if s.cursor < len(s.games) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+			if s.cursor < len(s.viewGames) {
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 		case sdl.K_x:
-			if s.cursor < len(s.games) {
-				g := s.games[s.cursor]
+			if s.cursor < len(s.viewGames) {
+				g := s.viewGames[s.cursor]
 				if s.inv.HasPendingUpdates(g.URL) {
 					s.inv.DismissUpdate(g.URL)
 					if err := s.inv.Save(s.inventoryPath); err != nil {
@@ -884,6 +911,20 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.stopHold(-1)
 			}
 			return s
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startShoulderHold(1)
+			} else {
+				s.stopShoulderHold(1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startShoulderHold(-1)
+			} else {
+				s.stopShoulderHold(-1)
+			}
+			return s
 		}
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
@@ -892,29 +933,13 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		// CONTROLLER_BUTTON_A (physical B = back/exit) is intentionally left unhandled
 		// here so it falls through to the exit case below.
 		if s.err != nil && ev.Button == sdl.CONTROLLER_BUTTON_B {
-			go s.loadPage(s.page, "")
+			go s.loadPage(1, "")
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
-			if len(s.viewGames) == 0 {
-				return s
-			}
-			if s.totalPages == 0 || s.page < s.totalPages {
-				s.page++
-				go s.loadPage(s.page, "")
-			}
-		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
-			if len(s.viewGames) == 0 {
-				return s
-			}
-			if s.page > 1 {
-				s.page--
-				go s.loadPage(s.page, "")
-			}
 		case sdl.CONTROLLER_BUTTON_B:
-			if s.cursor < len(s.games) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.games[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+			if s.cursor < len(s.viewGames) {
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
@@ -931,8 +956,8 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			go s.cfg.Save(s.cfgPath)
 			return s
 		case sdl.CONTROLLER_BUTTON_X:
-			if s.cursor < len(s.games) {
-				g := s.games[s.cursor]
+			if s.cursor < len(s.viewGames) {
+				g := s.viewGames[s.cursor]
 				if s.inv.HasPendingUpdates(g.URL) {
 					s.inv.DismissUpdate(g.URL)
 					logger.Info("update-svc: update dismissed for game=%q", g.Title)
@@ -1029,12 +1054,12 @@ func (s *ListScreen) ScheduleRebuild() { s.needsRebuild = true }
 
 // rebuildView regenerates viewGames from cachedGames using the current sortMode.
 // It preserves the currently selected game's position where possible; falls back
-// to page 1, cursor 0 if the game is no longer in the view.
+// to cursor 0 if the game is no longer in the view.
 func (s *ListScreen) rebuildView() {
 	var selectedURL string
-	selectedViewIdx := (s.page-1)*itchio.PerPage + s.cursor
-	if s.cursor < len(s.games) {
-		selectedURL = s.games[s.cursor].URL
+	selectedViewIdx := s.cursor
+	if s.cursor < len(s.viewGames) {
+		selectedURL = s.viewGames[s.cursor].URL
 	}
 
 	downloaded := make(map[string]bool)
@@ -1058,19 +1083,15 @@ func (s *ListScreen) rebuildView() {
 	if selectedURL != "" {
 		for i, g := range s.viewGames {
 			if g.URL == selectedURL {
-				page := i/itchio.PerPage + 1
-				cursor := i % itchio.PerPage
-				s.page = page
-				s.games = pageSlice(s.viewGames, page)
-				s.cursor = cursor
+				s.cursor = i
 				s.titleScrollX = 0
 				s.titleScrollAt = time.Now()
 				s.tagScrollY = 0
 				s.tagScrollAt = time.Now()
 				s.lastCursorMove = time.Now()
 				s.warmedGameURL = ""
-				logger.Debug("sort: view rebuilt — %d games visible (mode=%s), restored selection to %q (page=%d, cursor=%d)",
-					len(s.viewGames), itchio.SortModeBadge(s.sortMode), selectedURL, page, cursor)
+				logger.Debug("sort: view rebuilt — %d games visible (mode=%s), restored selection to %q (cursor=%d)",
+					len(s.viewGames), itchio.SortModeBadge(s.sortMode), selectedURL, i)
 				return
 			}
 		}
@@ -1081,23 +1102,21 @@ func (s *ListScreen) rebuildView() {
 		if selectedViewIdx >= len(s.viewGames) {
 			selectedViewIdx = len(s.viewGames) - 1
 		}
-		page := selectedViewIdx/itchio.PerPage + 1
-		cursor := selectedViewIdx % itchio.PerPage
-		s.page = page
-		s.games = pageSlice(s.viewGames, page)
-		s.cursor = cursor
+		s.cursor = selectedViewIdx
 		s.titleScrollX = 0
 		s.titleScrollAt = time.Now()
 		s.tagScrollY = 0
 		s.tagScrollAt = time.Now()
 		s.lastCursorMove = time.Now()
 		s.warmedGameURL = ""
-		logger.Debug("sort: view rebuilt — %d games visible (mode=%s), selection gone; landing at nearest position (page=%d, cursor=%d)",
-			len(s.viewGames), itchio.SortModeBadge(s.sortMode), page, cursor)
+		logger.Debug("sort: view rebuilt — %d games visible (mode=%s), selection gone; landing at nearest position (cursor=%d)",
+			len(s.viewGames), itchio.SortModeBadge(s.sortMode), selectedViewIdx)
 		return
 	}
-	s.page = 1
-	s.loadPage(1, "")
+	s.cursor = 0
+	if !s.cacheReady {
+		s.loadPage(1, "")
+	}
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }
 
@@ -1105,21 +1124,6 @@ func (s *ListScreen) rebuildView() {
 // fetch/write goroutine is running.
 func (s *ListScreen) IsBusy() bool {
 	return s.cacheBuilding.Load()
-}
-
-// pageSlice returns the sub-slice of games for the given 1-based page number,
-// using the global PerPage constant. The returned slice shares backing memory
-// with games — callers must not mutate it.
-func pageSlice(games []itchio.Game, page int) []itchio.Game {
-	start := (page - 1) * itchio.PerPage
-	if start >= len(games) {
-		return nil
-	}
-	end := start + itchio.PerPage
-	if end > len(games) {
-		end = len(games)
-	}
-	return games[start:end]
 }
 
 // buildCache fetches the complete game list and writes it to disk.
@@ -1130,8 +1134,15 @@ func (s *ListScreen) buildCache() {
 	logger.Info("cache: starting background full fetch")
 	// context.Background() is intentional: this goroutine is not cancellable on
 	// app exit. A future improvement could thread an app-level context here.
-	games, err := s.client.FetchAllGames(context.Background(), func(fetched int) {
-		logger.Debug("cache: fetched %d games so far", fetched)
+	games, err := s.client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
+		logger.Debug("cache: fetched %d games so far", len(partial))
+		snapshot := make([]itchio.Game, len(partial))
+		copy(snapshot, partial)
+		select {
+		case s.cacheUpdateCh <- snapshot:
+		default:
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 	})
 	if err != nil {
 		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
@@ -1142,11 +1153,13 @@ func (s *ListScreen) buildCache() {
 		return
 	}
 	logger.Info("cache: saved %d games to %s", len(games), s.cachePath)
-	// Flip to cache mode. The current page view is left untouched;
-	// the next page navigation will source from the cache.
-	s.cachedGames = games
-	s.cacheReady = true
-	s.rebuildView()
+	// Flip to cache mode. Send to the SDL thread via the channel; the
+	// current page view is updated on the next Draw call.
+	select {
+	case s.cacheUpdateCh <- games:
+	default:
+	}
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 	if s.updateSvc != nil {
 		s.updateSvc.TriggerNow()
 	}
@@ -1169,9 +1182,11 @@ func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
 func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 	logger.Info("cache: manual refresh triggered from settings")
 	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
-		s.cachedGames = games
-		s.cacheReady = true
-		s.rebuildView()
+		select {
+		case s.cacheUpdateCh <- games:
+		default:
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 		if s.updateSvc != nil {
 			s.updateSvc.TriggerNow()
 		}

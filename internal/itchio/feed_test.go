@@ -121,9 +121,9 @@ func TestFetchAllGames(t *testing.T) {
 	c := itchio.NewClientWithBase(srv.URL)
 	var progressCalls int
 	var lastFetched int
-	games, err := c.FetchAllGames(context.Background(), func(fetched int) {
+	games, err := c.FetchAllGames(context.Background(), func(partial []itchio.Game) {
 		progressCalls++
-		lastFetched = fetched
+		lastFetched = len(partial)
 	})
 	if err != nil {
 		t.Fatalf("FetchAllGames: %v", err)
