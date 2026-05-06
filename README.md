@@ -253,10 +253,6 @@ are preparing an SD card that will be used across multiple device types.
   </tr>
   <tr>
     <td align="center">
-      <img src="docs/screenshots/delete-select.png" alt="Manage downloads" width="480"/><br/>
-      <sub>Manage Downloads — select a file to delete</sub>
-    </td>
-    <td align="center">
       <img src="docs/screenshots/delete.png" alt="Delete confirmation" width="480"/><br/>
       <sub>Delete confirmation — shown before removing a ROM from the device</sub>
     </td>
@@ -281,22 +277,52 @@ API key. The Settings screen shows **FOUND** (green) when a key is active.
 ### Adding the key to the Pak
 
 The Pak does not include an on-screen keyboard, so the key is set by editing
-the config file directly. The easiest way is via ADB while your device is
-connected over USB:
+the config file directly. The config file is at
+`.userdata/shared/Itch-io/config.json` on the SD card.
+
+> **Warning:** The config file also stores your ROM selection mode, ROM
+> location, content filter preferences, and other settings. Any method that
+> writes the entire file from scratch will overwrite those values. The options
+> below show how to add or update only the `api_key` field safely.
+
+#### Option 1 — Browser-based file manager (recommended)
+
+With your device connected over USB, open
+**[https://dashboard.loveretro.games/](https://dashboard.loveretro.games/)**
+in a browser. Use the built-in file manager to navigate to
+`.userdata/shared/Itch-io/config.json` and edit the file directly — no
+command line required, and only the fields you change are affected.
+
+#### Option 2 — SD card
+
+1. Power off the device and remove the SD card.
+2. Open `.userdata/shared/Itch-io/config.json` in a text editor.
+3. Add or update the `"api_key"` field, leaving all other fields untouched.
+4. Save, reinsert the SD card, and boot.
+
+#### Option 3 — ADB (pull → edit → push)
 
 ```sh
-# TrimUI Brick / Smart Pro (tg5040 / tg5050)
-adb shell 'cat > /mnt/SDCARD/.userdata/shared/Itch-io/config.json' << 'EOF'
-{
-  "api_key": "YOUR_API_KEY_HERE",
-  "rom_selection": "auto"
-}
-EOF
+# Download the current config to your computer
+adb pull /mnt/SDCARD/.userdata/shared/Itch-io/config.json config.json
+
+# Open config.json in a text editor, add or update the "api_key" field:
+#   "api_key": "YOUR_API_KEY_HERE"
+# Leave all other fields unchanged, then push the file back:
+adb push config.json /mnt/SDCARD/.userdata/shared/Itch-io/config.json
 ```
 
-You can also copy the file to your SD card directly if you prefer not to use
-ADB. The config file is at `.userdata/shared/Itch-io/config.json` relative to
-the SD card root.
+If you have never launched the Pak and no config file exists yet, you can
+create one from scratch — just make sure to include any other settings you
+want alongside the key (or leave them out to accept defaults):
+
+```json
+{
+  "api_key": "YOUR_API_KEY_HERE"
+}
+```
+
+---
 
 Restart the Pak after saving — the Settings screen will show **API Key: FOUND**
 once the key is loaded.
