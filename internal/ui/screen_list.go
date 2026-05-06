@@ -622,6 +622,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// warm the current game and its neighbours. Resets when cursor moves.
 	if s.cursor < len(s.viewGames) &&
 		!s.lastCursorMove.IsZero() &&
+		s.heldShoulderDir == 0 &&
 		time.Since(s.lastCursorMove) >= coverSettleDelay &&
 		s.viewGames[s.cursor].CoverURL != s.warmedGameURL {
 		s.warmPreloadWindow()
