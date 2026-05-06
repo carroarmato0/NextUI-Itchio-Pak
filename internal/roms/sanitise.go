@@ -5,15 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/text"
 )
 
 // SanitiseFilename builds a safe filename from a game title and extension.
-// Strips / : ? * " < > | from the title, trims and collapses whitespace.
-// Returns "" when title is empty (caller should use the upstream filename instead).
+// Strips emoji, then strips / : ? * " < > | from the title, trims and collapses whitespace.
+// Returns "" when title is empty or reduces to empty after stripping (caller should use the upstream filename instead).
 func SanitiseFilename(title, ext string) string {
 	if title == "" {
 		return ""
 	}
+	title = text.StripEmoji(title)
 	const strip = `/:?*"<>|`
 	var b strings.Builder
 	for _, r := range title {

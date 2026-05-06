@@ -22,6 +22,10 @@ func TestSanitiseFilename(t *testing.T) {
 		{"Game * Name", ".gb", "Game Name.gb"},
 		{"Game Boy ROM", ".gb", "Game Boy ROM.gb"},
 		{"", ".gb", ""},
+		{"🎮 Adventure Quest", ".gb", "Adventure Quest.gb"},
+		{"Night 🌙 Crawler", ".gb", "Night Crawler.gb"},
+		{"⚔️Dungeon", ".gbc", "Dungeon.gbc"},
+		{"🎮🌙", ".gb", ""},
 	}
 	for _, c := range cases {
 		got := roms.SanitiseFilename(c.title, c.ext)
