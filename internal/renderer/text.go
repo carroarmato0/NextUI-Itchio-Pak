@@ -163,8 +163,9 @@ type textRun struct {
 }
 
 // splitTextRuns segments s into runs where consecutive runes that resolve to
-// the same font index are merged. fontIndex(r) returns 0 for the primary font
-// or a positive index for a fallback font. An empty input returns nil.
+// the same font index are merged. fontIndex(r) returns 0 for the primary font,
+// a positive index for a fallback font, or -1 to drop the rune entirely.
+// An empty input returns nil.
 func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 	if s == "" {
 		return nil
@@ -175,8 +176,19 @@ func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		idx := fontIndex(r)
+		if idx == -1 {
+			// Flush the current run (if any) and skip this rune.
+			if runIdx >= 0 {
+				runs = append(runs, textRun{text: s[runStart:i], fontIdx: runIdx})
+			}
+			i += size
+			runStart = i
+			runIdx = -1
+			continue
+		}
 		if runIdx < 0 {
 			runIdx = idx
+			runStart = i
 		} else if idx != runIdx {
 			runs = append(runs, textRun{text: s[runStart:i], fontIdx: runIdx})
 			runStart = i
@@ -184,7 +196,9 @@ func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 		}
 		i += size
 	}
-	runs = append(runs, textRun{text: s[runStart:], fontIdx: runIdx})
+	if runIdx >= 0 && runStart < len(s) {
+		runs = append(runs, textRun{text: s[runStart:], fontIdx: runIdx})
+	}
 	return runs
 }
 

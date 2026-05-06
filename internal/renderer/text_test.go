@@ -85,6 +85,66 @@ func TestSplitTextRuns(t *testing.T) {
 	}
 }
 
+func TestSplitTextRunsSkip(t *testing.T) {
+	// mockSkipIndex: emoji-range runes return -1 (drop), ASCII returns 0, Arabic returns 1.
+	mockSkipIndex := func(r rune) int {
+		if r >= 0x1F300 && r <= 0x1FFFF {
+			return -1
+		}
+		if r >= 0x0600 && r <= 0x06FF {
+			return 1
+		}
+		return 0
+	}
+
+	cases := []struct {
+		name  string
+		input string
+		want  []textRun
+	}{
+		{
+			"skipped rune in middle produces two runs",
+			"Hi\U0001F4BEbye",
+			[]textRun{{"Hi", 0}, {"bye", 0}},
+		},
+		{
+			"skipped rune at start is dropped",
+			"\U0001F300Hello",
+			[]textRun{{"Hello", 0}},
+		},
+		{
+			"skipped rune at end is dropped",
+			"Hello\U0001F300",
+			[]textRun{{"Hello", 0}},
+		},
+		{
+			"all skipped returns nil",
+			"\U0001F300\U0001F680",
+			nil,
+		},
+		{
+			"multiple skipped between two font runs",
+			"Hi\U0001F300\U0001F680خ",
+			[]textRun{{"Hi", 0}, {"خ", 1}},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitTextRuns(tc.input, mockSkipIndex)
+			if len(got) != len(tc.want) {
+				t.Fatalf("splitTextRuns(%q) = %v (len %d), want %v (len %d)",
+					tc.input, got, len(got), tc.want, len(tc.want))
+			}
+			for i, run := range got {
+				if run != tc.want[i] {
+					t.Errorf("run[%d]: got %+v, want %+v", i, run, tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestBuildGlyphRanges(t *testing.T) {
 	// Verify the primary font covers expected scripts and excludes Arabic.
 	ranges := buildGlyphRanges("../../assets/font.ttf")
