@@ -48,6 +48,7 @@ type Renderer struct {
 	Theme         theme.Theme
 	texts         *textCache
 	sizes         map[sizeKey][2]int32 // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
+	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -98,6 +99,7 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		Theme:         th,
 		texts:         newTextCache(maxTextCacheEntries),
 		sizes:         make(map[sizeKey][2]int32),
+		runeFont:      make(map[rune]int),
 	}
 	if r.primaryRanges == nil {
 		logger.Warn("renderer: could not parse primary font cmap; fallback fonts disabled")
@@ -171,15 +173,20 @@ func (r *Renderer) Present() {
 // the first fallback font that covers it, or 0 if no fallback covers it either
 // (rendering will use the primary font and may show tofu).
 func (r *Renderer) fontIndex(ch rune) int {
-	if r.primaryRanges == nil || inRanges(r.primaryRanges, ch) {
-		return 0
+	if idx, ok := r.runeFont[ch]; ok {
+		return idx
 	}
-	for i, fb := range r.fallbacks {
-		if fb.ranges == nil || inRanges(fb.ranges, ch) {
-			return i + 1
+	var idx int
+	if r.primaryRanges != nil && !inRanges(r.primaryRanges, ch) {
+		for i, fb := range r.fallbacks {
+			if fb.ranges == nil || inRanges(fb.ranges, ch) {
+				idx = i + 1
+				break
+			}
 		}
 	}
-	return 0
+	r.runeFont[ch] = idx
+	return idx
 }
 
 // mainFont returns the main-size font for the given font index.
