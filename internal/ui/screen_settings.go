@@ -315,6 +315,24 @@ func (s *SettingsScreen) stopHold(dir int) {
 }
 
 func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
+	if s.showAPIKeyHelp {
+		dismiss := false
+		switch ev := e.(type) {
+		case *sdl.KeyboardEvent:
+			dismiss = ev.Type == sdl.KEYDOWN
+		case *sdl.ControllerButtonEvent:
+			dismiss = ev.Type == sdl.CONTROLLERBUTTONDOWN
+		}
+		if dismiss {
+			s.showAPIKeyHelp = false
+			if s.apiKeyHelpQR != nil {
+				s.apiKeyHelpQR.Destroy()
+				s.apiKeyHelpQR = nil
+			}
+			logger.Debug("settings: API key help overlay dismissed")
+		}
+		return s
+	}
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
