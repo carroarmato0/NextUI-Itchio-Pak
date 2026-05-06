@@ -98,6 +98,10 @@ type ListScreen struct {
 	// cacheBuilding is set while buildCache / refreshCacheIfStale runs.
 	cacheBuilding atomic.Bool
 
+	// cacheUpdateCh carries game-slice updates from background goroutines to the SDL thread.
+	// Capacity 1: old unseen updates are overwritten rather than queued.
+	cacheUpdateCh chan []itchio.Game
+
 	// Cover-art fetch throttling: fetches are deferred until the cursor has
 	// been stationary for coverSettleDelay, then the current game plus
 	// preloadRadius neighbours are warmed.
@@ -151,6 +155,7 @@ func NewListScreen(
 		themeAvailable:  themeAvailable,
 		onThemeToggle:   onThemeToggle,
 		lastVisibleRows: 10,
+		cacheUpdateCh:   make(chan []itchio.Game, 1),
 	}
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
@@ -319,6 +324,14 @@ func (s *ListScreen) warmPreloadWindow() {
 }
 
 func (s *ListScreen) Draw(r *renderer.Renderer) {
+	select {
+	case games := <-s.cacheUpdateCh:
+		s.cachedGames = games
+		s.cacheReady = true
+		s.needsRebuild = false
+		s.rebuildView()
+	default:
+	}
 	if s.needsRebuild {
 		s.needsRebuild = false
 		s.rebuildView()
@@ -1118,9 +1131,11 @@ func (s *ListScreen) buildCache() {
 	// app exit. A future improvement could thread an app-level context here.
 	games, err := s.client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
 		logger.Debug("cache: fetched %d games so far", len(partial))
-		s.cachedGames = partial
-		s.cacheReady = true
-		s.rebuildView()
+		select {
+		case s.cacheUpdateCh <- partial:
+		default:
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 	})
 	if err != nil {
 		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
@@ -1131,11 +1146,13 @@ func (s *ListScreen) buildCache() {
 		return
 	}
 	logger.Info("cache: saved %d games to %s", len(games), s.cachePath)
-	// Flip to cache mode. The current page view is left untouched;
-	// the next page navigation will source from the cache.
-	s.cachedGames = games
-	s.cacheReady = true
-	s.rebuildView()
+	// Flip to cache mode. Send to the SDL thread via the channel; the
+	// current page view is updated on the next Draw call.
+	select {
+	case s.cacheUpdateCh <- games:
+	default:
+	}
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 	if s.updateSvc != nil {
 		s.updateSvc.TriggerNow()
 	}
@@ -1158,9 +1175,11 @@ func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
 func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 	logger.Info("cache: manual refresh triggered from settings")
 	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
-		s.cachedGames = games
-		s.cacheReady = true
-		s.rebuildView()
+		select {
+		case s.cacheUpdateCh <- games:
+		default:
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 		if s.updateSvc != nil {
 			s.updateSvc.TriggerNow()
 		}
