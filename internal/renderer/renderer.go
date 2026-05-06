@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	itext "github.com/carroarmato0/nextui-itchio-pak/internal/text"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
@@ -171,9 +172,9 @@ func (r *Renderer) Present() {
 	r.Renderer.Present()
 }
 
-// fontIndex returns 0 if the primary font covers ch, or the 1-based index of
-// the first fallback font that covers it, or 0 if no fallback covers it either
-// (rendering will use the primary font and may show tofu).
+// fontIndex returns 0 if the primary font covers ch, the 1-based index of
+// the first fallback font that covers it, or -1 if ch is an emoji codepoint
+// that no loaded font covers (the rune is silently dropped by splitTextRuns).
 func (r *Renderer) fontIndex(ch rune) int {
 	if idx, ok := r.runeFont[ch]; ok {
 		return idx
@@ -186,6 +187,13 @@ func (r *Renderer) fontIndex(ch rune) int {
 				break
 			}
 		}
+	}
+	// Drop emoji that no font covers rather than falling through to tofu.
+	// When NotoEmoji is loaded (Task 4), it covers all common emoji including
+	// U+1F4BE (floppy disk). If the font fails to load, emoji are silently
+	// dropped — acceptable degradation per spec.
+	if idx == 0 && r.primaryRanges != nil && itext.IsEmoji(ch) {
+		idx = -1
 	}
 	r.runeFont[ch] = idx
 	return idx
@@ -221,7 +229,7 @@ func (r *Renderer) drawRuns(text string, x, y int32, color sdl.Color, small, bol
 		r.Font.SetStyle(ttf.STYLE_BOLD)
 		defer r.Font.SetStyle(ttf.STYLE_NORMAL)
 	}
-	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
+	runs := splitTextRuns(text, r.fontIndex)
 	cx := x
 	for _, run := range runs {
 		key := textRunKey{
@@ -272,7 +280,7 @@ func (r *Renderer) textSizeImpl(text string, small, bold bool) (int32, int32) {
 		r.Font.SetStyle(ttf.STYLE_BOLD)
 		defer r.Font.SetStyle(ttf.STYLE_NORMAL)
 	}
-	runs := splitTextRuns(sanitizeText(text), r.fontIndex)
+	runs := splitTextRuns(text, r.fontIndex)
 	var totalW, maxH int32
 	for _, run := range runs {
 		key := sizeKey{text: run.text, fontID: uint8(run.fontIdx), small: small, bold: bold}
@@ -359,10 +367,8 @@ func (r *Renderer) WrapText(text string, maxWidth int32) []string {
 	if lines, ok := r.wrapCache[key]; ok {
 		return lines
 	}
-	// Sanitize once up front so measurements (via TextSize) match rendering.
-	sanitized := sanitizeText(text)
 	var lines []string
-	for _, paragraph := range splitLines(sanitized) {
+	for _, paragraph := range splitLines(text) {
 		if paragraph == "" {
 			lines = append(lines, "")
 			continue
