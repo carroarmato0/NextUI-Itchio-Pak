@@ -208,19 +208,21 @@ func (s *ListScreen) loadPage(page int, query string) {
 }
 
 func (s *ListScreen) processAutoRepeat() {
-	if s.heldDir == 0 {
-		return
-	}
 	now := time.Now()
-	elapsed := now.Sub(s.heldSince)
-	if elapsed < repeatDelay {
-		return
+	if s.heldDir != 0 {
+		elapsed := now.Sub(s.heldSince)
+		if elapsed >= repeatDelay && now.Sub(s.lastRepeat) >= currentRepeatInterval(elapsed-repeatDelay) {
+			s.moveCursor(s.heldDir)
+			s.lastRepeat = now
+		}
 	}
-	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
-		return
+	if s.heldShoulderDir != 0 {
+		elapsed := now.Sub(s.heldShoulderSince)
+		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= currentRepeatInterval(elapsed-repeatDelay) {
+			s.jumpCursor(s.heldShoulderDir * s.lastVisibleRows)
+			s.lastShoulderRepeat = now
+		}
 	}
-	s.moveCursor(s.heldDir)
-	s.lastRepeat = now
 }
 
 func (s *ListScreen) moveCursor(dir int) {
@@ -273,7 +275,7 @@ func (s *ListScreen) jumpCursor(n int) {
 }
 
 func (s *ListScreen) NeedsRedraw() bool {
-	if s.heldDir != 0 {
+	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
 	}
 	// Resume rendering 500ms before scrollDelay expires so the first
@@ -796,6 +798,19 @@ func (s *ListScreen) stopHold(dir int) {
 	}
 }
 
+func (s *ListScreen) startShoulderHold(dir int) {
+	s.jumpCursor(dir * s.lastVisibleRows)
+	s.heldShoulderDir = dir
+	s.heldShoulderSince = time.Now()
+	s.lastShoulderRepeat = s.heldShoulderSince
+}
+
+func (s *ListScreen) stopShoulderHold(dir int) {
+	if s.heldShoulderDir == dir {
+		s.heldShoulderDir = 0
+	}
+}
+
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
@@ -812,6 +827,20 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.startHold(-1)
 			} else {
 				s.stopHold(-1)
+			}
+			return s
+		case sdl.K_PAGEDOWN:
+			if ev.Type == sdl.KEYDOWN {
+				s.startShoulderHold(1)
+			} else {
+				s.stopShoulderHold(1)
+			}
+			return s
+		case sdl.K_PAGEUP:
+			if ev.Type == sdl.KEYDOWN {
+				s.startShoulderHold(-1)
+			} else {
+				s.stopShoulderHold(-1)
 			}
 			return s
 		}
@@ -860,6 +889,20 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.startHold(-1)
 			} else {
 				s.stopHold(-1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startShoulderHold(1)
+			} else {
+				s.stopShoulderHold(1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startShoulderHold(-1)
+			} else {
+				s.stopShoulderHold(-1)
 			}
 			return s
 		}
