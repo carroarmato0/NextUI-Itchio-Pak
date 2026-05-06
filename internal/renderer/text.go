@@ -195,6 +195,18 @@ func sanitizeText(s string) string {
 	if s == "" {
 		return s
 	}
+	// Fast path: scan once; if no emoji found, return s unchanged (zero allocs).
+	hasEmoji := false
+	for _, r := range s {
+		if isEmoji(r) {
+			hasEmoji = true
+			break
+		}
+	}
+	if !hasEmoji {
+		return s
+	}
+	// Slow path: at least one emoji present — rebuild without emoji runes.
 	out := make([]byte, 0, len(s))
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])

@@ -19,6 +19,12 @@ type sizeKey struct {
 	bold   bool
 }
 
+// wrapKey is the cache key for WrapText results.
+type wrapKey struct {
+	text     string
+	maxWidth int32
+}
+
 type textRunKey struct {
 	text   string
 	fontID uint8

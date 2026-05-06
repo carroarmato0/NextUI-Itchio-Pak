@@ -148,3 +148,13 @@ func TestSanitizeText(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeTextNoAllocFastPath(t *testing.T) {
+	input := "Hello World"
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = sanitizeText(input)
+	})
+	if allocs != 0 {
+		t.Errorf("sanitizeText(%q): got %.0f allocs, want 0", input, allocs)
+	}
+}
