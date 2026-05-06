@@ -40,6 +40,11 @@ const (
 	sItemCount
 )
 
+const (
+	apiKeySetupURL  = "https://github.com/carroarmato0/NextUI-Itchio-Pak#adding-the-key-to-the-pak"
+	apiKeySetupBody = "Paid games require an Itch.io API key. Scan the QR code below for instructions on how to add it."
+)
+
 type SettingsScreen struct {
 	client         *itchio.Client
 	cfg            *settings.Config
@@ -57,6 +62,9 @@ type SettingsScreen struct {
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
+
+	showAPIKeyHelp bool
+	apiKeyHelpQR   *sdl.Texture
 }
 
 func NewSettingsScreen(
