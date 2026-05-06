@@ -66,6 +66,32 @@ func TestApplySort_AZ_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestApplySort_AZ_EmojiPrefixSortsByText(t *testing.T) {
+	games := []itchio.Game{
+		{Title: "🎮 Zebra"},
+		{Title: "Banana"},
+		{Title: "⚔️ Apple"},
+	}
+	result := itchio.ApplySort(games, itchio.SortModeAZ, nil, nil, nil)
+	want := []string{"⚔️ Apple", "Banana", "🎮 Zebra"}
+	if !equalTitles(result, want) {
+		t.Errorf("AZ emoji prefix: got %v, want %v", titles(result), want)
+	}
+}
+
+func TestApplySort_ZA_EmojiPrefixSortsByText(t *testing.T) {
+	games := []itchio.Game{
+		{Title: "🎮 Zebra"},
+		{Title: "Banana"},
+		{Title: "⚔️ Apple"},
+	}
+	result := itchio.ApplySort(games, itchio.SortModeZA, nil, nil, nil)
+	want := []string{"🎮 Zebra", "Banana", "⚔️ Apple"}
+	if !equalTitles(result, want) {
+		t.Errorf("ZA emoji prefix: got %v, want %v", titles(result), want)
+	}
+}
+
 func TestApplySort_New(t *testing.T) {
 	// Banana=2022 (newest), Cherry=2021, Apple=zero (sorts to end).
 	result := itchio.ApplySort(testGames(), itchio.SortModeNew, nil, nil, nil)

@@ -3,6 +3,8 @@ package itchio
 import (
 	"sort"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/text"
 )
 
 type SortMode string
@@ -54,6 +56,11 @@ func NextSortMode(current SortMode) SortMode {
 	return SortModeRSS // treat any unrecognised value as RSS; next press goes to AZ
 }
 
+// sortKey returns a normalised sort key for a game title: emoji stripped, whitespace trimmed, lowercased.
+func sortKey(s string) string {
+	return strings.ToLower(strings.TrimSpace(text.StripEmoji(s)))
+}
+
 // ApplySort returns a new slice derived from games according to mode.
 // downloaded maps game URLs to true when present in the inventory.
 // pendingUpdates and removed map URLs to true for [UP]/[!] grouping in DL mode.
@@ -64,7 +71,7 @@ func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed 
 		out := make([]Game, len(games))
 		copy(out, games)
 		sort.SliceStable(out, func(i, j int) bool {
-			return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title)
+			return sortKey(out[i].Title) < sortKey(out[j].Title)
 		})
 		return out
 
@@ -72,7 +79,7 @@ func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed 
 		out := make([]Game, len(games))
 		copy(out, games)
 		sort.SliceStable(out, func(i, j int) bool {
-			return strings.ToLower(out[i].Title) > strings.ToLower(out[j].Title)
+			return sortKey(out[i].Title) > sortKey(out[j].Title)
 		})
 		return out
 
