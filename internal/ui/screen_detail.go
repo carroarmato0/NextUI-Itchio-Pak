@@ -332,7 +332,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		s.drawQR(r, qrX, y, qrColW, imgBoxH)
 
 		y += imgBoxH + 6
-		r.DrawText(fmt.Sprintf("Image %d/%d  (L1/R1)", s.screenshotIdx+1, len(s.detail.ScreenshotURLs)),
+		r.DrawText(fmt.Sprintf("Image %d/%d  (←→)", s.screenshotIdx+1, len(s.detail.ScreenshotURLs)),
 			margin, y, 140, 140, 140)
 		y += fontH + 6
 	} else {
@@ -515,7 +515,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
-		{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Screenshots"},
+		{Kind: renderer.BadgePill, Label: "←→", Text: "Screenshots"},
 	}
 	if r.W > narrowScreenW {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
@@ -805,11 +805,11 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_A:
 			return s.goBack()
-		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER, sdl.CONTROLLER_BUTTON_DPAD_LEFT:
 			if s.detail != nil && s.screenshotIdx > 0 {
 				s.screenshotIdx--
 			}
-		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER, sdl.CONTROLLER_BUTTON_DPAD_RIGHT:
 			if s.detail != nil && s.screenshotIdx < len(s.detail.ScreenshotURLs)-1 {
 				s.screenshotIdx++
 			}

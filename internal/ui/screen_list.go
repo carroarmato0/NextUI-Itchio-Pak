@@ -293,6 +293,62 @@ func (s *ListScreen) jumpCursor(n int) {
 	s.warmedGameURL = ""
 }
 
+// jumpToNextAlpha moves the cursor to the start of the next (dir>0) or previous
+// (dir<0) alphabetical group, where group membership is the first character of
+// each game's sort key (a-z each form their own group; digits/symbols are '#').
+// This mirrors the NextUI L1/R1 "alpha jump" behaviour.
+func (s *ListScreen) jumpToNextAlpha(dir int) {
+	if dir == 0 || len(s.viewGames) == 0 {
+		return
+	}
+	alphaOf := func(idx int) byte {
+		if idx < 0 || idx >= len(s.viewGames) {
+			return 0
+		}
+		key := itchio.SortKey(s.viewGames[idx].Title)
+		if len(key) == 0 {
+			return '#'
+		}
+		ch := key[0]
+		if ch >= 'a' && ch <= 'z' {
+			return ch
+		}
+		return '#'
+	}
+
+	if dir > 0 {
+		current := alphaOf(s.cursor)
+		for i := s.cursor + 1; i < len(s.viewGames); i++ {
+			if alphaOf(i) != current {
+				s.cursor = i
+				break
+			}
+		}
+	} else {
+		current := alphaOf(s.cursor)
+		groupStart := s.cursor
+		for groupStart > 0 && alphaOf(groupStart-1) == current {
+			groupStart--
+		}
+		if groupStart == 0 {
+			s.cursor = 0
+		} else {
+			prev := alphaOf(groupStart - 1)
+			i := groupStart - 1
+			for i > 0 && alphaOf(i-1) == prev {
+				i--
+			}
+			s.cursor = i
+		}
+	}
+	s.titleScrollX = 0
+	s.titleScrollAt = time.Now()
+	s.tagScrollY = 0
+	s.tagScrollAt = time.Now()
+	s.lastCursorMove = time.Now()
+	s.warmedGameURL = ""
+}
+
 func (s *ListScreen) NeedsRedraw() bool {
 	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
@@ -776,7 +832,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	var footerHints []renderer.FooterHint
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Jump"})
+	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
 	if s.cacheReady {
 		if r.W <= narrowScreenW {
 			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"})
@@ -857,18 +913,28 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.stopHold(-1)
 			}
 			return s
-		case sdl.K_PAGEDOWN:
+		case sdl.K_RIGHT:
 			if ev.Type == sdl.KEYDOWN {
 				s.startShoulderHold(1)
 			} else {
 				s.stopShoulderHold(1)
 			}
 			return s
-		case sdl.K_PAGEUP:
+		case sdl.K_LEFT:
 			if ev.Type == sdl.KEYDOWN {
 				s.startShoulderHold(-1)
 			} else {
 				s.stopShoulderHold(-1)
+			}
+			return s
+		case sdl.K_PAGEDOWN:
+			if ev.Type == sdl.KEYDOWN {
+				s.jumpToNextAlpha(1)
+			}
+			return s
+		case sdl.K_PAGEUP:
+			if ev.Type == sdl.KEYDOWN {
+				s.jumpToNextAlpha(-1)
 			}
 			return s
 		}
@@ -919,18 +985,28 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.stopHold(-1)
 			}
 			return s
-		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+		case sdl.CONTROLLER_BUTTON_DPAD_RIGHT:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 				s.startShoulderHold(1)
 			} else {
 				s.stopShoulderHold(1)
 			}
 			return s
-		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+		case sdl.CONTROLLER_BUTTON_DPAD_LEFT:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 				s.startShoulderHold(-1)
 			} else {
 				s.stopShoulderHold(-1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.jumpToNextAlpha(1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.jumpToNextAlpha(-1)
 			}
 			return s
 		}

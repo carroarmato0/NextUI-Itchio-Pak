@@ -61,6 +61,9 @@ func sortKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(text.StripEmoji(s)))
 }
 
+// SortKey is the exported form of sortKey, used by UI layers for alpha-jump navigation.
+func SortKey(s string) string { return sortKey(s) }
+
 // ApplySort returns a new slice derived from games according to mode.
 // downloaded maps game URLs to true when present in the inventory.
 // pendingUpdates and removed map URLs to true for [UP]/[!] grouping in DL mode.
