@@ -35,7 +35,7 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin = 150 * time.Millisecond // minimum repeat interval for L1/R1 page jumps
+	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for L1/R1 (one row per frame at 60fps)
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -59,6 +59,17 @@ func currentRepeatInterval(elapsed time.Duration) time.Duration {
 	}
 	eased := 1.0 - math.Pow(1.0-t, 3)
 	return accelStart - time.Duration(float64(accelStart-accelMin)*eased)
+}
+
+// currentShoulderRepeatInterval is like currentRepeatInterval but uses
+// shoulderAccelMin as the floor, allowing L1/R1 to reach a faster rate than D-pad.
+func currentShoulderRepeatInterval(elapsed time.Duration) time.Duration {
+	t := float64(elapsed) / float64(accelRamp)
+	if t > 1 {
+		t = 1
+	}
+	eased := 1.0 - math.Pow(1.0-t, 3)
+	return accelStart - time.Duration(float64(accelStart-shoulderAccelMin)*eased)
 }
 
 type ListScreen struct {
@@ -113,7 +124,8 @@ type ListScreen struct {
 	heldShoulderSince  time.Time
 	lastShoulderRepeat time.Time
 
-	// lastVisibleRows is set each Draw so HandleEvent can jump by a screen's worth.
+	// lastVisibleRows is set each Draw so the initial L1/R1 press (startShoulderHold)
+	// can jump by one full screen. Not used in the hold-repeat path.
 	lastVisibleRows int
 
 	// Sort/filter state
@@ -225,12 +237,8 @@ func (s *ListScreen) processAutoRepeat() {
 	}
 	if s.heldShoulderDir != 0 {
 		elapsed := now.Sub(s.heldShoulderSince)
-		interval := currentRepeatInterval(elapsed - repeatDelay)
-		if interval < shoulderAccelMin {
-			interval = shoulderAccelMin
-		}
-		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= interval {
-			s.jumpCursor(s.heldShoulderDir * s.lastVisibleRows)
+		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= currentShoulderRepeatInterval(elapsed-repeatDelay) {
+			s.jumpCursor(s.heldShoulderDir)
 			s.lastShoulderRepeat = now
 		}
 	}
@@ -261,7 +269,7 @@ func (s *ListScreen) moveCursor(dir int) {
 }
 
 // jumpCursor moves the cursor by n items, clamping to the list bounds.
-// Used by L1/R1 shoulder buttons to jump by one visible screen at a time.
+// Used by the initial L1/R1 press (one screen) and by the hold-repeat path (one row).
 func (s *ListScreen) jumpCursor(n int) {
 	if n == 0 {
 		return
