@@ -35,7 +35,7 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin = 150 * time.Millisecond // minimum repeat interval for L1/R1 page jumps
+	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for L1/R1 (one row per frame at 60fps)
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -113,7 +113,8 @@ type ListScreen struct {
 	heldShoulderSince  time.Time
 	lastShoulderRepeat time.Time
 
-	// lastVisibleRows is set each Draw so HandleEvent can jump by a screen's worth.
+	// lastVisibleRows is set each Draw so the initial L1/R1 press (startShoulderHold)
+	// can jump by one full screen. Not used in the hold-repeat path.
 	lastVisibleRows int
 
 	// Sort/filter state
@@ -230,7 +231,7 @@ func (s *ListScreen) processAutoRepeat() {
 			interval = shoulderAccelMin
 		}
 		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= interval {
-			s.jumpCursor(s.heldShoulderDir * s.lastVisibleRows)
+			s.jumpCursor(s.heldShoulderDir)
 			s.lastShoulderRepeat = now
 		}
 	}
