@@ -290,8 +290,12 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
 	}
-	if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-		hints[1].Text = "Test API key"
+	if s.cursor == sItemAPIKey {
+		if s.cfg.APIKey != "" {
+			hints[1].Text = "Test API key"
+		} else {
+			hints[1].Text = "Setup guide"
+		}
 	}
 	r.DrawFooterHints(hints, ftrY)
 	r.Present()
