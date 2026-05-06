@@ -407,6 +407,11 @@ func updateInventoryAnnotation(svc UpdateServicer) string {
 
 func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
+	case sItemAPIKey:
+		if s.cfg.APIKey == "" {
+			s.showAPIKeyHelp = true
+			logger.Info("settings: API key help overlay shown")
+		}
 	case sItemROMMode:
 		if s.cfg.ROMSelection == "auto" {
 			s.cfg.ROMSelection = "ask"
