@@ -550,8 +550,8 @@ func (s *SettingsScreen) drawAPIKeyHelpOverlay(r *renderer.Renderer) {
 	if s.apiKeyHelpQR != nil {
 		qrX := panelX + (panelW-qrSize)/2
 		r.DrawTextureAt(s.apiKeyHelpQR, qrX, y, qrSize, qrSize)
-		y += qrSize + 6
 	}
+	y += qrSize + 6
 
 	// Caption.
 	r.DrawSmallTextCentered("Scan to open setup guide", panelX, y, panelW, 120, 120, 120)
