@@ -61,6 +61,17 @@ func currentRepeatInterval(elapsed time.Duration) time.Duration {
 	return accelStart - time.Duration(float64(accelStart-accelMin)*eased)
 }
 
+// currentShoulderRepeatInterval is like currentRepeatInterval but uses
+// shoulderAccelMin as the floor, allowing L1/R1 to reach a faster rate than D-pad.
+func currentShoulderRepeatInterval(elapsed time.Duration) time.Duration {
+	t := float64(elapsed) / float64(accelRamp)
+	if t > 1 {
+		t = 1
+	}
+	eased := 1.0 - math.Pow(1.0-t, 3)
+	return accelStart - time.Duration(float64(accelStart-shoulderAccelMin)*eased)
+}
+
 type ListScreen struct {
 	client     *itchio.Client
 	cfg        *settings.Config
@@ -226,11 +237,7 @@ func (s *ListScreen) processAutoRepeat() {
 	}
 	if s.heldShoulderDir != 0 {
 		elapsed := now.Sub(s.heldShoulderSince)
-		interval := currentRepeatInterval(elapsed - repeatDelay)
-		if interval < shoulderAccelMin {
-			interval = shoulderAccelMin
-		}
-		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= interval {
+		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= currentShoulderRepeatInterval(elapsed-repeatDelay) {
 			s.jumpCursor(s.heldShoulderDir)
 			s.lastShoulderRepeat = now
 		}
@@ -262,7 +269,7 @@ func (s *ListScreen) moveCursor(dir int) {
 }
 
 // jumpCursor moves the cursor by n items, clamping to the list bounds.
-// Used by L1/R1 shoulder buttons to jump by one visible screen at a time.
+// Used by the initial L1/R1 press (one screen) and by the hold-repeat path (one row).
 func (s *ListScreen) jumpCursor(n int) {
 	if n == 0 {
 		return

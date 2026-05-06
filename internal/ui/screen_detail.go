@@ -130,6 +130,10 @@ func NewDetailScreen(
 			if game.CoverURL != "" {
 				d.ScreenshotURLs = append([]string{game.CoverURL}, d.ScreenshotURLs...)
 			}
+			logger.Debug("detail: warming %d screenshot URLs", len(d.ScreenshotURLs))
+			for _, u := range d.ScreenshotURLs {
+				cache.Warm(u)
+			}
 		}
 		s.detail = d
 		s.err = err
