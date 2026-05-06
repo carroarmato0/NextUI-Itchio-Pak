@@ -1118,6 +1118,9 @@ func (s *ListScreen) buildCache() {
 	// app exit. A future improvement could thread an app-level context here.
 	games, err := s.client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
 		logger.Debug("cache: fetched %d games so far", len(partial))
+		s.cachedGames = partial
+		s.cacheReady = true
+		s.rebuildView()
 	})
 	if err != nil {
 		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
