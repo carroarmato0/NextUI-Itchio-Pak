@@ -31,11 +31,12 @@ const (
 
 // Auto-repeat timing for held D-pad buttons
 const (
-	repeatDelay = 300 * time.Millisecond // initial delay before repeating
-	accelStart  = 180 * time.Millisecond // repeat interval when acceleration begins
-	accelMin    = 30 * time.Millisecond  // repeat interval at full speed
-	accelRamp   = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	cacheTTL    = 24 * time.Hour
+	repeatDelay           = 300 * time.Millisecond  // initial delay before repeating
+	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
+	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
+	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
+	shoulderRepeatInterval = 300 * time.Millisecond // fixed repeat interval for L1/R1 page jumps
+	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
 	// art fetches are initiated. Below accelStart (180 ms) so normal browsing
@@ -103,7 +104,7 @@ type ListScreen struct {
 	lastCursorMove time.Time
 	warmedGameURL  string
 
-	// Shoulder button (L1/R1) auto-repeat state — mirrors heldDir/heldSince/lastRepeat
+	// Shoulder button (L1/R1 / PgDn/PgUp) auto-repeat state — mirrors heldDir/heldSince/lastRepeat
 	heldShoulderDir    int
 	heldShoulderSince  time.Time
 	lastShoulderRepeat time.Time
@@ -137,18 +138,19 @@ func NewListScreen(
 	onThemeToggle func(bool),
 ) *ListScreen {
 	s := &ListScreen{
-		client:         client,
-		cfg:            cfg,
-		cache:          cache,
-		cfgPath:        cfgPath,
-		cachePath:      cachePath,
-		inv:            inv,
-		inventoryPath:  inventoryPath,
-		updateSvc:      updateSvc,
-		nextUITheme:    nextUITheme,
-		defaultTheme:   defaultTheme,
-		themeAvailable: themeAvailable,
-		onThemeToggle:  onThemeToggle,
+		client:          client,
+		cfg:             cfg,
+		cache:           cache,
+		cfgPath:         cfgPath,
+		cachePath:       cachePath,
+		inv:             inv,
+		inventoryPath:   inventoryPath,
+		updateSvc:       updateSvc,
+		nextUITheme:     nextUITheme,
+		defaultTheme:    defaultTheme,
+		themeAvailable:  themeAvailable,
+		onThemeToggle:   onThemeToggle,
+		lastVisibleRows: 10,
 	}
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
@@ -218,7 +220,7 @@ func (s *ListScreen) processAutoRepeat() {
 	}
 	if s.heldShoulderDir != 0 {
 		elapsed := now.Sub(s.heldShoulderSince)
-		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= currentRepeatInterval(elapsed-repeatDelay) {
+		if elapsed >= repeatDelay && now.Sub(s.lastShoulderRepeat) >= shoulderRepeatInterval {
 			s.jumpCursor(s.heldShoulderDir * s.lastVisibleRows)
 			s.lastShoulderRepeat = now
 		}
