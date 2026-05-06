@@ -49,6 +49,7 @@ type Renderer struct {
 	texts         *textCache
 	sizes         map[sizeKey][2]int32 // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
 	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
+	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -100,6 +101,7 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		texts:         newTextCache(maxTextCacheEntries),
 		sizes:         make(map[sizeKey][2]int32),
 		runeFont:      make(map[rune]int),
+		wrapCache:     make(map[wrapKey][]string),
 	}
 	if r.primaryRanges == nil {
 		logger.Warn("renderer: could not parse primary font cmap; fallback fonts disabled")
@@ -353,10 +355,14 @@ func (r *Renderer) ClearClipRect() {
 
 // WrapText breaks text into lines that fit within maxWidth pixels.
 func (r *Renderer) WrapText(text string, maxWidth int32) []string {
+	key := wrapKey{text: text, maxWidth: maxWidth}
+	if lines, ok := r.wrapCache[key]; ok {
+		return lines
+	}
 	// Sanitize once up front so measurements (via TextSize) match rendering.
-	text = sanitizeText(text)
+	sanitized := sanitizeText(text)
 	var lines []string
-	for _, paragraph := range splitLines(text) {
+	for _, paragraph := range splitLines(sanitized) {
 		if paragraph == "" {
 			lines = append(lines, "")
 			continue
@@ -379,6 +385,7 @@ func (r *Renderer) WrapText(text string, maxWidth int32) []string {
 		}
 		lines = append(lines, current)
 	}
+	r.wrapCache[key] = lines[:len(lines):len(lines)]
 	return lines
 }
 
