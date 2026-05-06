@@ -1131,8 +1131,10 @@ func (s *ListScreen) buildCache() {
 	// app exit. A future improvement could thread an app-level context here.
 	games, err := s.client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
 		logger.Debug("cache: fetched %d games so far", len(partial))
+		snapshot := make([]itchio.Game, len(partial))
+		copy(snapshot, partial)
 		select {
-		case s.cacheUpdateCh <- partial:
+		case s.cacheUpdateCh <- snapshot:
 		default:
 		}
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
