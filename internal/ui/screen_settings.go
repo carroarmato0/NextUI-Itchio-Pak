@@ -298,6 +298,9 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 	r.DrawFooterHints(hints, ftrY)
+	if s.showAPIKeyHelp {
+		s.drawAPIKeyHelpOverlay(r)
+	}
 	r.Present()
 }
 
@@ -487,4 +490,69 @@ func (s *SettingsScreen) activate() Screen {
 		return NewAboutScreen(s)
 	}
 	return s
+}
+
+func (s *SettingsScreen) drawAPIKeyHelpOverlay(r *renderer.Renderer) {
+	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	lineH := fontH + 4
+
+	pad := int32(20)
+	panelW := r.W * 6 / 10
+	bodyMaxW := panelW - pad*2
+
+	// Pre-measure body text to correctly size the panel.
+	bodyLines := r.WrapText(apiKeySetupBody, bodyMaxW)
+	bodyH := int32(len(bodyLines)) * lineH
+
+	// QR size: 40% of panel width, clamped to [80, 160].
+	qrSize := panelW * 4 / 10
+	if qrSize > 160 {
+		qrSize = 160
+	}
+	if qrSize < 80 {
+		qrSize = 80
+	}
+
+	panelH := pad + fontH + 8 + bodyH + 12 + qrSize + 6 + smallFH + pad
+	panelX := (r.W - panelW) / 2
+	panelY := (r.H - panelH) / 2
+
+	// 2px accent-coloured border drawn as a slightly larger rect behind the panel.
+	ac := r.Theme.Accent
+	r.DrawRect(panelX-2, panelY-2, panelW+4, panelH+4, ac[0], ac[1], ac[2])
+
+	// Solid panel background.
+	bg := r.Theme.Background
+	r.DrawRect(panelX, panelY, panelW, panelH, bg[0], bg[1], bg[2])
+
+	// Title.
+	mt := r.Theme.MainText
+	y := panelY + pad
+	r.DrawTextCentered("API Key Setup", panelX, y, panelW, mt[0], mt[1], mt[2])
+	y += fontH + 8
+
+	// Body text.
+	ht := r.Theme.HintText
+	r.DrawWrappedText(apiKeySetupBody, panelX+pad, y, bodyMaxW, lineH, ht[0], ht[1], ht[2])
+	y += bodyH + 12
+
+	// QR code — lazily generated and cached for the lifetime of the overlay.
+	if s.apiKeyHelpQR == nil {
+		tex, err := r.QRTexture(apiKeySetupURL, int(qrSize))
+		if err != nil {
+			logger.Warn("settings: API key help QR generation failed: %v", err)
+		} else {
+			s.apiKeyHelpQR = tex
+			logger.Debug("settings: API key help QR texture generated")
+		}
+	}
+	if s.apiKeyHelpQR != nil {
+		qrX := panelX + (panelW-qrSize)/2
+		r.DrawTextureAt(s.apiKeyHelpQR, qrX, y, qrSize, qrSize)
+		y += qrSize + 6
+	}
+
+	// Caption.
+	r.DrawSmallTextCentered("Scan to open setup guide", panelX, y, panelW, 120, 120, 120)
 }
