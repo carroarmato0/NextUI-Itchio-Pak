@@ -2,12 +2,16 @@ package itchio
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"time"
 
 	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 const (
@@ -47,15 +51,11 @@ func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // dialTLS dials a TCP connection and upgrades it with a Chrome-compatible TLS
-// handshake using utls. This replaces Go's default crypto/tls fingerprint
-// (which Cloudflare bot-protection flags) with Chrome's ClientHello.
-//
-// The Chrome preset hardcodes ALPN ["h2", "http/1.1"] regardless of
-// Config.NextProtos. We must patch the ALPNExtension after BuildHandshakeState
-// to advertise only "http/1.1", because our http.Transport speaks HTTP/1.1
-// only — if the server negotiates h2 it sends HTTP/2 frames that the transport
-// cannot parse ("malformed HTTP response" error).
-func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
+// handshake using utls, then returns the conn for use by http2.Transport.
+// The cfg parameter is ignored — we build our own utls config to keep the
+// Chrome ClientHello fingerprint that bypasses Cloudflare bot-protection.
+// Chrome's ALPN list ["h2", "http/1.1"] is preserved so the server negotiates h2.
+func dialTLS(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -71,7 +71,7 @@ func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
 	}
 	for _, ext := range uconn.Extensions {
 		if alpn, ok := ext.(*utls.ALPNExtension); ok {
-			alpn.AlpnProtocols = []string{"http/1.1"}
+			alpn.AlpnProtocols = []string{"h2", "http/1.1"}
 			break
 		}
 	}
@@ -79,18 +79,37 @@ func dialTLS(ctx context.Context, network, addr string) (net.Conn, error) {
 		conn.Close()
 		return nil, err
 	}
+	proto := uconn.ConnectionState().NegotiatedProtocol
+	logger.Debug("client: TLS addr=%s proto=%s", addr, proto)
 	return uconn, nil
+}
+
+// h2FallbackTransport routes HTTPS requests through http2.Transport (which
+// multiplexes concurrent image fetches over a single connection) and plain
+// HTTP requests through a standard transport (used by httptest servers in tests).
+type h2FallbackTransport struct {
+	h2 *http2.Transport
+	h1 *http.Transport
+}
+
+func (t *h2FallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Scheme == "https" {
+		return t.h2.RoundTrip(req)
+	}
+	return t.h1.RoundTrip(req)
 }
 
 func newHTTPClient() *http.Client {
 	jar, _ := cookiejar.New(nil)
-	transport := &http.Transport{
+	h2t := &http2.Transport{
 		DialTLSContext: dialTLS,
 	}
 	return &http.Client{
 		Jar:     jar,
 		Timeout: 30 * time.Second,
-		Transport: &uaTransport{wrapped: transport},
+		Transport: &uaTransport{
+			wrapped: &h2FallbackTransport{h2: h2t, h1: &http.Transport{}},
+		},
 	}
 }
 
