@@ -216,7 +216,7 @@ func NewListScreen(
 		default:
 		}
 		s.ownedUpdateCh <- m
-		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 		logger.Info("owned: %d owned game URL(s) received from key validation", len(m))
 	}
 
