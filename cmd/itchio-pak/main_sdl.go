@@ -43,13 +43,11 @@ func runSDL() {
 	inv, _ := inventory.Load(inventoryPath)
 	inv.VerifyAndClean(inventoryPath)
 
-	// Log the environment header so the log file is self-describing.
 	level := cfg.LogLevel
 	if level == "" {
 		level = "info"
 	}
-	logger.Info("platform=%s nextui=%s log_level=%s",
-		readPlatform(), readNextUIVersion(), level)
+	logger.Info("log_level:  %s", level)
 
 	// Pre-init SDL2 to detect display resolution before creating the window.
 	// Include JOYSTICK + GAMECONTROLLER so the device's physical buttons are

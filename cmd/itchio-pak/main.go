@@ -53,7 +53,25 @@ func main() {
 	}()
 
 	logger.Info("itchio-pak %s starting", version)
-	logger.Info("Git commit: %s", gitCommit)
+	logger.Info("git commit: %s", gitCommit)
+	p := readPlatform()
+	logger.Info("platform:   %s (%s)", p, platformDescription(p))
+	logger.Info("nextui:     %s", readNextUIVersion())
+	profilingDesc := "off"
+	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {
+		var parts []string
+		if *cpuProfile != "" {
+			parts = append(parts, "cpu="+*cpuProfile)
+		}
+		if *memProfile != "" {
+			parts = append(parts, "mem="+*memProfile)
+		}
+		if *pprofAddr != "" {
+			parts = append(parts, "pprof="+*pprofAddr)
+		}
+		profilingDesc = strings.Join(parts, " ")
+	}
+	logger.Info("profiling:  %s", profilingDesc)
 
 	if *pprofAddr != "" {
 		go func() {
@@ -154,6 +172,20 @@ func readPlatform() string {
 		return p
 	}
 	return "unknown"
+}
+
+// platformDescription returns a human-readable device name for a NextUI platform code.
+func platformDescription(platform string) string {
+	switch platform {
+	case "tg5040":
+		return "TrimUI Brick / Smart Pro"
+	case "tg5050":
+		return "TrimUI Smart Pro S"
+	case "my355":
+		return "Miyoo Flip"
+	default:
+		return "unknown device"
+	}
 }
 
 // readNextUIVersion reads the first non-empty line of the NextUI version file.
