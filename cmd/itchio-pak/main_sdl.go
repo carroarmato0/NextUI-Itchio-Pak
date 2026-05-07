@@ -27,6 +27,7 @@ const (
 func runSDL() {
 	cfgPath := os.Getenv("HOME") + "/config.json"
 	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
+	ownedCachePath := filepath.Join(filepath.Dir(cfgPath), "owned_cache.json")
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
@@ -128,7 +129,7 @@ func runSDL() {
 	})
 	powerMgr.Start()
 
-	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
+	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, ownedCachePath)
 	var current ui.Screen
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
