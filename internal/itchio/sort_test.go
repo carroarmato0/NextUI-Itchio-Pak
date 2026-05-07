@@ -23,7 +23,7 @@ func testGames() []itchio.Game {
 
 func TestApplySort_RSS(t *testing.T) {
 	games := testGames()
-	result := itchio.ApplySort(games, itchio.SortModeRSS, nil, nil, nil)
+	result := itchio.ApplySort(games, itchio.SortModeRSS, nil, nil, nil, nil)
 	if len(result) != 3 {
 		t.Fatalf("want 3 games, got %d", len(result))
 	}
@@ -38,7 +38,7 @@ func TestApplySort_RSS(t *testing.T) {
 }
 
 func TestApplySort_AZ(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeAZ, nil, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeAZ, nil, nil, nil, nil)
 	want := []string{"Apple", "Banana", "Cherry"}
 	if !equalTitles(result, want) {
 		t.Errorf("AZ: got %v, want %v", titles(result), want)
@@ -46,7 +46,7 @@ func TestApplySort_AZ(t *testing.T) {
 }
 
 func TestApplySort_ZA(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeZA, nil, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeZA, nil, nil, nil, nil)
 	want := []string{"Cherry", "Banana", "Apple"}
 	if !equalTitles(result, want) {
 		t.Errorf("ZA: got %v, want %v", titles(result), want)
@@ -59,7 +59,7 @@ func TestApplySort_AZ_CaseInsensitive(t *testing.T) {
 		{Title: "Apple"},
 		{Title: "mango"},
 	}
-	result := itchio.ApplySort(games, itchio.SortModeAZ, nil, nil, nil)
+	result := itchio.ApplySort(games, itchio.SortModeAZ, nil, nil, nil, nil)
 	want := []string{"Apple", "mango", "zebra"}
 	if !equalTitles(result, want) {
 		t.Errorf("AZ case-insensitive: got %v, want %v", titles(result), want)
@@ -72,7 +72,7 @@ func TestApplySort_AZ_EmojiPrefixSortsByText(t *testing.T) {
 		{Title: "Banana"},
 		{Title: "⚔️ Apple"},
 	}
-	result := itchio.ApplySort(games, itchio.SortModeAZ, nil, nil, nil)
+	result := itchio.ApplySort(games, itchio.SortModeAZ, nil, nil, nil, nil)
 	want := []string{"⚔️ Apple", "Banana", "🎮 Zebra"}
 	if !equalTitles(result, want) {
 		t.Errorf("AZ emoji prefix: got %v, want %v", titles(result), want)
@@ -85,7 +85,7 @@ func TestApplySort_ZA_EmojiPrefixSortsByText(t *testing.T) {
 		{Title: "Banana"},
 		{Title: "⚔️ Apple"},
 	}
-	result := itchio.ApplySort(games, itchio.SortModeZA, nil, nil, nil)
+	result := itchio.ApplySort(games, itchio.SortModeZA, nil, nil, nil, nil)
 	want := []string{"🎮 Zebra", "Banana", "⚔️ Apple"}
 	if !equalTitles(result, want) {
 		t.Errorf("ZA emoji prefix: got %v, want %v", titles(result), want)
@@ -94,7 +94,7 @@ func TestApplySort_ZA_EmojiPrefixSortsByText(t *testing.T) {
 
 func TestApplySort_New(t *testing.T) {
 	// Banana=2022 (newest), Cherry=2021, Apple=zero (sorts to end).
-	result := itchio.ApplySort(testGames(), itchio.SortModeNew, nil, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeNew, nil, nil, nil, nil)
 	want := []string{"Banana", "Cherry", "Apple"}
 	if !equalTitles(result, want) {
 		t.Errorf("NEW: got %v, want %v", titles(result), want)
@@ -106,7 +106,7 @@ func TestApplySort_New_AllZero(t *testing.T) {
 		{Title: "A", PublishedAt: time.Time{}},
 		{Title: "B", PublishedAt: time.Time{}},
 	}
-	result := itchio.ApplySort(games, itchio.SortModeNew, nil, nil, nil)
+	result := itchio.ApplySort(games, itchio.SortModeNew, nil, nil, nil, nil)
 	if len(result) != 2 {
 		t.Fatalf("want 2 games, got %d", len(result))
 	}
@@ -126,7 +126,7 @@ func TestApplySort_DL_PendingUpdatesFirst(t *testing.T) {
 	pendingUpdates := map[string]bool{
 		"https://b.itch.io/apple": true,
 	}
-	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, pendingUpdates, nil)
+	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, pendingUpdates, nil, nil)
 	if len(result) != 3 {
 		t.Fatalf("DL grouping: want 3 games, got %d", len(result))
 	}
@@ -145,7 +145,7 @@ func TestApplySort_DL_RemovedSecond(t *testing.T) {
 	removed := map[string]bool{
 		"https://c.itch.io/cherry": true,
 	}
-	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, nil, removed)
+	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, nil, removed, nil)
 	if len(result) != 3 {
 		t.Fatalf("want 3 games, got %d", len(result))
 	}
@@ -163,7 +163,7 @@ func TestApplySort_DL_UpdateBeforeRemoved(t *testing.T) {
 	}
 	pendingUpdates := map[string]bool{"https://b.itch.io/apple": true}
 	removed := map[string]bool{"https://c.itch.io/cherry": true}
-	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, pendingUpdates, removed)
+	result := itchio.ApplySort(games, itchio.SortModeDL, downloaded, pendingUpdates, removed, nil)
 	if result[0].Title != "Apple" {
 		t.Errorf("want [UP] Apple first, got %q", result[0].Title)
 	}
@@ -179,7 +179,7 @@ func TestApplySort_DL(t *testing.T) {
 	downloaded := map[string]bool{
 		"https://a.itch.io/banana": true,
 	}
-	result := itchio.ApplySort(testGames(), itchio.SortModeDL, downloaded, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeDL, downloaded, nil, nil, nil)
 	if len(result) != 1 {
 		t.Fatalf("DL: want 1 game, got %d", len(result))
 	}
@@ -189,21 +189,21 @@ func TestApplySort_DL(t *testing.T) {
 }
 
 func TestApplySort_DL_EmptyDownloaded(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeDL, map[string]bool{}, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeDL, map[string]bool{}, nil, nil, nil)
 	if len(result) != 0 {
 		t.Errorf("DL with empty downloaded: want 0 games, got %d", len(result))
 	}
 }
 
 func TestApplySort_DL_NilDownloaded(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeDL, nil, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeDL, nil, nil, nil, nil)
 	if len(result) != 0 {
 		t.Errorf("DL with nil downloaded: want 0 games, got %d", len(result))
 	}
 }
 
 func TestApplySort_Free(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModeFree, nil, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModeFree, nil, nil, nil, nil)
 	if len(result) != 2 {
 		t.Fatalf("FREE: want 2 games, got %d", len(result))
 	}
@@ -215,7 +215,7 @@ func TestApplySort_Free(t *testing.T) {
 }
 
 func TestApplySort_Paid(t *testing.T) {
-	result := itchio.ApplySort(testGames(), itchio.SortModePaid, nil, nil, nil)
+	result := itchio.ApplySort(testGames(), itchio.SortModePaid, nil, nil, nil, nil)
 	if len(result) != 1 {
 		t.Fatalf("PAID: want 1 game, got %d", len(result))
 	}
@@ -227,7 +227,7 @@ func TestApplySort_Paid(t *testing.T) {
 func TestApplySort_ReturnsNewSlice(t *testing.T) {
 	games := testGames()
 	for _, mode := range itchio.SortModes {
-		result := itchio.ApplySort(games, mode, nil, nil, nil)
+		result := itchio.ApplySort(games, mode, nil, nil, nil, nil)
 		if result == nil {
 			t.Errorf("mode %q: ApplySort returned nil", mode)
 		}
@@ -246,6 +246,7 @@ func TestSortModeBadge(t *testing.T) {
 		{itchio.SortModeDL, "DL"},
 		{itchio.SortModeFree, "FREE"},
 		{itchio.SortModePaid, "PAID"},
+		{itchio.SortModeOwned, "OWNED"},
 	}
 	for _, tc := range cases {
 		got := itchio.SortModeBadge(tc.mode)
@@ -285,6 +286,83 @@ func TestNextSortMode_UnknownModeFallsBackToRSS(t *testing.T) {
 	got := itchio.NextSortMode("corrupt_value")
 	if got != itchio.SortModeRSS {
 		t.Errorf("unknown mode: got %q, want SortModeRSS", got)
+	}
+}
+
+func TestApplySort_Owned_FiltersToOwnedOnly(t *testing.T) {
+	games := []itchio.Game{
+		{Title: "Zelda", URL: "https://a.itch.io/zelda"},
+		{Title: "Asteroids", URL: "https://b.itch.io/asteroids"},
+		{Title: "Metroid", URL: "https://c.itch.io/metroid"},
+		{Title: "Pong", URL: "https://d.itch.io/pong"}, // not owned
+	}
+	owned := map[string]bool{
+		"https://a.itch.io/zelda":     true,
+		"https://b.itch.io/asteroids": true,
+		"https://c.itch.io/metroid":   true,
+	}
+	result := itchio.ApplySort(games, itchio.SortModeOwned, nil, nil, nil, owned)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 owned games, got %d", len(result))
+	}
+	for _, g := range result {
+		if g.Title == "Pong" {
+			t.Error("Pong (not owned) should not appear in OWNED sort")
+		}
+	}
+}
+
+func TestApplySort_Owned_PendingUpdatesFirst(t *testing.T) {
+	games := []itchio.Game{
+		{Title: "Zelda", URL: "https://a.itch.io/zelda"},
+		{Title: "Asteroids", URL: "https://b.itch.io/asteroids"},
+		{Title: "Metroid", URL: "https://c.itch.io/metroid"},
+	}
+	owned := map[string]bool{
+		"https://a.itch.io/zelda":     true,
+		"https://b.itch.io/asteroids": true,
+		"https://c.itch.io/metroid":   true,
+	}
+	pendingUpdates := map[string]bool{
+		"https://c.itch.io/metroid": true,
+	}
+	result := itchio.ApplySort(games, itchio.SortModeOwned, nil, pendingUpdates, nil, owned)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 games, got %d", len(result))
+	}
+	if result[0].Title != "Metroid" {
+		t.Errorf("pending-update game should be first, got %q", result[0].Title)
+	}
+	if result[1].Title != "Asteroids" {
+		t.Errorf("expected Asteroids second (A-Z), got %q", result[1].Title)
+	}
+	if result[2].Title != "Zelda" {
+		t.Errorf("expected Zelda third (A-Z), got %q", result[2].Title)
+	}
+}
+
+func TestApplySort_Owned_NilMap(t *testing.T) {
+	result := itchio.ApplySort(testGames(), itchio.SortModeOwned, nil, nil, nil, nil)
+	if len(result) != 0 {
+		t.Errorf("nil owned map: expected 0 games, got %d", len(result))
+	}
+}
+
+func TestApplySort_Owned_AZWithinGroup(t *testing.T) {
+	games := []itchio.Game{
+		{Title: "Zelda", URL: "https://a.itch.io/zelda"},
+		{Title: "Asteroids", URL: "https://b.itch.io/asteroids"},
+		{Title: "Metroid", URL: "https://c.itch.io/metroid"},
+	}
+	owned := map[string]bool{
+		"https://a.itch.io/zelda":     true,
+		"https://b.itch.io/asteroids": true,
+		"https://c.itch.io/metroid":   true,
+	}
+	result := itchio.ApplySort(games, itchio.SortModeOwned, nil, nil, nil, owned)
+	want := []string{"Asteroids", "Metroid", "Zelda"}
+	if !equalTitles(result, want) {
+		t.Errorf("OWNED A-Z: got %v, want %v", titles(result), want)
 	}
 }
 

@@ -10,18 +10,19 @@ import (
 type SortMode string
 
 const (
-	SortModeRSS  SortMode = ""
-	SortModeAZ   SortMode = "az"
-	SortModeZA   SortMode = "za"
-	SortModeNew  SortMode = "new"
-	SortModeDL   SortMode = "dl"
-	SortModeFree SortMode = "free"
-	SortModePaid SortMode = "paid"
+	SortModeRSS   SortMode = ""
+	SortModeAZ    SortMode = "az"
+	SortModeZA    SortMode = "za"
+	SortModeNew   SortMode = "new"
+	SortModeDL    SortMode = "dl"
+	SortModeFree  SortMode = "free"
+	SortModePaid  SortMode = "paid"
+	SortModeOwned SortMode = "owned"
 )
 
 var SortModes = []SortMode{
 	SortModeRSS, SortModeAZ, SortModeZA, SortModeNew,
-	SortModeDL, SortModeFree, SortModePaid,
+	SortModeDL, SortModeFree, SortModePaid, SortModeOwned,
 }
 
 // SortModeBadge returns the display label shown in the UI header for m.
@@ -40,6 +41,8 @@ func SortModeBadge(m SortMode) string {
 		return "FREE"
 	case SortModePaid:
 		return "PAID"
+	case SortModeOwned:
+		return "OWNED"
 	default:
 		return "RSS"
 	}
@@ -67,8 +70,9 @@ func SortKey(s string) string { return sortKey(s) }
 // ApplySort returns a new slice derived from games according to mode.
 // downloaded maps game URLs to true when present in the inventory.
 // pendingUpdates and removed map URLs to true for [UP]/[!] grouping in DL mode.
+// owned maps game URLs to true for games owned by the user (used in OWNED mode).
 // games is never mutated.
-func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed map[string]bool) []Game {
+func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed, owned map[string]bool) []Game {
 	switch mode {
 	case SortModeAZ:
 		out := make([]Game, len(games))
@@ -140,6 +144,26 @@ func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed 
 				out = append(out, g)
 			}
 		}
+		return out
+
+	case SortModeOwned:
+		var updates, rest []Game
+		for _, g := range games {
+			if !owned[g.URL] {
+				continue
+			}
+			if pendingUpdates[g.URL] {
+				updates = append(updates, g)
+			} else {
+				rest = append(rest, g)
+			}
+		}
+		sort.SliceStable(rest, func(i, j int) bool {
+			return sortKey(rest[i].Title) < sortKey(rest[j].Title)
+		})
+		out := make([]Game, 0, len(updates)+len(rest))
+		out = append(out, updates...)
+		out = append(out, rest...)
 		return out
 
 	default: // SortModeRSS
