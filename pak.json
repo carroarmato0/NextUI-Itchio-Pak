@@ -15,6 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
+    "v1.0.13": "\n• Fast scrolling with L1/R1 and Left/Right.\n• Emoji support.\n• Single game list scrolling.\n• Instructions for adding API Key in Settings.",
     "v1.0.12": "\n• Some minor fixes from previous release.\n• New screenshots.",
     "v1.0.11": "\n• Support NextUI themeing settings.\n• UI overhaul.\n• Performance optimizations.\n• Unified Naming.\n• Fix update-service and DL/Update game list consistency.\n• Improve scrolling.\n• Game info and cover-art only fetched for selected game, with pre-cache warmup of games in the vicinity of selection.",
     "v1.0.10": "\n• Add support for Arabic, Hebrew, Thai, Devanagari, Greek, and many more non-CJK fonts.\n• Fix issue preventing to exit the app when Cloudflare blocks the connection.\n• Rewrite of the build system to leverage NextUI's own toolchains, allowing the use of the native SDL library on the devices and reducing the size of the Pak.\n• Some UI fixes.\n• Fix launching on Miyoo Flip and TrimUI Smart Pro S.\n• Support GIFs in cover art.\n• New Inventory system for tracking downloaded ROMs, game updates and store removals.\n• New Sorting category [DL] = Download, with Update section.\n• Implement Power Control (standby and poweroff).\n• Countermeasures for the \"double input\" hardware bug on my355.\n• Log rotation.",
