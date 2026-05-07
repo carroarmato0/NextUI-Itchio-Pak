@@ -220,6 +220,19 @@ func NewListScreen(
 		logger.Info("owned: %d owned game URL(s) received from key validation", len(m))
 	}
 
+	// If an API key is already configured, validate it in the background so that
+	// owned game data is refreshed without requiring the user to open Settings.
+	if cfg.APIKey != "" {
+		go func() {
+			_, owned, err := client.ValidateAPIKey(cfg.APIKey)
+			if err != nil {
+				logger.Warn("owned: startup key validation failed: %v", err)
+				return
+			}
+			s.onOwnedReady(owned)
+		}()
+	}
+
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
 	gameCache, err := itchio.LoadGamesCache(cachePath)
