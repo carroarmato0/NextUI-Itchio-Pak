@@ -36,7 +36,7 @@ required.
 ### Game browsing
 - Scrollable list of GB Studio games from itch.io's "made-with-gb-studio" category
 - Live cover art thumbnails alongside the list with support for animated GIF cover art
-- Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; L/R shoulder buttons jump pages directly
+- Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; D-pad Left/Right jumps pages directly; L/R shoulder buttons jump to the next/previous alphabetical group
 - On first launch the list loads live from the network while a full cache is built in the background
 - On subsequent launches the full game list loads instantly from the on-device cache
 - Cache auto-refreshes after 24 hours; manual refresh available in Settings
@@ -57,6 +57,7 @@ Press **Select** from the game list to cycle through sort and filter modes. The 
 | `[DL]` | Downloaded only — hides games not yet on device; pending-update games (`[UP]`) are grouped first, removed games (`[!]`) second, then the rest |
 | `[FREE]` | Free games only |
 | `[PAID]` | Paid games only |
+| `[OWNED]` | Owned games only |
 
 The selected sort mode is saved automatically and restored on the next launch.
 
@@ -122,7 +123,7 @@ The power button behaves the same way it does with emulators on NextUI:
 If a background task (ROM download, game list cache build, inventory check) is running when you press the power button, a full-screen **"Please wait"** overlay is shown until the task finishes. The action fires automatically — no confirmation or extra button press needed.
 
 ### Settings
-- **API Key** — shows `FOUND` (green) when an itch.io API key is configured, enabling paid game downloads
+- **API Key** — shows `WORKING` (green) when an itch.io API key is configured and working, enabling paid game downloads. Selecting the row when no key is set opens an in-app overlay with a QR code linking to the setup instructions
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
@@ -141,7 +142,9 @@ If a background task (ROM download, game list cache build, inventory check) is r
 | D-pad up/down (hold) | Auto-scroll with acceleration |
 | D-pad down (at last item) | Advance to next page |
 | D-pad up (at first item) | Go back to previous page (lands on last item) |
-| L / R shoulder | Previous/next page in game list (direct jump) |
+| D-pad left / right | Jump one page forward/back in game list |
+| L / R shoulder | Jump to next/previous alphabetical group in game list |
+| D-pad left / right | Previous/next screenshot in detail view |
 | L / R shoulder | Previous/next screenshot in detail view |
 | A | Select / confirm / download |
 | B | Back |
