@@ -644,6 +644,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		isPendingUpdate := s.inv.HasPendingUpdates(g.URL)
 		isRemovedGame := s.inv.IsRemoved(g.URL)
 		isPresent := s.inv.IsPresent(g.URL)
+		isOwned := s.ownedURLs[g.URL]
 
 		// Badge: update/removed/downloaded state or price.
 		var badgeLabel string
@@ -658,6 +659,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		case isPresent:
 			badgeLabel = "DL"
 			badgeR, badgeG, badgeB = 80, 200, 220
+		case isOwned:
+			badgeLabel = "OWNED"
+			badgeR, badgeG, badgeB = 60, 200, 120
 		case g.IsFree:
 			badgeLabel = "Free"
 			badgeR, badgeG, badgeB = 80, 200, 80
