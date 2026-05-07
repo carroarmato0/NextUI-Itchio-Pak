@@ -35,7 +35,8 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for L1/R1 (one row per frame at 60fps)
+	shoulderAccelMin = 15 * time.Millisecond  // minimum repeat interval for L1/R1 page-scroll
+	alphaAccelMin    = 150 * time.Millisecond // minimum repeat interval for L1/R1 alpha-jump
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -119,12 +120,17 @@ type ListScreen struct {
 	lastCursorMove time.Time
 	warmedGameURL  string
 
-	// Shoulder button (L1/R1 / PgDn/PgUp) auto-repeat state — mirrors heldDir/heldSince/lastRepeat
+	// Shoulder button (L1/R1 / PgDn/PgUp) auto-repeat state for page-scroll (Left/Right)
 	heldShoulderDir    int
 	heldShoulderSince  time.Time
 	lastShoulderRepeat time.Time
 
-	// lastVisibleRows is set each Draw so the initial L1/R1 press (startShoulderHold)
+	// Alpha-jump (L1/R1) auto-repeat state
+	heldAlphaDir    int
+	heldAlphaSince  time.Time
+	lastAlphaRepeat time.Time
+
+	// lastVisibleRows is set each Draw so the initial Left/Right press (startShoulderHold)
 	// can jump by one full screen. Not used in the hold-repeat path.
 	lastVisibleRows int
 
@@ -242,6 +248,14 @@ func (s *ListScreen) processAutoRepeat() {
 			s.lastShoulderRepeat = now
 		}
 	}
+	if s.heldAlphaDir != 0 {
+		elapsed := now.Sub(s.heldAlphaSince)
+		interval := accelStart - time.Duration(float64(accelStart-alphaAccelMin)*(1.0-math.Pow(1.0-math.Min(float64(elapsed-repeatDelay)/float64(accelRamp), 1), 3)))
+		if elapsed >= repeatDelay && now.Sub(s.lastAlphaRepeat) >= interval {
+			s.jumpToNextAlpha(s.heldAlphaDir)
+			s.lastAlphaRepeat = now
+		}
+	}
 }
 
 func (s *ListScreen) moveCursor(dir int) {
@@ -350,7 +364,7 @@ func (s *ListScreen) jumpToNextAlpha(dir int) {
 }
 
 func (s *ListScreen) NeedsRedraw() bool {
-	if s.heldDir != 0 || s.heldShoulderDir != 0 {
+	if s.heldDir != 0 || s.heldShoulderDir != 0 || s.heldAlphaDir != 0 {
 		return true
 	}
 	// Resume rendering 500ms before scrollDelay expires so the first
@@ -895,6 +909,19 @@ func (s *ListScreen) stopShoulderHold(dir int) {
 	}
 }
 
+func (s *ListScreen) startAlphaHold(dir int) {
+	s.jumpToNextAlpha(dir)
+	s.heldAlphaDir = dir
+	s.heldAlphaSince = time.Now()
+	s.lastAlphaRepeat = s.heldAlphaSince
+}
+
+func (s *ListScreen) stopAlphaHold(dir int) {
+	if s.heldAlphaDir == dir {
+		s.heldAlphaDir = 0
+	}
+}
+
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
@@ -929,12 +956,16 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		case sdl.K_PAGEDOWN:
 			if ev.Type == sdl.KEYDOWN {
-				s.jumpToNextAlpha(1)
+				s.startAlphaHold(1)
+			} else {
+				s.stopAlphaHold(1)
 			}
 			return s
 		case sdl.K_PAGEUP:
 			if ev.Type == sdl.KEYDOWN {
-				s.jumpToNextAlpha(-1)
+				s.startAlphaHold(-1)
+			} else {
+				s.stopAlphaHold(-1)
 			}
 			return s
 		}
@@ -1001,12 +1032,16 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.jumpToNextAlpha(1)
+				s.startAlphaHold(1)
+			} else {
+				s.stopAlphaHold(1)
 			}
 			return s
 		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.jumpToNextAlpha(-1)
+				s.startAlphaHold(-1)
+			} else {
+				s.stopAlphaHold(-1)
 			}
 			return s
 		}
