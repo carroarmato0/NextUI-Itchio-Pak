@@ -113,6 +113,17 @@ type ListScreen struct {
 	// Capacity 1: old unseen updates are overwritten rather than queued.
 	cacheUpdateCh chan []itchio.Game
 
+	// ownedUpdateCh carries owned-URL map updates from the background goroutine
+	// (post-API-key-validation) to the SDL thread. Capacity 1: stale updates
+	// are silently discarded, same as cacheUpdateCh.
+	ownedUpdateCh  chan map[string]bool
+	ownedURLs      map[string]bool
+	ownedCachePath string
+
+	// onOwnedReady is called by KeyTestScreen after a successful key validation.
+	// It saves the owned cache to disk and sends the new map to ownedUpdateCh.
+	onOwnedReady func([]itchio.OwnedGame)
+
 	// Cover-art fetch throttling: fetches are deferred until the cursor has
 	// been stationary for coverSettleDelay, then the current game plus
 	// preloadRadius neighbours are warmed.
@@ -157,6 +168,7 @@ func NewListScreen(
 	defaultTheme theme.Theme,
 	themeAvailable bool,
 	onThemeToggle func(bool),
+	ownedCachePath string,
 ) *ListScreen {
 	s := &ListScreen{
 		client:          client,
@@ -174,6 +186,40 @@ func NewListScreen(
 		lastVisibleRows: 10,
 		cacheUpdateCh:   make(chan []itchio.Game, 1),
 	}
+	s.ownedCachePath = ownedCachePath
+	s.ownedUpdateCh = make(chan map[string]bool, 1)
+	s.ownedURLs = make(map[string]bool)
+
+	if urls, err := itchio.LoadOwnedCache(ownedCachePath); err == nil && len(urls) > 0 {
+		for _, u := range urls {
+			s.ownedURLs[u] = true
+		}
+		logger.Info("owned: loaded %d owned game URL(s) from cache", len(s.ownedURLs))
+	} else if err != nil {
+		logger.Warn("owned: failed to load owned cache: %v", err)
+	}
+
+	s.onOwnedReady = func(owned []itchio.OwnedGame) {
+		urls := make([]string, len(owned))
+		for i, g := range owned {
+			urls[i] = g.URL
+		}
+		if err := itchio.SaveOwnedCache(s.ownedCachePath, urls); err != nil {
+			logger.Warn("owned: failed to save owned cache: %v", err)
+		}
+		m := make(map[string]bool, len(urls))
+		for _, u := range urls {
+			m[u] = true
+		}
+		select {
+		case <-s.ownedUpdateCh:
+		default:
+		}
+		s.ownedUpdateCh <- m
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+		logger.Info("owned: %d owned game URL(s) received from key validation", len(m))
+	}
+
 	s.sortMode = itchio.SortMode(cfg.SortMode)
 
 	gameCache, err := itchio.LoadGamesCache(cachePath)
@@ -409,6 +455,12 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.cachedGames = games
 		s.cacheReady = true
 		s.needsRebuild = false
+		s.rebuildView()
+	default:
+	}
+	select {
+	case newOwned := <-s.ownedUpdateCh:
+		s.ownedURLs = newOwned
 		s.rebuildView()
 	default:
 	}
@@ -920,6 +972,14 @@ func (s *ListScreen) stopAlphaHold(dir int) {
 	}
 }
 
+func (s *ListScreen) nextSortMode() itchio.SortMode {
+	m := itchio.NextSortMode(s.sortMode)
+	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
+		m = itchio.NextSortMode(m)
+	}
+	return m
+}
+
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
@@ -978,7 +1038,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
 		case sdl.K_x:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
@@ -1061,12 +1121,12 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
 		case sdl.CONTROLLER_BUTTON_BACK:
 			if !s.cacheReady {
 				return s
 			}
-			s.sortMode = itchio.NextSortMode(s.sortMode)
+			s.sortMode = s.nextSortMode()
 			logger.Info("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
 			s.rebuildView()
 			s.cfg.SortMode = string(s.sortMode)
@@ -1193,7 +1253,7 @@ func (s *ListScreen) rebuildView() {
 			removed[g.URL] = true
 		}
 	}
-	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed)
+	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
 	s.totalGames = len(s.viewGames)
 	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
 
