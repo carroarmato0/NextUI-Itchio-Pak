@@ -58,6 +58,7 @@ type SettingsScreen struct {
 	defaultTheme   theme.Theme
 	themeAvailable bool
 	onThemeToggle  func(bool)
+	onOwnedReady   func([]itchio.OwnedGame)
 
 	heldDir    int
 	heldSince  time.Time
@@ -78,6 +79,7 @@ func NewSettingsScreen(
 	defaultTheme theme.Theme,
 	themeAvailable bool,
 	onThemeToggle func(bool),
+	onOwnedReady func([]itchio.OwnedGame),
 ) *SettingsScreen {
 	s := &SettingsScreen{
 		client:         client,
@@ -90,6 +92,7 @@ func NewSettingsScreen(
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
 		onThemeToggle:  onThemeToggle,
+		onOwnedReady:   onOwnedReady,
 	}
 	// Start a one-shot background validation the first time Settings is opened
 	// this session. MarkAPIKeyCheckStarted is a CAS gate so subsequent opens
@@ -364,7 +367,7 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Keysym.Sym {
 		case sdl.K_RETURN:
 			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return NewKeyTestScreen(s.client, s.cfg, s)
+				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
 		case sdl.K_ESCAPE:
@@ -395,7 +398,7 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return NewKeyTestScreen(s.client, s.cfg, s)
+				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
 		case sdl.CONTROLLER_BUTTON_A:

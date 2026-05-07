@@ -30,10 +30,11 @@ type KeyTestScreen struct {
 	username   string
 	ownedCount int
 	err        error
+	onOwnedReady func([]itchio.OwnedGame)
 }
 
-func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen) *KeyTestScreen {
-	s := &KeyTestScreen{client: client, cfg: cfg, prev: prev, state: keyTestRunning}
+func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen, onOwnedReady func([]itchio.OwnedGame)) *KeyTestScreen {
+	s := &KeyTestScreen{client: client, cfg: cfg, prev: prev, state: keyTestRunning, onOwnedReady: onOwnedReady}
 	go func() {
 		username, owned, err := client.ValidateAPIKey(cfg.APIKey)
 		if err != nil {
@@ -43,6 +44,9 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen) 
 			s.username = username
 			s.ownedCount = len(owned)
 			s.state = keyTestOK
+			if s.onOwnedReady != nil {
+				s.onOwnedReady(owned)
+			}
 		}
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 	}()
