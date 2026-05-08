@@ -503,6 +503,8 @@ var circleRectBuf [maxCircleRadius*6 + 3]sdl.Rect
 // The solid interior uses floor-quantised extents; a 1px fringe at 50% alpha
 // softens the staircase edge. Two FillRects calls; no per-pixel alpha variation.
 // Safe to call inside DrawPill — blend mode is restored to NONE on return.
+// AA fringe is skipped for radius < 4: at that size the fringe is sub-pixel and
+// saving 4 CGo calls per invocation outweighs the imperceptible quality loss.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	if radius > maxCircleRadius {
 		radius = maxCircleRadius
@@ -525,10 +527,12 @@ func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue 
 	ren.SetDrawColor(red, green, blue, 255)
 	ren.FillRects(circleRectBuf[:n])
 
-	ren.SetDrawBlendMode(sdl.BLENDMODE_BLEND)
-	ren.SetDrawColor(red, green, blue, 128)
-	ren.FillRects(circleRectBuf[n : n+n*2])
-	ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	if radius >= 4 {
+		ren.SetDrawBlendMode(sdl.BLENDMODE_BLEND)
+		ren.SetDrawColor(red, green, blue, 128)
+		ren.FillRects(circleRectBuf[n : n+n*2])
+		ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	}
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume

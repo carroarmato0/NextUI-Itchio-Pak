@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -163,6 +164,9 @@ type ListScreen struct {
 
 	// truncCache memoises per-frame title truncation; rebuilt on each rebuildView.
 	truncCache map[truncCacheKey]string
+	// badgePriceCache holds pre-formatted "$X.XX" strings keyed by game URL.
+	// Populated lazily on first Draw access; cleared on rebuildView.
+	badgePriceCache map[string]string
 }
 
 func NewListScreen(
@@ -197,6 +201,7 @@ func NewListScreen(
 		cacheUpdateCh:   make(chan []itchio.Game, 1),
 		pageUpdateCh:    make(chan pageResult, 1),
 		truncCache:      make(map[truncCacheKey]string),
+		badgePriceCache: make(map[string]string),
 	}
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
@@ -638,7 +643,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			badgeLabel = "Free"
 			badgeR, badgeG, badgeB = 80, 200, 80
 		default:
-			badgeLabel = fmt.Sprintf("$%.2f", g.Price)
+			badgeLabel = s.badgePrice(g.URL, g.Price)
 			badgeR, badgeG, badgeB = 220, 180, 60
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
@@ -1120,6 +1125,17 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
+// badgePrice returns a memoised "$X.XX" string for the given game, computing it
+// once via strconv and caching for the lifetime of the current view.
+func (s *ListScreen) badgePrice(url string, price float64) string {
+	if v, ok := s.badgePriceCache[url]; ok {
+		return v
+	}
+	v := "$" + strconv.FormatFloat(price, 'f', 2, 64)
+	s.badgePriceCache[url] = v
+	return v
+}
+
 // cachedTruncate returns a memoised truncated title, computing it only once per
 // unique (title, maxW, bold) tuple within the current view. The cache is cleared
 // by rebuildView whenever the game list or sort order changes.
@@ -1215,6 +1231,7 @@ func (s *ListScreen) ScheduleRebuild() { s.needsRebuild = true }
 // to cursor 0 if the game is no longer in the view.
 func (s *ListScreen) rebuildView() {
 	s.truncCache = make(map[truncCacheKey]string)
+	s.badgePriceCache = make(map[string]string)
 	var selectedURL string
 	selectedViewIdx := s.cursor
 	if s.cursor < len(s.viewGames) {
