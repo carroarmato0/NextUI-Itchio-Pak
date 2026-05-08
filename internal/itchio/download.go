@@ -181,7 +181,7 @@ func extractKeyID(jwtKey string) string {
 // upload.URL must be a resolver endpoint of the form:
 //
 //	gameURL/file/UPLOAD_ID?key=KEY&csrf=CSRF
-func (c *Client) DownloadFree(_ string, upload Upload, dest string, progress func(int64, int64)) error {
+func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, int64)) error {
 	// Parse the resolver URL to extract base path, key, and csrf.
 	parsed, err := url.Parse(upload.URL)
 	if err != nil {

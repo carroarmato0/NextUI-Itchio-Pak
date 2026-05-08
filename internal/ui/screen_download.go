@@ -71,7 +71,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 			err = client.DownloadAuthUpload(cfg.APIKey, upload.UploadID, upload.DownloadKeyID, dest, progress)
 		} else {
 			itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
-			err = client.DownloadFree(game.URL, itchUpload, dest, progress)
+			err = client.DownloadFree(itchUpload, dest, progress)
 		}
 
 		if err != nil {
