@@ -94,8 +94,14 @@ func (c *Config) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		logger.Error("settings: failed to save config to %s: %v", path, err)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		logger.Error("settings: failed to write tmp config %s: %v", tmp, err)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		logger.Error("settings: failed to rename config %s → %s: %v", tmp, path, err)
 		return err
 	}
 	return nil
