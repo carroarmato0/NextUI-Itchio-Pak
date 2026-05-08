@@ -35,7 +35,7 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for D-pad page-scroll
+	shoulderAccelMin      = 15 * time.Millisecond  // minimum repeat interval for D-pad page-scroll
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -887,13 +887,6 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
-// drawPlaceholder renders a bordered rectangle with centered text.
-func (s *ListScreen) drawPlaceholder(r *renderer.Renderer, x, y, w, h int32, label string) {
-	bg := r.Theme.Background
-	r.DrawRect(x, y, w, h, 45, 45, 45)
-	r.DrawRect(x+2, y+2, w-4, h-4, bg[0], bg[1], bg[2])
-	r.DrawText(label, x+w/2-40, y+h/2-10, 80, 80, 80)
-}
 
 func (s *ListScreen) startHold(dir int) {
 	s.moveCursor(dir)

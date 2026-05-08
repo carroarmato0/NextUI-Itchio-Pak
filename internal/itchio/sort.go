@@ -140,7 +140,7 @@ func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed,
 		return out
 
 	case SortModeFree:
-		out := make([]Game, 0)
+		out := make([]Game, 0, len(games))
 		for _, g := range games {
 			if g.IsFree {
 				out = append(out, g)
@@ -149,7 +149,7 @@ func ApplySort(games []Game, mode SortMode, downloaded, pendingUpdates, removed,
 		return out
 
 	case SortModePaid:
-		out := make([]Game, 0)
+		out := make([]Game, 0, len(games))
 		for _, g := range games {
 			if !g.IsFree {
 				out = append(out, g)

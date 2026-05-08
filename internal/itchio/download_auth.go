@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -162,11 +163,9 @@ func AnnotateBundleNames(keys []OwnedKey, bundleNames []string) []OwnedKey {
 	}
 	// Sort by CreatedAt ascending so we assign names in the same order they
 	// appear on the public game page (oldest bundle first).
-	for i := 1; i < len(bundleIdxs); i++ {
-		for j := i; j > 0 && bundleIdxs[j].t.Before(bundleIdxs[j-1].t); j-- {
-			bundleIdxs[j], bundleIdxs[j-1] = bundleIdxs[j-1], bundleIdxs[j]
-		}
-	}
+	sort.Slice(bundleIdxs, func(i, j int) bool {
+		return bundleIdxs[i].t.Before(bundleIdxs[j].t)
+	})
 	for nameIdx, bi := range bundleIdxs {
 		if nameIdx >= len(bundleNames) {
 			break
