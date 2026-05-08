@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -16,7 +17,7 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-type fetchState int
+type fetchState int32
 
 const (
 	fetchLoading fetchState = iota
@@ -24,6 +25,13 @@ const (
 	fetchError
 	fetchNeedsPurchasePick
 )
+
+func (s *FetchUploadsScreen) loadState() fetchState {
+	return fetchState(atomic.LoadInt32((*int32)(&s.state)))
+}
+func (s *FetchUploadsScreen) storeState(st fetchState) {
+	atomic.StoreInt32((*int32)(&s.state), int32(st))
+}
 
 // FetchUploadsScreen is a transitional screen shown while the app fetches
 // the list of available ROM files from the itch.io signed download page.
@@ -77,8 +85,8 @@ func NewFetchUploadsScreen(
 			ownedKeys, keysErr := client.FetchOwnedKeys(cfg.APIKey, detail.GameID)
 			if keysErr != nil {
 				s.err = keysErr
-				s.state = fetchError
 				s.isNotOwned = strings.Contains(keysErr.Error(), "not owned")
+				s.storeState(fetchError)
 				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 				return
 			}
@@ -94,7 +102,7 @@ func NewFetchUploadsScreen(
 			} else {
 				// Multiple purchases (e.g. individual + bundle) — let user choose.
 				s.ownedKeys = ownedKeys
-				s.state = fetchNeedsPurchasePick
+				s.storeState(fetchNeedsPurchasePick)
 			}
 		} else {
 			// Free game — use the CSRF scraping path.
@@ -102,7 +110,7 @@ func NewFetchUploadsScreen(
 			err = freeErr
 			if err != nil {
 				s.err = err
-				s.state = fetchError
+				s.storeState(fetchError)
 			} else {
 				for _, u := range itchUploads {
 					s.uploads = append(s.uploads, roms.Upload{
@@ -114,9 +122,9 @@ func NewFetchUploadsScreen(
 				if len(s.uploads) == 0 {
 					logger.Warn("fetch: no downloadable uploads found for game (free path)")
 					s.err = fmt.Errorf("no downloadable files found for this game")
-					s.state = fetchError
+					s.storeState(fetchError)
 				} else {
-					s.state = fetchDone
+					s.storeState(fetchDone)
 				}
 			}
 		}
@@ -133,8 +141,8 @@ func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 	authUploads, authErr := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, downloadKeyID)
 	if authErr != nil {
 		s.err = authErr
-		s.state = fetchError
 		s.isNotOwned = strings.Contains(authErr.Error(), "not owned")
+		s.storeState(fetchError)
 		return
 	}
 	for _, u := range authUploads {
@@ -148,10 +156,10 @@ func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 	if len(s.uploads) == 0 {
 		logger.Warn("fetch: no downloadable uploads found for game (auth path)")
 		s.err = fmt.Errorf("no downloadable files found for this game")
-		s.state = fetchError
+		s.storeState(fetchError)
 		return
 	}
-	s.state = fetchDone
+	s.storeState(fetchDone)
 }
 
 func (s *FetchUploadsScreen) NeedsRedraw() bool {
@@ -182,7 +190,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	contentH := r.H - headerH - footerH
 	mid := contentTop + contentH/2
 
-	switch s.state {
+	switch s.loadState() {
 	case fetchLoading:
 		r.DrawTextCentered("Finding available files...", 0, mid-mainFH/2, r.W, mt[0], mt[1], mt[2])
 
@@ -196,7 +204,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.state {
+	switch s.loadState() {
 	case fetchLoading:
 		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	default:
@@ -209,10 +217,10 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 
 func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 	// Transition immediately when fetch completes (triggered by UserEvent).
-	if s.state == fetchDone {
+	if s.loadState() == fetchDone {
 		return s.nextScreen()
 	}
-	if s.state == fetchNeedsPurchasePick {
+	if s.loadState() == fetchNeedsPurchasePick {
 		return NewPurchasePickerScreen(s.client, s.cfg, s.cfgPath, s.cache,
 			s.game, s.detail, s.ownedKeys, s.inv, s.inventoryPath, s.prev)
 	}
@@ -235,7 +243,7 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Keysym.Sym {
 		case sdl.K_ESCAPE, sdl.K_RETURN:
-			if s.state == fetchError {
+			if s.loadState() == fetchError {
 				return s.prev
 			}
 		}
@@ -245,7 +253,7 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
-			if s.state == fetchError {
+			if s.loadState() == fetchError {
 				return s.prev
 			}
 		}
