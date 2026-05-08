@@ -3,6 +3,7 @@ package renderer
 import (
 	"encoding/binary"
 	"os"
+	"sort"
 	"unicode/utf8"
 )
 
@@ -112,6 +113,7 @@ func parseCmap4(data []byte, off int) []cmapRange {
 			ranges = append(ranges, cmapRange{start, end})
 		}
 	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].lo < ranges[j].lo })
 	return ranges
 }
 
@@ -133,6 +135,7 @@ func parseCmap12(data []byte, off int) []cmapRange {
 			ranges = append(ranges, cmapRange{startCode, endCode})
 		}
 	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].lo < ranges[j].lo })
 	return ranges
 }
 
