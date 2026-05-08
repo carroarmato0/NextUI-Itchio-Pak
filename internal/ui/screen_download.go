@@ -18,13 +18,20 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-type dlState int
+type dlState int32
 
 const (
 	dlDownloading dlState = iota
 	dlDone
 	dlError
 )
+
+func (s *DownloadScreen) loadState() dlState {
+	return dlState(atomic.LoadInt32((*int32)(&s.state)))
+}
+func (s *DownloadScreen) storeState(st dlState) {
+	atomic.StoreInt32((*int32)(&s.state), int32(st))
+}
 
 type DownloadScreen struct {
 	client        *itchio.Client
@@ -70,7 +77,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 		if err != nil {
 			logger.Error("download: failed file=%s: %v", upload.Filename, err)
 			s.err = err
-			s.state = dlError
+			s.storeState(dlError)
 		} else {
 			logger.Info("download: complete file=%s", upload.Filename)
 
@@ -117,7 +124,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 				logger.Info("inventory: recorded game=%q file=%s unified=%v", game.Title, filepath.Base(finalDest), unifiedName)
 			}
 			s.dest = finalDest
-			s.state = dlDone
+			s.storeState(dlDone)
 		}
 	}()
 
@@ -150,7 +157,7 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	contentTop := headerH + 10
 	contentH := r.H - headerH - footerH
 
-	switch s.state {
+	switch s.loadState() {
 	case dlDownloading:
 		dl := atomic.LoadInt64(&s.downloaded)
 		tot := atomic.LoadInt64(&s.total)
@@ -212,7 +219,7 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.state {
+	switch s.loadState() {
 	case dlDownloading:
 		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
 	default:
@@ -229,7 +236,7 @@ func (s *DownloadScreen) HandleEvent(e sdl.Event) Screen {
 		if ev.Type != sdl.KEYDOWN {
 			return s
 		}
-		if s.state != dlDownloading {
+		if s.loadState() != dlDownloading {
 			switch ev.Keysym.Sym {
 			case sdl.K_ESCAPE, sdl.K_RETURN:
 				return s.prev
@@ -239,7 +246,7 @@ func (s *DownloadScreen) HandleEvent(e sdl.Event) Screen {
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
 		}
-		if s.state != dlDownloading {
+		if s.loadState() != dlDownloading {
 			switch ev.Button {
 			case sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_A:
 				return s.prev
@@ -251,7 +258,7 @@ func (s *DownloadScreen) HandleEvent(e sdl.Event) Screen {
 
 // IsBusy implements BusyChecker. Returns true while a download is in flight.
 func (s *DownloadScreen) IsBusy() bool {
-	return s.state == dlDownloading
+	return s.loadState() == dlDownloading
 }
 
 func humanBytes(n int64) string {
