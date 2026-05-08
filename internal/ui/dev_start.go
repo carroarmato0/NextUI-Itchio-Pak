@@ -66,11 +66,13 @@ func newDevAutoDetailScreen(
 // pollForGames pokes the SDL event loop every 100 ms until the list cache is
 // populated, then fires a user event to trigger the detail navigation.
 func (s *devAutoDetailScreen) pollForGames() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-s.stopPoll:
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-ticker.C:
 			if len(s.list.viewGames) > 0 {
 				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: DevNavEventCode})
 				return
