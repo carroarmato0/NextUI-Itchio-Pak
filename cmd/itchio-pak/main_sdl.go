@@ -104,13 +104,13 @@ func runSDL() {
 		logger.Debug("renderer: theme updated (NextUI active: %v)", enabled && themeAvailable)
 	}
 
-	cache := renderer.NewImageCache(50)
+	client := itchio.NewClient()
+
+	cache := renderer.NewImageCache(50, client.HTTPClient())
 	defer cache.Clear()
 	cache.SetNotify(func() {
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 	})
-
-	client := itchio.NewClient()
 
 	updateSvc := inventory.NewUpdateService(inv, inventoryPath, client, func() {
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: userEventInventoryUpdate})

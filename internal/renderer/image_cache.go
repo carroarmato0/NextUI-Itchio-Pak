@@ -73,14 +73,17 @@ func (c *ImageCache) SetNotify(fn func()) { c.notify = fn }
 
 const maxConcurrentFetches = 2
 
-func NewImageCache(maxEntries int) *ImageCache {
+func NewImageCache(maxEntries int, httpClient *http.Client) *ImageCache {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 20 * time.Second}
+	}
 	return &ImageCache{
 		lru:      list.New(),
 		items:    make(map[string]*list.Element),
 		fetching: make(map[string]struct{}),
 		failed:   make(map[string]struct{}),
 		max:      maxEntries,
-		client:   &http.Client{Timeout: 20 * time.Second},
+		client:   httpClient,
 		readyCh:  make(chan rawImage, 32),
 		sem:      make(chan struct{}, maxConcurrentFetches),
 	}
