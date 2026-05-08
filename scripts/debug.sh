@@ -32,10 +32,10 @@ Commands:
   pull-log         Pull the runtime log to the current directory
   shell            Open an interactive ADB shell on the device
 
-  profile          Deploy a CPU+memory profiling build; launch via NextUI to record
-  profile-cpu      Deploy a CPU-only profiling build; launch via NextUI to record
-  profile-mem      Deploy a memory-only profiling build; launch via NextUI to record
-  profile-live     Deploy a live pprof build (HTTP :6060 via ADB forward); launch via NextUI
+  profile          Enable CPU+memory profiling on the device; launch via NextUI to record
+  profile-cpu      Enable CPU-only profiling on the device; launch via NextUI to record
+  profile-mem      Enable memory-only profiling on the device; launch via NextUI to record
+  profile-live     Enable live pprof on the device (HTTP :6060 via ADB forward); launch via NextUI
   profile-restore  Remove profiling flags from device; restores normal launch behaviour
   pull-profile     Pull recorded profile files from the device to ./debug-profiles/
 
@@ -45,7 +45,7 @@ Environment:
 Log path on device: /mnt/SDCARD/.userdata/<platform>/logs/itchio-pak.log
 
 Profiling workflow (file-based):
-  1. ./scripts/debug.sh profile          # deploy; prints next steps
+  1. ./scripts/debug.sh profile          # enable profiling; prints next steps
   2. Launch Itch.io via NextUI normally  # no ADB, no framebuffer flicker
   3. Use the app, then exit via B button
   4. ./scripts/debug.sh pull-profile     # fetch profiles to ./debug-profiles/
@@ -53,7 +53,7 @@ Profiling workflow (file-based):
   6. go tool pprof bin/tg5040/itchio-pak ./debug-profiles/itchio-cpu.prof
 
 Live pprof workflow:
-  1. ./scripts/debug.sh profile-live     # deploy + set up ADB port forward
+  1. ./scripts/debug.sh profile-live     # enable live pprof + set up ADB port forward
   2. Launch Itch.io via NextUI normally
   3. go tool pprof 'http://localhost:6060/debug/pprof/profile?seconds=30'
      go tool pprof http://localhost:6060/debug/pprof/heap
@@ -124,15 +124,10 @@ EOF
         ;;
     profile)
         check_adb
-        echo "==> Building $PLATFORM..."
-        ./scripts/build.sh "$PLATFORM"
-        echo "==> Pushing binary and launch script..."
-        adb push "bin/$PLATFORM/itchio-pak" "$PAK_DEST/itchio-pak"
-        adb push "launch.sh" "$PAK_DEST/launch.sh"
         echo "==> Installing CPU + memory profiling flags..."
         adb shell "printf '%s' '-cpuprofile /tmp/itchio-cpu.prof -memprofile /tmp/itchio-mem.prof' > $PAK_DEST/.profile-flags"
         echo ""
-        echo "Profiling build is ready. Next steps:"
+        echo "Profiling enabled. Next steps:"
         echo "  1. Launch Itch.io via NextUI normally (no ADB needed)"
         echo "  2. Use the app, then exit via the B button"
         echo "  3. Run: ./scripts/debug.sh pull-profile"
@@ -142,15 +137,10 @@ EOF
         ;;
     profile-cpu)
         check_adb
-        echo "==> Building $PLATFORM..."
-        ./scripts/build.sh "$PLATFORM"
-        echo "==> Pushing binary and launch script..."
-        adb push "bin/$PLATFORM/itchio-pak" "$PAK_DEST/itchio-pak"
-        adb push "launch.sh" "$PAK_DEST/launch.sh"
         echo "==> Installing CPU profiling flags..."
         adb shell "printf '%s' '-cpuprofile /tmp/itchio-cpu.prof' > $PAK_DEST/.profile-flags"
         echo ""
-        echo "CPU profiling build is ready. Next steps:"
+        echo "CPU profiling enabled. Next steps:"
         echo "  1. Launch Itch.io via NextUI normally (no ADB needed)"
         echo "  2. Use the app, then exit via the B button"
         echo "  3. Run: ./scripts/debug.sh pull-profile"
@@ -159,15 +149,10 @@ EOF
         ;;
     profile-mem)
         check_adb
-        echo "==> Building $PLATFORM..."
-        ./scripts/build.sh "$PLATFORM"
-        echo "==> Pushing binary and launch script..."
-        adb push "bin/$PLATFORM/itchio-pak" "$PAK_DEST/itchio-pak"
-        adb push "launch.sh" "$PAK_DEST/launch.sh"
         echo "==> Installing memory profiling flags..."
         adb shell "printf '%s' '-memprofile /tmp/itchio-mem.prof' > $PAK_DEST/.profile-flags"
         echo ""
-        echo "Memory profiling build is ready. Next steps:"
+        echo "Memory profiling enabled. Next steps:"
         echo "  1. Launch Itch.io via NextUI normally (no ADB needed)"
         echo "  2. Use the app, then exit via the B button"
         echo "  3. Run: ./scripts/debug.sh pull-profile"
@@ -176,17 +161,12 @@ EOF
         ;;
     profile-live)
         check_adb
-        echo "==> Building $PLATFORM..."
-        ./scripts/build.sh "$PLATFORM"
-        echo "==> Pushing binary and launch script..."
-        adb push "bin/$PLATFORM/itchio-pak" "$PAK_DEST/itchio-pak"
-        adb push "launch.sh" "$PAK_DEST/launch.sh"
         echo "==> Installing live pprof flags (port :6060)..."
         adb shell "printf '%s' '-pprof :6060' > $PAK_DEST/.profile-flags"
         echo "==> Forwarding device port 6060 -> host port 6060..."
         adb forward tcp:6060 tcp:6060
         echo ""
-        echo "Live pprof build is ready. Next steps:"
+        echo "Live pprof enabled. Next steps:"
         echo "  1. Launch Itch.io via NextUI normally (no ADB needed)"
         echo "  2. Capture profiles from another terminal:"
         echo "       go tool pprof 'http://localhost:6060/debug/pprof/profile?seconds=30'"
