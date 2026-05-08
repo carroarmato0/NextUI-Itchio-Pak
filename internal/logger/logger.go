@@ -29,13 +29,20 @@ func SetLevel(l Level) {
 	currentLevel.Store(int32(l))
 }
 
-// LevelFromString maps "debug" → LevelDebug; anything else → LevelInfo.
-// Unknown or empty strings resolve to LevelInfo so misconfigured values are safe.
+// LevelFromString maps a string name to a Level.
+// Recognised values (case-insensitive): "debug", "info", "warn", "error".
+// Empty or unknown strings resolve to LevelInfo.
 func LevelFromString(s string) Level {
-	if strings.ToLower(strings.TrimSpace(s)) == "debug" {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
 		return LevelDebug
+	case "warn":
+		return LevelWarn
+	case "error":
+		return LevelError
+	default:
+		return LevelInfo
 	}
-	return LevelInfo
 }
 
 type secret struct {
@@ -88,8 +95,10 @@ func write(l Level, format string, args ...any) {
 		tag = "[INFO]  "
 	case LevelWarn:
 		tag = "[WARN]  "
-	default:
+	case LevelError:
 		tag = "[ERROR] "
+	default:
+		tag = "[UNKNOWN] "
 	}
 	log.Print(tag + redact(fmt.Sprintf(format, args...)))
 }

@@ -42,7 +42,10 @@ func TestLevelFromString(t *testing.T) {
 		{"INFO", logger.LevelInfo},
 		{"", logger.LevelInfo},
 		{"verbose", logger.LevelInfo},
-		{"warn", logger.LevelInfo}, // "warn" is not a valid input — maps to info
+		{"warn", logger.LevelWarn},
+		{"WARN", logger.LevelWarn},
+		{"error", logger.LevelError},
+		{"ERROR", logger.LevelError},
 	}
 	for _, c := range cases {
 		got := logger.LevelFromString(c.input)
