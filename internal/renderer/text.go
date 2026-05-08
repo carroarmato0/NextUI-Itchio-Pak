@@ -169,11 +169,15 @@ type textRun struct {
 // the same font index are merged. fontIndex(r) returns 0 for the primary font,
 // a positive index for a fallback font, or -1 to drop the rune entirely.
 // An empty input returns nil.
+// splitBuf is reused across calls to avoid a per-call slice allocation.
+// Only accessed from the SDL main goroutine — no locking needed.
+var splitBuf []textRun
+
 func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 	if s == "" {
 		return nil
 	}
-	var runs []textRun
+	splitBuf = splitBuf[:0]
 	runStart := 0
 	runIdx := -1
 	for i := 0; i < len(s); {
@@ -182,7 +186,7 @@ func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 		if idx == -1 {
 			// Flush the current run (if any) and skip this rune.
 			if runIdx >= 0 {
-				runs = append(runs, textRun{text: s[runStart:i], fontIdx: runIdx})
+				splitBuf = append(splitBuf, textRun{text: s[runStart:i], fontIdx: runIdx})
 			}
 			i += size
 			runStart = i
@@ -193,15 +197,15 @@ func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 			runIdx = idx
 			runStart = i
 		} else if idx != runIdx {
-			runs = append(runs, textRun{text: s[runStart:i], fontIdx: runIdx})
+			splitBuf = append(splitBuf, textRun{text: s[runStart:i], fontIdx: runIdx})
 			runStart = i
 			runIdx = idx
 		}
 		i += size
 	}
 	if runIdx >= 0 && runStart < len(s) {
-		runs = append(runs, textRun{text: s[runStart:], fontIdx: runIdx})
+		splitBuf = append(splitBuf, textRun{text: s[runStart:], fontIdx: runIdx})
 	}
-	return runs
+	return splitBuf
 }
 

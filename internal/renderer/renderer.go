@@ -215,9 +215,19 @@ func (r *Renderer) smallFont(idx int) *ttf.Font {
 	return r.SmallFont
 }
 
+// drawRectBuf, pillBodyBuf, copyDstBuf prevent CGo escape-analysis from
+// allocating a fresh sdl.Rect on every call through the CGo boundary.
+// Only accessed from the SDL main goroutine — no locking needed.
+var (
+	drawRectBuf sdl.Rect
+	pillBodyBuf sdl.Rect
+	copyDstBuf  sdl.Rect
+)
+
 func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
 	r.Renderer.SetDrawColor(red, green, blue, 255)
-	r.Renderer.FillRect(&sdl.Rect{X: x, Y: y, W: w, H: h})
+	drawRectBuf = sdl.Rect{X: x, Y: y, W: w, H: h}
+	r.Renderer.FillRect(&drawRectBuf)
 }
 
 // drawRuns renders text with per-run texture caching. Each unique
@@ -242,7 +252,8 @@ func (r *Renderer) drawRuns(text string, x, y int32, color sdl.Color, small, bol
 			b:      color.B,
 		}
 		if val, ok := r.texts.get(key); ok {
-			r.Renderer.Copy(val.tex, nil, &sdl.Rect{X: cx, Y: y, W: val.w, H: val.h})
+			copyDstBuf = sdl.Rect{X: cx, Y: y, W: val.w, H: val.h}
+			r.Renderer.Copy(val.tex, nil, &copyDstBuf)
 			cx += val.w
 			continue
 		}
@@ -262,7 +273,8 @@ func (r *Renderer) drawRuns(text string, x, y int32, color sdl.Color, small, bol
 			continue
 		}
 		_, _, tw, th, _ := tex.Query()
-		r.Renderer.Copy(tex, nil, &sdl.Rect{X: cx, Y: y, W: tw, H: th})
+		copyDstBuf = sdl.Rect{X: cx, Y: y, W: tw, H: th}
+		r.Renderer.Copy(tex, nil, &copyDstBuf)
 		r.texts.put(key, textRunVal{tex: tex, w: tw, h: th})
 		cx += tw
 	}
@@ -463,7 +475,8 @@ func (r *Renderer) DrawPill(x, y, w, h int32, red, green, blue uint8) {
 		radius = 1
 	}
 	r.Renderer.SetDrawColor(red, green, blue, 255)
-	r.Renderer.FillRect(&sdl.Rect{X: x + radius, Y: y, W: w - radius*2, H: h})
+	pillBodyBuf = sdl.Rect{X: x + radius, Y: y, W: w - radius*2, H: h}
+	r.Renderer.FillRect(&pillBodyBuf)
 	drawFilledCircle(r.Renderer, x+radius, y+radius, radius, red, green, blue)
 	drawFilledCircle(r.Renderer, x+w-radius, y+radius, radius, red, green, blue)
 }

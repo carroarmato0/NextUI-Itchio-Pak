@@ -77,6 +77,12 @@ type pageResult struct {
 	err   error
 }
 
+type truncCacheKey struct {
+	title string
+	maxW  int32
+	bold  bool
+}
+
 type ListScreen struct {
 	client     *itchio.Client
 	cfg        *settings.Config
@@ -154,6 +160,9 @@ type ListScreen struct {
 	defaultTheme   theme.Theme
 	themeAvailable bool
 	onThemeToggle  func(bool)
+
+	// truncCache memoises per-frame title truncation; rebuilt on each rebuildView.
+	truncCache map[truncCacheKey]string
 }
 
 func NewListScreen(
@@ -187,6 +196,7 @@ func NewListScreen(
 		lastVisibleRows: 10,
 		cacheUpdateCh:   make(chan []itchio.Game, 1),
 		pageUpdateCh:    make(chan pageResult, 1),
+		truncCache:      make(map[truncCacheKey]string),
 	}
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
@@ -685,9 +695,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		} else {
 			lt := r.Theme.ListText
 			if isDownloaded {
-				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), titleX, y, lt[0], lt[1], lt[2])
+				r.DrawBoldText(s.cachedTruncate(r, g.Title, titleAreaW, true), titleX, y, lt[0], lt[1], lt[2])
 			} else {
-				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), titleX, y, lt[0], lt[1], lt[2])
+				r.DrawText(s.cachedTruncate(r, g.Title, titleAreaW, false), titleX, y, lt[0], lt[1], lt[2])
 			}
 		}
 
@@ -1110,6 +1120,24 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
+// cachedTruncate returns a memoised truncated title, computing it only once per
+// unique (title, maxW, bold) tuple within the current view. The cache is cleared
+// by rebuildView whenever the game list or sort order changes.
+func (s *ListScreen) cachedTruncate(r *renderer.Renderer, title string, maxW int32, bold bool) string {
+	key := truncCacheKey{title: title, maxW: maxW, bold: bold}
+	if v, ok := s.truncCache[key]; ok {
+		return v
+	}
+	var v string
+	if bold {
+		v = truncateBoldToWidth(r, title, maxW)
+	} else {
+		v = truncateToWidth(r, title, maxW)
+	}
+	s.truncCache[key] = v
+	return v
+}
+
 // truncateToWidth returns text truncated with "…" so it fits within maxW pixels.
 // Uses rune-based trimming and accounts for the ellipsis width itself.
 func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
@@ -1186,6 +1214,7 @@ func (s *ListScreen) ScheduleRebuild() { s.needsRebuild = true }
 // It preserves the currently selected game's position where possible; falls back
 // to cursor 0 if the game is no longer in the view.
 func (s *ListScreen) rebuildView() {
+	s.truncCache = make(map[truncCacheKey]string)
 	var selectedURL string
 	selectedViewIdx := s.cursor
 	if s.cursor < len(s.viewGames) {
