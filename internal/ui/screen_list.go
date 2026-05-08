@@ -72,16 +72,22 @@ func currentShoulderRepeatInterval(elapsed time.Duration) time.Duration {
 	return accelStart - time.Duration(float64(accelStart-shoulderAccelMin)*eased)
 }
 
+type pageResult struct {
+	games []itchio.Game
+	err   error
+}
+
 type ListScreen struct {
 	client     *itchio.Client
 	cfg        *settings.Config
 	cache      *renderer.ImageCache
-	cursor     int
-	loading    bool
-	err        error
-	cfgPath    string
-	totalGames int // 0 = not yet known
-	totalPages int // 0 = not yet known
+	cursor      int
+	loading     atomic.Bool
+	err         error
+	cfgPath     string
+	totalGames  atomic.Int32 // 0 = not yet known
+	totalPages  atomic.Int32 // 0 = not yet known
+	pageUpdateCh chan pageResult
 
 	// Held-button auto-repeat state
 	heldDir    int       // -1 = up, +1 = down, 0 = none
@@ -180,6 +186,7 @@ func NewListScreen(
 		onThemeToggle:   onThemeToggle,
 		lastVisibleRows: 10,
 		cacheUpdateCh:   make(chan []itchio.Game, 1),
+		pageUpdateCh:    make(chan pageResult, 1),
 	}
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
@@ -255,8 +262,8 @@ func NewListScreen(
 				return
 			}
 			logger.Info("feed: total games=%d", total)
-			s.totalGames = total
-			s.totalPages = (total + itchio.PerPage - 1) / itchio.PerPage
+			s.totalGames.Store(int32(total))
+			s.totalPages.Store(int32((total + itchio.PerPage - 1) / itchio.PerPage))
 		}()
 		go s.buildCache()
 	}
@@ -264,8 +271,7 @@ func NewListScreen(
 }
 
 func (s *ListScreen) loadPage(page int, query string) {
-	s.loading = true
-	s.err = nil
+	s.loading.Store(true)
 	logger.Debug("feed: loading page %d query=%q", page, query)
 	games, err := s.client.FetchGames(page, query)
 	if err != nil {
@@ -273,16 +279,12 @@ func (s *ListScreen) loadPage(page int, query string) {
 	} else {
 		logger.Info("feed: page %d returned %d games", page, len(games))
 	}
-	s.viewGames = games
-	s.err = err
-	s.cursor = 0
-	s.titleScrollX = 0
-	s.titleScrollAt = time.Now()
-	s.tagScrollY = 0
-	s.tagScrollAt = time.Now()
-	s.lastCursorMove = time.Now()
-	s.warmedGameURL = ""
-	s.loading = false
+	select {
+	case <-s.pageUpdateCh:
+	default:
+	}
+	s.pageUpdateCh <- pageResult{games: games, err: err}
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 }
 
 func (s *ListScreen) processAutoRepeat() {
@@ -410,6 +412,20 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.rebuildView()
 	default:
 	}
+	select {
+	case res := <-s.pageUpdateCh:
+		s.loading.Store(false)
+		s.viewGames = res.games
+		s.err = res.err
+		s.cursor = 0
+		s.titleScrollX = 0
+		s.titleScrollAt = time.Now()
+		s.tagScrollY = 0
+		s.tagScrollAt = time.Now()
+		s.lastCursorMove = time.Now()
+		s.warmedGameURL = ""
+	default:
+	}
 	if s.needsRebuild {
 		s.needsRebuild = false
 		s.rebuildView()
@@ -441,7 +457,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	contentTop := headerH + 4
 
-	if s.loading {
+	if s.loading.Load() {
 		lt := r.Theme.ListText
 		r.DrawText("Loading...", 20, r.H/2, lt[0], lt[1], lt[2])
 		r.Present()
@@ -861,8 +877,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// Pagination info right-aligned.
 	currentPage := s.cursor/itchio.PerPage + 1
 	pageInfo := fmt.Sprintf("Page %d", currentPage)
-	if s.totalPages > 0 {
-		pageInfo = fmt.Sprintf("Page %d/%d", currentPage, s.totalPages)
+	if tp := s.totalPages.Load(); tp > 0 {
+		pageInfo = fmt.Sprintf("Page %d/%d", currentPage, tp)
 	}
 	ht := r.Theme.HintText
 	piW, _ := r.SmallTextSize(pageInfo)
@@ -1198,8 +1214,9 @@ func (s *ListScreen) rebuildView() {
 		}
 	}
 	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
-	s.totalGames = len(s.viewGames)
-	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
+	n := len(s.viewGames)
+	s.totalGames.Store(int32(n))
+	s.totalPages.Store(int32((n + itchio.PerPage - 1) / itchio.PerPage))
 
 	if selectedURL != "" {
 		for i, g := range s.viewGames {
@@ -1236,7 +1253,7 @@ func (s *ListScreen) rebuildView() {
 	}
 	s.cursor = 0
 	if !s.cacheReady {
-		s.loadPage(1, "")
+		go s.loadPage(1, "")
 	}
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }
