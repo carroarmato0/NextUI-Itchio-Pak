@@ -36,7 +36,7 @@ required.
 ### Game browsing
 - Scrollable list of GB Studio games from itch.io's "made-with-gb-studio" category
 - Live cover art thumbnails alongside the list with support for animated GIF cover art
-- Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; D-pad Left/Right jumps pages directly; L/R shoulder buttons jump to the next/previous alphabetical group
+- Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; D-pad Left/Right jumps pages directly
 - On first launch the list loads live from the network while a full cache is built in the background
 - On subsequent launches the full game list loads instantly from the on-device cache
 - Cache auto-refreshes after 24 hours; manual refresh available in Settings
@@ -46,7 +46,7 @@ required.
 - If a downloaded game has been removed from itch.io (HTTP 404/410), its badge changes to `[!]` — press **X** to dismiss
 
 ### Sorting and filtering
-Press **Select** from the game list to cycle through sort and filter modes. The active mode is shown as a badge in the top-right corner of the header:
+Press **R1** (next) or **L1** (previous) from the game list to cycle through sort and filter modes. The cursor resets to the top of the list each time. The active mode is shown as a badge in the top-right corner of the header:
 
 | Badge | Description |
 |---|---|
@@ -143,14 +143,13 @@ If a background task (ROM download, game list cache build, inventory check) is r
 | D-pad down (at last item) | Advance to next page |
 | D-pad up (at first item) | Go back to previous page (lands on last item) |
 | D-pad left / right | Jump one page forward/back in game list |
-| L / R shoulder | Jump to next/previous alphabetical group in game list |
 | D-pad left / right | Previous/next screenshot in detail view |
+| L / R shoulder | Cycle sort mode backward/forward (game list); cursor resets to top |
 | L / R shoulder | Previous/next screenshot in detail view |
 | A | Select / confirm / download |
 | B | Back |
 | Y | Manage / delete downloaded ROMs, or toggle title-based filename (game detail screen) |
 | X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
-| Select | Cycle sort mode (game list) |
 | Start | Open Settings from any screen |
 | Power (short press) | Sleep — resumes at the same screen on wake |
 | Power (hold 2 s) | Shutdown — waits for active tasks to finish first |

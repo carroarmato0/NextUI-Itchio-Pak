@@ -59,6 +59,17 @@ func NextSortMode(current SortMode) SortMode {
 	return SortModeRSS // treat any unrecognised value as RSS; next press goes to AZ
 }
 
+// PrevSortMode returns the mode that precedes current in the SortModes cycle.
+// If current is not a recognised mode it returns SortModeRSS.
+func PrevSortMode(current SortMode) SortMode {
+	for i, m := range SortModes {
+		if m == current {
+			return SortModes[(i+len(SortModes)-1)%len(SortModes)]
+		}
+	}
+	return SortModeRSS
+}
+
 // sortKey returns a normalised sort key for a game title: emoji stripped, whitespace trimmed, lowercased.
 func sortKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(text.StripEmoji(s)))

@@ -35,7 +35,7 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for L1/R1 page-scroll
+	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for D-pad page-scroll
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -130,15 +130,10 @@ type ListScreen struct {
 	lastCursorMove time.Time
 	warmedGameURL  string
 
-	// Shoulder button (L1/R1 / PgDn/PgUp) auto-repeat state for page-scroll (Left/Right)
+	// Shoulder button (D-pad L/R / PgDn/PgUp) auto-repeat state for page-scroll
 	heldShoulderDir    int
 	heldShoulderSince  time.Time
 	lastShoulderRepeat time.Time
-
-	// Alpha-jump (L1/R1) auto-repeat state
-	heldAlphaDir    int
-	heldAlphaSince  time.Time
-	lastAlphaRepeat time.Time
 
 	// lastVisibleRows is set each Draw so the initial Left/Right press (startShoulderHold)
 	// can jump by one full screen. Not used in the hold-repeat path.
@@ -306,13 +301,6 @@ func (s *ListScreen) processAutoRepeat() {
 			s.lastShoulderRepeat = now
 		}
 	}
-	if s.heldAlphaDir != 0 {
-		elapsed := now.Sub(s.heldAlphaSince)
-		if elapsed >= repeatDelay && now.Sub(s.lastAlphaRepeat) >= currentRepeatInterval(elapsed-repeatDelay) {
-			s.jumpToNextAlpha(s.heldAlphaDir)
-			s.lastAlphaRepeat = now
-		}
-	}
 }
 
 func (s *ListScreen) moveCursor(dir int) {
@@ -364,64 +352,9 @@ func (s *ListScreen) jumpCursor(n int) {
 	s.warmedGameURL = ""
 }
 
-// jumpToNextAlpha moves the cursor to the start of the next (dir>0) or previous
-// (dir<0) alphabetical group, where group membership is the first character of
-// each game's sort key (a-z each form their own group; digits/symbols are '#').
-// This mirrors the NextUI L1/R1 "alpha jump" behaviour.
-func (s *ListScreen) jumpToNextAlpha(dir int) {
-	if dir == 0 || len(s.viewGames) == 0 {
-		return
-	}
-	alphaOf := func(idx int) byte {
-		if idx < 0 || idx >= len(s.viewGames) {
-			return 0
-		}
-		key := itchio.SortKey(s.viewGames[idx].Title)
-		if len(key) == 0 {
-			return '#'
-		}
-		ch := key[0]
-		if ch >= 'a' && ch <= 'z' {
-			return ch
-		}
-		return '#'
-	}
-
-	if dir > 0 {
-		current := alphaOf(s.cursor)
-		for i := s.cursor + 1; i < len(s.viewGames); i++ {
-			if alphaOf(i) != current {
-				s.cursor = i
-				break
-			}
-		}
-	} else {
-		current := alphaOf(s.cursor)
-		groupStart := s.cursor
-		for groupStart > 0 && alphaOf(groupStart-1) == current {
-			groupStart--
-		}
-		if groupStart == 0 {
-			s.cursor = 0
-		} else {
-			prev := alphaOf(groupStart - 1)
-			i := groupStart - 1
-			for i > 0 && alphaOf(i-1) == prev {
-				i--
-			}
-			s.cursor = i
-		}
-	}
-	s.titleScrollX = 0
-	s.titleScrollAt = time.Now()
-	s.tagScrollY = 0
-	s.tagScrollAt = time.Now()
-	s.lastCursorMove = time.Now()
-	s.warmedGameURL = ""
-}
 
 func (s *ListScreen) NeedsRedraw() bool {
-	if s.heldDir != 0 || s.heldShoulderDir != 0 || s.heldAlphaDir != 0 {
+	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
 	}
 	// Resume rendering 500ms before scrollDelay expires so the first
@@ -544,17 +477,17 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	if len(s.viewGames) == 0 && s.cacheReady {
 		ht := r.Theme.HintText
 		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
-		r.DrawTextCentered("Press SELECT to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
+		r.DrawTextCentered("Press L1/R1 to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
 		ftrY := r.DrawFooterBar(footerH)
 		if r.W <= narrowScreenW {
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"},
+				{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"},
 				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
 				{Kind: renderer.BadgePill, Label: "START", Text: "Set"},
 			}, ftrY)
 		} else {
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "SELECT", Text: "Sort"},
+				{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"},
 				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
 				{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
 			}, ftrY)
@@ -915,11 +848,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
 	if s.cacheReady {
-		if r.W <= narrowScreenW {
-			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SEL", Text: "Sort"})
-		} else {
-			footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "Sort"})
-		}
+		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"})
 	}
 	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	if r.W <= narrowScreenW {
@@ -976,25 +905,37 @@ func (s *ListScreen) stopShoulderHold(dir int) {
 	}
 }
 
-func (s *ListScreen) startAlphaHold(dir int) {
-	s.jumpToNextAlpha(dir)
-	s.heldAlphaDir = dir
-	s.heldAlphaSince = time.Now()
-	s.lastAlphaRepeat = s.heldAlphaSince
-}
-
-func (s *ListScreen) stopAlphaHold(dir int) {
-	if s.heldAlphaDir == dir {
-		s.heldAlphaDir = 0
-	}
-}
-
 func (s *ListScreen) nextSortMode() itchio.SortMode {
 	m := itchio.NextSortMode(s.sortMode)
 	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
 		m = itchio.NextSortMode(m)
 	}
 	return m
+}
+
+func (s *ListScreen) prevSortMode() itchio.SortMode {
+	m := itchio.PrevSortMode(s.sortMode)
+	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
+		m = itchio.PrevSortMode(m)
+	}
+	return m
+}
+
+// changeSortMode applies a new sort mode, resets the cursor to the top, and
+// persists the choice to config.
+func (s *ListScreen) changeSortMode(mode itchio.SortMode) {
+	s.sortMode = mode
+	logger.Info("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
+	s.rebuildView()
+	s.cursor = 0
+	s.titleScrollX = 0
+	s.titleScrollAt = time.Now()
+	s.tagScrollY = 0
+	s.tagScrollAt = time.Now()
+	s.lastCursorMove = time.Now()
+	s.warmedGameURL = ""
+	s.cfg.SortMode = string(s.sortMode)
+	go s.cfg.Save(s.cfgPath)
 }
 
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
@@ -1029,25 +970,23 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.stopShoulderHold(-1)
 			}
 			return s
-		case sdl.K_PAGEDOWN:
-			if ev.Type == sdl.KEYDOWN {
-				s.startAlphaHold(1)
-			} else {
-				s.stopAlphaHold(1)
-			}
-			return s
-		case sdl.K_PAGEUP:
-			if ev.Type == sdl.KEYDOWN {
-				s.startAlphaHold(-1)
-			} else {
-				s.stopAlphaHold(-1)
-			}
-			return s
 		}
 		if ev.Type != sdl.KEYDOWN {
 			return s
 		}
 		switch ev.Keysym.Sym {
+		case sdl.K_PAGEDOWN:
+			if !s.cacheReady {
+				return s
+			}
+			s.changeSortMode(s.nextSortMode())
+			return s
+		case sdl.K_PAGEUP:
+			if !s.cacheReady {
+				return s
+			}
+			s.changeSortMode(s.prevSortMode())
+			return s
 		case sdl.K_ESCAPE:
 			return nil
 		case sdl.K_RETURN:
@@ -1105,20 +1044,6 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.stopShoulderHold(-1)
 			}
 			return s
-		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
-			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.startAlphaHold(1)
-			} else {
-				s.stopAlphaHold(1)
-			}
-			return s
-		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
-			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.startAlphaHold(-1)
-			} else {
-				s.stopAlphaHold(-1)
-			}
-			return s
 		}
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
@@ -1139,15 +1064,17 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
-		case sdl.CONTROLLER_BUTTON_BACK:
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 			if !s.cacheReady {
 				return s
 			}
-			s.sortMode = s.nextSortMode()
-			logger.Info("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
-			s.rebuildView()
-			s.cfg.SortMode = string(s.sortMode)
-			go s.cfg.Save(s.cfgPath)
+			s.changeSortMode(s.nextSortMode())
+			return s
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+			if !s.cacheReady {
+				return s
+			}
+			s.changeSortMode(s.prevSortMode())
 			return s
 		case sdl.CONTROLLER_BUTTON_X:
 			if s.cursor < len(s.viewGames) {
