@@ -215,13 +215,14 @@ func (r *Renderer) smallFont(idx int) *ttf.Font {
 	return r.SmallFont
 }
 
-// drawRectBuf, pillBodyBuf, copyDstBuf prevent CGo escape-analysis from
+// drawRectBuf, pillBodyBuf, copyDstBuf, clipRectBuf prevent CGo escape-analysis from
 // allocating a fresh sdl.Rect on every call through the CGo boundary.
 // Only accessed from the SDL main goroutine — no locking needed.
 var (
 	drawRectBuf sdl.Rect
 	pillBodyBuf sdl.Rect
 	copyDstBuf  sdl.Rect
+	clipRectBuf sdl.Rect
 )
 
 func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
@@ -359,13 +360,14 @@ func (r *Renderer) DrawSmallTextCenteredInRect(text string, x, y, w, h int32, re
 }
 
 func (r *Renderer) DrawTextureAt(tex *sdl.Texture, x, y, w, h int32) {
-	r.Renderer.Copy(tex, nil, &sdl.Rect{X: x, Y: y, W: w, H: h})
+	copyDstBuf = sdl.Rect{X: x, Y: y, W: w, H: h}
+	r.Renderer.Copy(tex, nil, &copyDstBuf)
 }
 
 // SetClipRect sets the clipping rectangle for rendering.
 func (r *Renderer) SetClipRect(x, y, w, h int32) {
-	rect := sdl.Rect{X: x, Y: y, W: w, H: h}
-	r.Renderer.SetClipRect(&rect)
+	clipRectBuf = sdl.Rect{X: x, Y: y, W: w, H: h}
+	r.Renderer.SetClipRect(&clipRectBuf)
 }
 
 // ClearClipRect removes any clipping rectangle.
