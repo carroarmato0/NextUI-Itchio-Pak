@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,11 +173,7 @@ func (s *UpdateService) checkEntry(gameURL string) []UpstreamFile {
 
 // isGameRemoved reports whether err indicates a 404 or 410 HTTP response.
 func isGameRemoved(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "HTTP 404") || strings.Contains(s, "HTTP 410")
+	return errors.Is(err, itchio.ErrGameRemoved)
 }
 
 // checkFreeGame fetches the current upload list and returns it for the caller

@@ -58,14 +58,20 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch game page: %w", err)
 	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		resp.Body.Close()
+		logger.Error("uploads: game page HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch game page: %w", ErrGameRemoved)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		logger.Error("uploads: game page HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
+	}
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("read game page: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		logger.Error("uploads: game page HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
 	}
 
 	csrfM := csrfRegex.FindStringSubmatch(string(body))

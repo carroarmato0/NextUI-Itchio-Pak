@@ -3,6 +3,7 @@ package inventory_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -445,5 +446,15 @@ func TestUpdateService_DismissedUpdateDoesNotReappearOnRestart(t *testing.T) {
 
 	if inv3.HasPendingUpdates(gameURL) {
 		t.Error("HasPendingUpdates: want false — dismissed update must not reappear after restart + re-check")
+	}
+}
+
+func TestIsGameRemoved_SentinelUnwraps(t *testing.T) {
+	wrapped := fmt.Errorf("outer: %w", itchio.ErrGameRemoved)
+	if !errors.Is(wrapped, itchio.ErrGameRemoved) {
+		t.Error("errors.Is should unwrap ErrGameRemoved through wrapping")
+	}
+	if errors.Is(fmt.Errorf("HTTP 404 plain text"), itchio.ErrGameRemoved) {
+		t.Error("plain string error should NOT match ErrGameRemoved")
 	}
 }
