@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +65,10 @@ type DetailScreen struct {
 	pathScrollX   int32
 	pathScrollAt  time.Time
 
+	// Pre-formatted strings cached once when detail/game data is available.
+	screenshotLabels []string // "Image N/M  (←→)" for each screenshot index
+	formattedPrice   string   // "$X.XX" for s.game.Price
+
 	prev          Screen
 	inv           *inventory.Inventory
 	inventoryPath string
@@ -110,6 +115,7 @@ func NewDetailScreen(
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
 		onThemeToggle:  onThemeToggle,
+		formattedPrice: "$" + strconv.FormatFloat(game.Price, 'f', 2, 64),
 	}
 	go func() {
 		defer func() {
@@ -137,6 +143,14 @@ func NewDetailScreen(
 		}
 		s.detail = d
 		s.err = err
+		if d != nil {
+			total := strconv.Itoa(len(d.ScreenshotURLs))
+			labels := make([]string, len(d.ScreenshotURLs))
+			for i := range d.ScreenshotURLs {
+				labels[i] = "Image " + strconv.Itoa(i+1) + "/" + total + "  (←→)"
+			}
+			s.screenshotLabels = labels
+		}
 		if d != nil && err == nil {
 			s.advisoryTriggered = itchio.IsAdvisoryTriggered(
 				d.PageTags,
@@ -332,8 +346,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		s.drawQR(r, qrX, y, qrColW, imgBoxH)
 
 		y += imgBoxH + 6
-		r.DrawText(fmt.Sprintf("Image %d/%d  (←→)", s.screenshotIdx+1, len(s.detail.ScreenshotURLs)),
-			margin, y, 140, 140, 140)
+		r.DrawText(s.screenshotLabels[s.screenshotIdx], margin, y, 140, 140, 140)
 		y += fontH + 6
 	} else {
 		// No screenshots — show QR full-width at the same pixel size as the
@@ -360,7 +373,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		r.DrawSmallTextCenteredInRect(btn, margin, y, d, d, aT[0], aT[1], aT[2])
 		r.DrawText(label, margin+d+8, y, labelR, labelG, labelB)
 		if price > 0 {
-			priceStr := fmt.Sprintf("$%.2f", price)
+			priceStr := s.formattedPrice
 			pw, _ := r.SmallTextSize(priceStr)
 			const pp = int32(8) // padding to match tag list
 			pillW := pw + pp*2
@@ -387,7 +400,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			f := entry.Files[0]
 			pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
 			if len(entry.Files) > 1 {
-				pathText += fmt.Sprintf(" (+%d more)", len(entry.Files)-1)
+				pathText += " (+" + strconv.Itoa(len(entry.Files)-1) + " more)"
 			}
 
 			const cp = int32(8)  // card inner padding

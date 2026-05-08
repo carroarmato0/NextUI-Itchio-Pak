@@ -225,3 +225,8 @@ func NewClientWithBaseAndButler(base, butler string) *Client {
 		butler: butler,
 	}
 }
+
+// HTTPClient returns the underlying *http.Client used for all requests.
+func (c *Client) HTTPClient() *http.Client {
+	return c.http
+}

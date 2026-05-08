@@ -53,9 +53,12 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return nil, fmt.Errorf("fetch game detail: %w", ErrGameRemoved)
+	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("game: detail page HTTP %d for %s", resp.StatusCode, gameURL)
-		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("fetch game detail: HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)

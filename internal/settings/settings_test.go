@@ -410,3 +410,26 @@ func TestUnifiedNaming_RoundTrip_False(t *testing.T) {
 		t.Error("UnifiedNaming=false should survive save/load round-trip")
 	}
 }
+
+func TestSave_IsAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{APIKey: "test-key", ROMSelection: "ask"}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	tmp := path + ".tmp"
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Errorf("expected .tmp file to be absent after successful save, stat: %v", err)
+	}
+
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load after Save: %v", err)
+	}
+	if loaded.APIKey != "test-key" {
+		t.Errorf("APIKey = %q, want %q", loaded.APIKey, "test-key")
+	}
+}

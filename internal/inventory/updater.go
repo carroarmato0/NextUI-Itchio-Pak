@@ -1,9 +1,11 @@
 package inventory
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +23,7 @@ type UpdateService struct {
 	notify        func()
 	triggerCh     chan struct{} // buffered(1): absorbs duplicate triggers
 	stopCh        chan struct{}
+	stopOnce      sync.Once
 	running       atomic.Bool
 }
 
@@ -70,12 +73,9 @@ func (s *UpdateService) Start(onDone func()) {
 	}()
 }
 
-// Stop signals the goroutine to exit. Idempotent.
+// Stop signals the goroutine to exit. Idempotent — safe to call multiple times.
 func (s *UpdateService) Stop() {
-	select {
-	case s.stopCh <- struct{}{}:
-	default:
-	}
+	s.stopOnce.Do(func() { close(s.stopCh) })
 }
 
 // TriggerNow queues a re-check. Non-blocking; a pending check absorbs the signal.
@@ -172,11 +172,7 @@ func (s *UpdateService) checkEntry(gameURL string) []UpstreamFile {
 
 // isGameRemoved reports whether err indicates a 404 or 410 HTTP response.
 func isGameRemoved(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "HTTP 404") || strings.Contains(s, "HTTP 410")
+	return errors.Is(err, itchio.ErrGameRemoved)
 }
 
 // checkFreeGame fetches the current upload list and returns it for the caller

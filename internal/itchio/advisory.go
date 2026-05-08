@@ -59,21 +59,23 @@ var SubstanceUseTags = []string{
 	"addiction", "alcohol", "drug-use", "drugs", "substance-abuse",
 }
 
+// normalizeTagList returns a copy of list with each element lowercased and trimmed.
+func normalizeTagList(list []string) []string {
+	out := make([]string, len(list))
+	for i, d := range list {
+		out[i] = strings.ToLower(strings.TrimSpace(d))
+	}
+	return out
+}
+
 // IsAdvisoryTriggered returns true if any tag in pageTags matches an active
 // filter in cfg. Tag matching is case-insensitive and whitespace-trimmed.
 func IsAdvisoryTriggered(pageTags []string, cfg FilterConfig) bool {
 	// Normalise opt-out lists once, outside the per-tag loop.
-	norm := func(list []string) []string {
-		out := make([]string, len(list))
-		for i, d := range list {
-			out[i] = strings.ToLower(strings.TrimSpace(d))
-		}
-		return out
-	}
-	adultDis := norm(cfg.AdultContent.Disabled)
-	queerDis := norm(cfg.QueerContent.Disabled)
-	heavyDis := norm(cfg.HeavyThemes.Disabled)
-	substanceDis := norm(cfg.SubstanceUse.Disabled)
+	adultDis := normalizeTagList(cfg.AdultContent.Disabled)
+	queerDis := normalizeTagList(cfg.QueerContent.Disabled)
+	heavyDis := normalizeTagList(cfg.HeavyThemes.Disabled)
+	substanceDis := normalizeTagList(cfg.SubstanceUse.Disabled)
 
 	for _, tag := range pageTags {
 		slug := strings.ToLower(strings.TrimSpace(tag))

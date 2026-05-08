@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -35,7 +36,7 @@ const (
 	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
 	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
 	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin = 15 * time.Millisecond // minimum repeat interval for D-pad page-scroll
+	shoulderAccelMin      = 15 * time.Millisecond  // minimum repeat interval for D-pad page-scroll
 	cacheTTL              = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
@@ -72,16 +73,28 @@ func currentShoulderRepeatInterval(elapsed time.Duration) time.Duration {
 	return accelStart - time.Duration(float64(accelStart-shoulderAccelMin)*eased)
 }
 
+type pageResult struct {
+	games []itchio.Game
+	err   error
+}
+
+type truncCacheKey struct {
+	title string
+	maxW  int32
+	bold  bool
+}
+
 type ListScreen struct {
 	client     *itchio.Client
 	cfg        *settings.Config
 	cache      *renderer.ImageCache
-	cursor     int
-	loading    bool
-	err        error
-	cfgPath    string
-	totalGames int // 0 = not yet known
-	totalPages int // 0 = not yet known
+	cursor      int
+	loading     atomic.Bool
+	err         error
+	cfgPath     string
+	totalGames  atomic.Int32 // 0 = not yet known
+	totalPages  atomic.Int32 // 0 = not yet known
+	pageUpdateCh chan pageResult
 
 	// Held-button auto-repeat state
 	heldDir    int       // -1 = up, +1 = down, 0 = none
@@ -148,6 +161,12 @@ type ListScreen struct {
 	defaultTheme   theme.Theme
 	themeAvailable bool
 	onThemeToggle  func(bool)
+
+	// truncCache memoises per-frame title truncation; rebuilt on each rebuildView.
+	truncCache map[truncCacheKey]string
+	// badgePriceCache holds pre-formatted "$X.XX" strings keyed by game URL.
+	// Populated lazily on first Draw access; cleared on rebuildView.
+	badgePriceCache map[string]string
 }
 
 func NewListScreen(
@@ -180,6 +199,9 @@ func NewListScreen(
 		onThemeToggle:   onThemeToggle,
 		lastVisibleRows: 10,
 		cacheUpdateCh:   make(chan []itchio.Game, 1),
+		pageUpdateCh:    make(chan pageResult, 1),
+		truncCache:      make(map[truncCacheKey]string),
+		badgePriceCache: make(map[string]string),
 	}
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
@@ -255,8 +277,8 @@ func NewListScreen(
 				return
 			}
 			logger.Info("feed: total games=%d", total)
-			s.totalGames = total
-			s.totalPages = (total + itchio.PerPage - 1) / itchio.PerPage
+			s.totalGames.Store(int32(total))
+			s.totalPages.Store(int32((total + itchio.PerPage - 1) / itchio.PerPage))
 		}()
 		go s.buildCache()
 	}
@@ -264,8 +286,7 @@ func NewListScreen(
 }
 
 func (s *ListScreen) loadPage(page int, query string) {
-	s.loading = true
-	s.err = nil
+	s.loading.Store(true)
 	logger.Debug("feed: loading page %d query=%q", page, query)
 	games, err := s.client.FetchGames(page, query)
 	if err != nil {
@@ -273,16 +294,12 @@ func (s *ListScreen) loadPage(page int, query string) {
 	} else {
 		logger.Info("feed: page %d returned %d games", page, len(games))
 	}
-	s.viewGames = games
-	s.err = err
-	s.cursor = 0
-	s.titleScrollX = 0
-	s.titleScrollAt = time.Now()
-	s.tagScrollY = 0
-	s.tagScrollAt = time.Now()
-	s.lastCursorMove = time.Now()
-	s.warmedGameURL = ""
-	s.loading = false
+	select {
+	case <-s.pageUpdateCh:
+	default:
+	}
+	s.pageUpdateCh <- pageResult{games: games, err: err}
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 }
 
 func (s *ListScreen) processAutoRepeat() {
@@ -410,6 +427,20 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.rebuildView()
 	default:
 	}
+	select {
+	case res := <-s.pageUpdateCh:
+		s.loading.Store(false)
+		s.viewGames = res.games
+		s.err = res.err
+		s.cursor = 0
+		s.titleScrollX = 0
+		s.titleScrollAt = time.Now()
+		s.tagScrollY = 0
+		s.tagScrollAt = time.Now()
+		s.lastCursorMove = time.Now()
+		s.warmedGameURL = ""
+	default:
+	}
 	if s.needsRebuild {
 		s.needsRebuild = false
 		s.rebuildView()
@@ -441,7 +472,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	contentTop := headerH + 4
 
-	if s.loading {
+	if s.loading.Load() {
 		lt := r.Theme.ListText
 		r.DrawText("Loading...", 20, r.H/2, lt[0], lt[1], lt[2])
 		r.Present()
@@ -612,7 +643,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			badgeLabel = "Free"
 			badgeR, badgeG, badgeB = 80, 200, 80
 		default:
-			badgeLabel = fmt.Sprintf("$%.2f", g.Price)
+			badgeLabel = s.badgePrice(g.URL, g.Price)
 			badgeR, badgeG, badgeB = 220, 180, 60
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
@@ -669,9 +700,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		} else {
 			lt := r.Theme.ListText
 			if isDownloaded {
-				r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleAreaW), titleX, y, lt[0], lt[1], lt[2])
+				r.DrawBoldText(s.cachedTruncate(r, g.Title, titleAreaW, true), titleX, y, lt[0], lt[1], lt[2])
 			} else {
-				r.DrawText(truncateToWidth(r, g.Title, titleAreaW), titleX, y, lt[0], lt[1], lt[2])
+				r.DrawText(s.cachedTruncate(r, g.Title, titleAreaW, false), titleX, y, lt[0], lt[1], lt[2])
 			}
 		}
 
@@ -861,8 +892,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// Pagination info right-aligned.
 	currentPage := s.cursor/itchio.PerPage + 1
 	pageInfo := fmt.Sprintf("Page %d", currentPage)
-	if s.totalPages > 0 {
-		pageInfo = fmt.Sprintf("Page %d/%d", currentPage, s.totalPages)
+	if tp := s.totalPages.Load(); tp > 0 {
+		pageInfo = fmt.Sprintf("Page %d/%d", currentPage, tp)
 	}
 	ht := r.Theme.HintText
 	piW, _ := r.SmallTextSize(pageInfo)
@@ -871,13 +902,6 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
-// drawPlaceholder renders a bordered rectangle with centered text.
-func (s *ListScreen) drawPlaceholder(r *renderer.Renderer, x, y, w, h int32, label string) {
-	bg := r.Theme.Background
-	r.DrawRect(x, y, w, h, 45, 45, 45)
-	r.DrawRect(x+2, y+2, w-4, h-4, bg[0], bg[1], bg[2])
-	r.DrawText(label, x+w/2-40, y+h/2-10, 80, 80, 80)
-}
 
 func (s *ListScreen) startHold(dir int) {
 	s.moveCursor(dir)
@@ -1101,6 +1125,35 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
+// badgePrice returns a memoised "$X.XX" string for the given game, computing it
+// once via strconv and caching for the lifetime of the current view.
+func (s *ListScreen) badgePrice(url string, price float64) string {
+	if v, ok := s.badgePriceCache[url]; ok {
+		return v
+	}
+	v := "$" + strconv.FormatFloat(price, 'f', 2, 64)
+	s.badgePriceCache[url] = v
+	return v
+}
+
+// cachedTruncate returns a memoised truncated title, computing it only once per
+// unique (title, maxW, bold) tuple within the current view. The cache is cleared
+// by rebuildView whenever the game list or sort order changes.
+func (s *ListScreen) cachedTruncate(r *renderer.Renderer, title string, maxW int32, bold bool) string {
+	key := truncCacheKey{title: title, maxW: maxW, bold: bold}
+	if v, ok := s.truncCache[key]; ok {
+		return v
+	}
+	var v string
+	if bold {
+		v = truncateBoldToWidth(r, title, maxW)
+	} else {
+		v = truncateToWidth(r, title, maxW)
+	}
+	s.truncCache[key] = v
+	return v
+}
+
 // truncateToWidth returns text truncated with "…" so it fits within maxW pixels.
 // Uses rune-based trimming and accounts for the ellipsis width itself.
 func truncateToWidth(r *renderer.Renderer, text string, maxW int32) string {
@@ -1177,6 +1230,8 @@ func (s *ListScreen) ScheduleRebuild() { s.needsRebuild = true }
 // It preserves the currently selected game's position where possible; falls back
 // to cursor 0 if the game is no longer in the view.
 func (s *ListScreen) rebuildView() {
+	s.truncCache = make(map[truncCacheKey]string)
+	s.badgePriceCache = make(map[string]string)
 	var selectedURL string
 	selectedViewIdx := s.cursor
 	if s.cursor < len(s.viewGames) {
@@ -1198,8 +1253,9 @@ func (s *ListScreen) rebuildView() {
 		}
 	}
 	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
-	s.totalGames = len(s.viewGames)
-	s.totalPages = (s.totalGames + itchio.PerPage - 1) / itchio.PerPage
+	n := len(s.viewGames)
+	s.totalGames.Store(int32(n))
+	s.totalPages.Store(int32((n + itchio.PerPage - 1) / itchio.PerPage))
 
 	if selectedURL != "" {
 		for i, g := range s.viewGames {
@@ -1236,7 +1292,7 @@ func (s *ListScreen) rebuildView() {
 	}
 	s.cursor = 0
 	if !s.cacheReady {
-		s.loadPage(1, "")
+		go s.loadPage(1, "")
 	}
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }

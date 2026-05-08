@@ -100,7 +100,7 @@ func TestDownloadFreeStreamsFile(t *testing.T) {
 	// DownloadFree should resolve the CDN URL and stream the file
 	dest := filepath.Join(t.TempDir(), "game.gbc")
 	upload := itchio.Upload{Filename: uploads[0].Filename, URL: uploads[0].URL}
-	if err := c.DownloadFree(srv.URL+"/game", upload, dest, nil); err != nil {
+	if err := c.DownloadFree(upload, dest, nil); err != nil {
 		t.Fatalf("DownloadFree: %v", err)
 	}
 
