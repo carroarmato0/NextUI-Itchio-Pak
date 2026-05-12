@@ -415,6 +415,11 @@ func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool
 		}
 	}
 
+	if len(toDelete) == 0 {
+		logger.Warn("inventory: performDelete no matching files game=%q fileIdx=%d", entry.Title, fileIdx)
+		return false, len(entry.Files)
+	}
+
 	for _, f := range toDelete {
 		if err := os.Remove(f.DestPath); err != nil && !os.IsNotExist(err) {
 			logger.Warn("inventory: delete file=%s: %v", f.DestPath, err)
@@ -440,16 +445,17 @@ func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool
 		return true, 0
 	}
 
+	allGone := false
 	for _, f := range toDelete {
-		s.inv.RemoveFile(gameURL, f.DestPath)
+		if s.inv.RemoveFile(gameURL, f.DestPath) {
+			allGone = true
+		}
 	}
 	remaining := 0
-	if e, ok := s.inv.Lookup(gameURL); ok {
-		remaining = len(e.Files)
-	}
-	allGone := remaining == 0
-	if allGone {
-		s.inv.Remove(gameURL)
+	if !allGone {
+		if e, ok := s.inv.Lookup(gameURL); ok {
+			remaining = len(e.Files)
+		}
 	}
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Warn("inventory: save after delete failed: %v", err)
