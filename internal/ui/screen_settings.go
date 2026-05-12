@@ -51,6 +51,7 @@ type SettingsScreen struct {
 	client         *itchio.Client
 	cfg            *settings.Config
 	cfgPath        string
+	cache          *renderer.ImageCache
 	cursor         settingsItem
 	prev           Screen
 	onRefreshGames func(Screen) Screen // nil if not available
@@ -74,6 +75,7 @@ func NewSettingsScreen(
 	client *itchio.Client,
 	cfg *settings.Config,
 	cfgPath string,
+	cache *renderer.ImageCache,
 	prev Screen,
 	onRefreshGames func(Screen) Screen,
 	updateSvc UpdateServicer,
@@ -87,6 +89,7 @@ func NewSettingsScreen(
 		client:         client,
 		cfg:            cfg,
 		cfgPath:        cfgPath,
+		cache:          cache,
 		prev:           prev,
 		onRefreshGames: onRefreshGames,
 		updateSvc:      updateSvc,
@@ -530,6 +533,10 @@ func (s *SettingsScreen) activate() Screen {
 		logger.SetLevel(logger.LevelFromString(s.cfg.LogLevel))
 	case sItemClearCache:
 		os.RemoveAll("/tmp/itchio-pak/cache/")
+		if s.cache != nil {
+			s.cache.Clear()
+		}
+		logger.Info("settings: image cache cleared")
 	case sItemRefreshCache:
 		if s.onRefreshGames != nil {
 			return s.onRefreshGames(s)

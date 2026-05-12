@@ -105,6 +105,7 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 			return NewDetailScreen(
 				s.client, s.cfg, s.cfgPath, s.cache,
 				s.list.viewGames[0], s.inv, s.inventoryPath, s.list,
+				nil,
 				s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle,
 			)
 		}

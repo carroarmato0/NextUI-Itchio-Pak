@@ -1015,10 +1015,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.K_RETURN:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
 		case sdl.K_x:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
@@ -1082,12 +1082,12 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
 		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 			if !s.cacheReady {
 				return s
