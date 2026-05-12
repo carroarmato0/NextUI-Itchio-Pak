@@ -230,14 +230,15 @@ func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry i
 	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, 70, 70, 70)
 	r.DrawRect(boxX, boxY, boxW, boxH, 25, 25, 35)
 
+	innerW := boxW - pad*2
 	y := boxY + pad
-	r.DrawTextCentered(title, boxX, y, boxW, 240, 180, 60)
+	r.DrawTextCentered(truncateToWidth(r, title, innerW), boxX, y, boxW, 240, 180, 60)
 	y += fontH + pad
-	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	r.DrawRect(boxX+pad, y, innerW, 1, 60, 60, 60)
 	y += 1 + pad
 
 	for _, line := range strings.Split(body, "\n") {
-		r.DrawSmallText(line, boxX+pad, y, 200, 200, 200)
+		r.DrawSmallText(truncateSmallToWidth(r, line, innerW), boxX+pad, y, 200, 200, 200)
 		y += lineH
 	}
 	y += pad
