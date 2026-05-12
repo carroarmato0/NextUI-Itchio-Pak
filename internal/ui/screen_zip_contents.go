@@ -4,6 +4,8 @@ package ui
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -18,6 +20,7 @@ type zipContentRowKind int
 
 const (
 	zipRowROM        zipContentRowKind = iota // selectable ROM entry for version picker
+	zipRowExtHeader                           // non-selectable section label for an extension group
 	zipRowMusicToggle                         // music download yes/no toggle
 )
 
@@ -69,13 +72,33 @@ func (s *ZIPContentsScreen) buildRows() {
 	s.rows = nil
 	byExt := s.plan.Manifest.ROMsByExt()
 
-	for ext, entries := range byExt {
+	// Sort extensions for deterministic display order (.gb before .gbc etc.).
+	exts := make([]string, 0, len(byExt))
+	for ext := range byExt {
+		exts = append(exts, ext)
+	}
+	sort.Strings(exts)
+
+	multiExtGroups := 0
+	for _, ext := range exts {
+		if len(byExt[ext]) >= 2 {
+			multiExtGroups++
+		}
+	}
+
+	for _, ext := range exts {
+		entries := byExt[ext]
 		if len(entries) < 2 {
 			s.selectedROMs[ext] = entries[0].Name
 			continue
 		}
 		if _, ok := s.selectedROMs[ext]; !ok {
 			s.selectedROMs[ext] = entries[0].Name
+		}
+		// Only add a section header when there are multiple extension groups,
+		// so users understand they are making separate independent choices.
+		if multiExtGroups > 1 {
+			s.rows = append(s.rows, zipContentRow{kind: zipRowExtHeader, ext: ext})
 		}
 		for _, e := range entries {
 			s.rows = append(s.rows, zipContentRow{kind: zipRowROM, entry: e, ext: ext})
@@ -134,6 +157,9 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 		}
 
 		switch row.kind {
+		case zipRowExtHeader:
+			label := strings.ToUpper(row.ext) + " files — pick one:"
+			r.DrawSmallText(label, 20, y+(rowH-smallFH)/2, 100, 100, 120)
 		case zipRowROM:
 			marker := "  "
 			if s.selectedROMs[row.ext] == row.entry.Name {
@@ -153,9 +179,9 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Select/Toggle"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select/Toggle"},
 		{Kind: renderer.BadgePill, Label: "START", Text: "Confirm"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}, ftrY)
 	r.Present()
 }
@@ -168,13 +194,9 @@ func (s *ZIPContentsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Keysym.Sym {
 		case sdl.K_DOWN:
-			if s.cursor < len(s.rows)-1 {
-				s.cursor++
-			}
+			s.moveCursor(1)
 		case sdl.K_UP:
-			if s.cursor > 0 {
-				s.cursor--
-			}
+			s.moveCursor(-1)
 		case sdl.K_RETURN:
 			s.activate()
 		case sdl.K_s:
@@ -188,13 +210,9 @@ func (s *ZIPContentsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_DPAD_DOWN:
-			if s.cursor < len(s.rows)-1 {
-				s.cursor++
-			}
+			s.moveCursor(1)
 		case sdl.CONTROLLER_BUTTON_DPAD_UP:
-			if s.cursor > 0 {
-				s.cursor--
-			}
+			s.moveCursor(-1)
 		case sdl.CONTROLLER_BUTTON_B:
 			s.activate()
 		case sdl.CONTROLLER_BUTTON_START:
@@ -204,6 +222,16 @@ func (s *ZIPContentsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 	}
 	return s
+}
+
+func (s *ZIPContentsScreen) moveCursor(dir int) {
+	next := s.cursor + dir
+	for next >= 0 && next < len(s.rows) && s.rows[next].kind == zipRowExtHeader {
+		next += dir
+	}
+	if next >= 0 && next < len(s.rows) {
+		s.cursor = next
+	}
 }
 
 func (s *ZIPContentsScreen) activate() {

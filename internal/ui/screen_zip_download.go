@@ -87,12 +87,32 @@ func (s *ZIPDownloadScreen) run() {
 	tmp.Close()
 	defer os.Remove(tmpPath)
 
+	// Re-resolve CDN URL immediately before the download so a stale URL from
+	// the inspect step (which may have run minutes ago) does not cause a 403.
+	cdnURL := s.plan.CDNURL
+	if s.plan.Upload.DownloadKeyID != "" {
+		fresh, rerr := s.client.ResolveAuthURL(s.cfg.APIKey, s.plan.Upload.UploadID, s.plan.Upload.DownloadKeyID)
+		if rerr != nil {
+			logger.Warn("zip-download: re-resolve auth URL failed (%v), using cached URL", rerr)
+		} else {
+			cdnURL = fresh
+		}
+	} else {
+		itchUpload := itchio.Upload{Filename: s.plan.Upload.Filename, URL: s.plan.Upload.URL}
+		fresh, rerr := s.client.ResolveFreeURL(itchUpload)
+		if rerr != nil {
+			logger.Warn("zip-download: re-resolve free URL failed (%v), using cached URL", rerr)
+		} else {
+			cdnURL = fresh
+		}
+	}
+
 	progress := func(dl, total int64) {
 		atomic.StoreInt64(&s.downloaded, dl)
 		atomic.StoreInt64(&s.total, total)
 	}
 	logger.Info("zip-download: streaming %s → %s", s.plan.Upload.Filename, tmpPath)
-	if err := s.client.DownloadURL(s.plan.CDNURL, tmpPath, progress); err != nil {
+	if err := s.client.DownloadURL(cdnURL, tmpPath, progress); err != nil {
 		s.err = fmt.Errorf("download ZIP: %w", err)
 		s.storeState(zipDLError)
 		return
