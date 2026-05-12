@@ -88,6 +88,17 @@ func (m ZIPManifest) IsSingleROMOnly() bool {
 	return m.ROMCount() == 1 && !m.HasMusic()
 }
 
+// HasOtherFiles reports whether the manifest contains any entry that is neither
+// a ROM nor a music file (e.g. images, videos, booklets, READMEs).
+func (m ZIPManifest) HasOtherFiles() bool {
+	for _, e := range m.Entries {
+		if e.Kind == KindOther {
+			return true
+		}
+	}
+	return false
+}
+
 func (m ZIPManifest) ROMsByExt() map[string][]ZIPEntry {
 	groups := make(map[string][]ZIPEntry)
 	for _, e := range m.Entries {

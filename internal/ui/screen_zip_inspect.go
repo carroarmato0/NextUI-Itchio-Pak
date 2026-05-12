@@ -205,8 +205,10 @@ func (s *ZIPInspectScreen) route() Screen {
 			s.game, s.detail, s.plan, s.inv, s.invPath, s.prev)
 	}
 
-	// Single ROM, no music → keep ZIP, use DownloadScreen unchanged.
-	if m.IsSingleROMOnly() {
+	// Single ROM, no music, no extra files → keep the ZIP on disk as-is.
+	// A ZIP that bundles images, trailers, booklets etc. alongside the ROM
+	// is extracted instead so only the ROM lands on disk.
+	if m.IsSingleROMOnly() && !m.HasOtherFiles() {
 		// Use the inner ROM's extension to route to the correct destination directory
 		// (e.g., a ZIP containing a single .gba should land in the GBA folder).
 		ext := strings.ToLower(filepath.Ext(s.upload.Filename))

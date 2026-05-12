@@ -95,6 +95,32 @@ func TestEmptyManifest(t *testing.T) {
 	}
 }
 
+func TestHasOtherFiles(t *testing.T) {
+	bare := roms.ZIPManifest{Entries: []roms.ZIPEntry{
+		{Name: "game.gbc", Kind: roms.KindROM},
+	}}
+	if bare.HasOtherFiles() {
+		t.Error("HasOtherFiles() = true for bare ROM ZIP, want false")
+	}
+
+	withExtras := roms.ZIPManifest{Entries: []roms.ZIPEntry{
+		{Name: "game.gbc", Kind: roms.KindROM},
+		{Name: "cover.png", Kind: roms.KindOther},
+		{Name: "trailer.mp4", Kind: roms.KindOther},
+	}}
+	if !withExtras.HasOtherFiles() {
+		t.Error("HasOtherFiles() = false for ZIP with images/videos, want true")
+	}
+
+	withMusic := roms.ZIPManifest{Entries: []roms.ZIPEntry{
+		{Name: "game.gbc", Kind: roms.KindROM},
+		{Name: "track.mp3", Kind: roms.KindMusic},
+	}}
+	if withMusic.HasOtherFiles() {
+		t.Error("HasOtherFiles() = true for ROM+music ZIP (no KindOther), want false")
+	}
+}
+
 func TestHasNoDuplicateROMExt(t *testing.T) {
 	m := roms.ZIPManifest{Entries: []roms.ZIPEntry{
 		{Name: "game.gb", Kind: roms.KindROM},
