@@ -1,0 +1,129 @@
+package roms_test
+
+import (
+	"archive/zip"
+	"bytes"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
+)
+
+// buildTestZIP creates an in-memory ZIP with the given files (name → content).
+func buildTestZIP(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	for name, content := range files {
+		f, err := w.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Close()
+	return buf.Bytes()
+}
+
+func TestInspectRemoteZIP_RangeSupported(t *testing.T) {
+	data := buildTestZIP(t, map[string]string{
+		"game.gbc":    "romdata",
+		"track01.mp3": "musicdata",
+		"readme.txt":  "textdata",
+	})
+
+	var rangeRequestCount, fullBodyRequestCount int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			// HEAD requests always go through ServeContent
+			http.ServeContent(w, r, "test.zip", time.Time{}, bytes.NewReader(data))
+			return
+		}
+		if r.Header.Get("Range") != "" {
+			atomic.AddInt32(&rangeRequestCount, 1)
+		} else {
+			atomic.AddInt32(&fullBodyRequestCount, 1)
+		}
+		http.ServeContent(w, r, "test.zip", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP error: %v", err)
+	}
+	if atomic.LoadInt32(&rangeRequestCount) == 0 {
+		t.Error("no Range requests issued — expected Range path to be used")
+	}
+	if atomic.LoadInt32(&fullBodyRequestCount) > 0 {
+		t.Errorf("full-body GET was issued (%d times) — expected Range-only access", atomic.LoadInt32(&fullBodyRequestCount))
+	}
+	if manifest.ROMCount() != 1 {
+		t.Errorf("ROMCount = %d, want 1", manifest.ROMCount())
+	}
+	if manifest.MusicCount() != 1 {
+		t.Errorf("MusicCount = %d, want 1", manifest.MusicCount())
+	}
+	otherCount := 0
+	for _, e := range manifest.Entries {
+		if e.Kind == roms.KindOther {
+			otherCount++
+		}
+	}
+	if otherCount != 1 {
+		t.Errorf("KindOther count = %d, want 1", otherCount)
+	}
+}
+
+func TestInspectRemoteZIP_FallbackOn200(t *testing.T) {
+	data := buildTestZIP(t, map[string]string{
+		"game.gb": "romdata",
+	})
+
+	// Server returns 200 for everything (no range support signalled via Accept-Ranges)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+		// No Accept-Ranges header
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP fallback error: %v", err)
+	}
+	if manifest.ROMCount() != 1 {
+		t.Errorf("ROMCount = %d, want 1", manifest.ROMCount())
+	}
+}
+
+func TestInspectRemoteZIP_MusicOnly(t *testing.T) {
+	data := buildTestZIP(t, map[string]string{
+		"track01.mp3": "music1",
+		"track02.ogg": "music2",
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if manifest.HasROMs() {
+		t.Error("HasROMs() = true, want false")
+	}
+	if manifest.MusicCount() != 2 {
+		t.Errorf("MusicCount = %d, want 2", manifest.MusicCount())
+	}
+}
