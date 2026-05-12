@@ -29,6 +29,8 @@ const (
 	sItemAPIKey settingsItem = iota
 	sItemROMMode
 	sItemROMLocation
+	sItemMusicDownload
+	sItemMusicLocation
 	sItemUnifiedNaming
 	sItemNextUITheme
 	sItemLogLevel
@@ -149,6 +151,22 @@ func (s *SettingsScreen) moveCursor(dir int) {
 			}
 		}
 	}
+	// Skip Music Location if music download is disabled.
+	if s.cursor == sItemMusicLocation && s.cfg.MusicDownload == "off" {
+		if dir >= 0 {
+			if int(s.cursor) < int(sItemCount)-1 {
+				s.cursor++
+			} else {
+				s.cursor--
+			}
+		} else {
+			if s.cursor > 0 {
+				s.cursor--
+			} else {
+				s.cursor++
+			}
+		}
+	}
 }
 
 func (s *SettingsScreen) NeedsRedraw() bool {
@@ -188,6 +206,10 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	items = append(items, menuItem{sItemAPIKey, "API Key: "})
 	items = append(items, menuItem{sItemROMMode, "ROM Selection: " + s.cfg.ROMSelection})
 	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
+	items = append(items, menuItem{sItemMusicDownload, "Music Download: " + musicDownloadLabel(s.cfg.MusicDownload)})
+	if s.cfg.MusicDownload != "off" {
+		items = append(items, menuItem{sItemMusicLocation, "Music Location: " + s.cfg.MusicLocation})
+	}
 	unifiedNamingVal := "OFF"
 	if s.cfg.UnifiedNaming {
 		unifiedNamingVal = "ON"
@@ -433,6 +455,17 @@ func updateInventoryAnnotation(svc UpdateServicer) string {
 	}
 }
 
+func musicDownloadLabel(v string) string {
+	switch v {
+	case "auto":
+		return "auto"
+	case "ask":
+		return "ask"
+	default:
+		return "off"
+	}
+}
+
 func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
 	case sItemAPIKey:
@@ -454,6 +487,25 @@ func (s *SettingsScreen) activate() Screen {
 			s.cfg.ROMLocation = "auto"
 		}
 		s.cfg.Save(s.cfgPath)
+	case sItemMusicDownload:
+		switch s.cfg.MusicDownload {
+		case "off":
+			s.cfg.MusicDownload = "auto"
+		case "auto":
+			s.cfg.MusicDownload = "ask"
+		default:
+			s.cfg.MusicDownload = "off"
+		}
+		s.cfg.Save(s.cfgPath)
+		logger.Info("settings: music download changed to %s", s.cfg.MusicDownload)
+	case sItemMusicLocation:
+		if s.cfg.MusicLocation == "auto" {
+			s.cfg.MusicLocation = "ask"
+		} else {
+			s.cfg.MusicLocation = "auto"
+		}
+		s.cfg.Save(s.cfgPath)
+		logger.Info("settings: music location changed to %s", s.cfg.MusicLocation)
 	case sItemUnifiedNaming:
 		s.cfg.UnifiedNaming = !s.cfg.UnifiedNaming
 		if err := s.cfg.Save(s.cfgPath); err != nil {
