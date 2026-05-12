@@ -320,17 +320,33 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 
 	case zipDLDone:
 		r.DrawTextCentered("Extraction complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
-		y := mid + 4
+		count := fmt.Sprintf("%d file(s) extracted", len(s.extracted))
+		r.DrawSmallTextCentered(count, 0, mid+4, r.W, ht[0], ht[1], ht[2])
+
+		// List filenames, capped to available space so they never overflow the footer.
+		rowH := smallFH + 4
+		y := mid + 4 + smallFH + 12
+		bottomLimit := r.H - footerH - 8
+		if s.musicFailed {
+			bottomLimit -= rowH // reserve a row for the warning
+		}
+		shown := 0
 		for _, p := range s.extracted {
-			file := truncateSmallToWidth(r, filepath.Base(p), r.W-40)
-			r.DrawSmallTextCentered(file, 0, y, r.W, 120, 120, 120)
-			y += smallFH + 2
-			dir := truncateSmallToWidth(r, filepath.Dir(p)+"/", r.W-40)
-			r.DrawSmallTextCentered(dir, 0, y, r.W, 80, 80, 80)
-			y += smallFH + 6
+			if y+rowH > bottomLimit {
+				break
+			}
+			name := truncateSmallToWidth(r, filepath.Base(p), r.W-40)
+			r.DrawSmallTextCentered(name, 0, y, r.W, 120, 120, 120)
+			y += rowH
+			shown++
+		}
+		if shown < len(s.extracted) {
+			more := fmt.Sprintf("…and %d more file(s)", len(s.extracted)-shown)
+			r.DrawSmallTextCentered(more, 0, y, r.W, 80, 80, 80)
 		}
 		if s.musicFailed {
-			r.DrawSmallTextCentered("Note: music folder could not be created", 0, y, r.W, 200, 160, 60)
+			r.DrawSmallTextCentered("Note: music folder could not be created",
+				0, r.H-footerH-8-smallFH, r.W, 200, 160, 60)
 		}
 
 	case zipDLError:
