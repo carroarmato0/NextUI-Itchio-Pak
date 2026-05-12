@@ -48,6 +48,7 @@ type ZIPContentsScreen struct {
 
 	rows         []zipContentRow
 	cursor       int
+	scrollOffset int
 	selectedROMs map[string]string // ext → selected Name
 }
 
@@ -108,9 +109,16 @@ func (s *ZIPContentsScreen) buildRows() {
 	if s.cfg.MusicDownload == "ask" && s.plan.Manifest.HasMusic() {
 		s.rows = append(s.rows, zipContentRow{kind: zipRowMusicToggle, toggled: false})
 	}
+
+	// Start cursor on the first selectable row, not on a header.
+	s.cursor = 0
+	s.scrollOffset = 0
+	for s.cursor < len(s.rows) && s.rows[s.cursor].kind == zipRowExtHeader {
+		s.cursor++
+	}
 }
 
-func (s *ZIPContentsScreen) NeedsRedraw() bool        { return false }
+func (s *ZIPContentsScreen) NeedsRedraw() bool        { return true }
 func (s *ZIPContentsScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
@@ -134,17 +142,41 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 	r.DrawText(truncateToWidth(r, s.game.Title, r.W-24), 12, 8, mt[0], mt[1], mt[2])
 	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
 
-	y := headerH + 10
+	summaryY := headerH + 10
 	m := s.plan.Manifest
 	summary := fmt.Sprintf("ZIP contains: %d ROM(s)", m.ROMCount())
 	if m.HasMusic() {
 		summary += fmt.Sprintf("  ·  %d music track(s)", m.MusicCount())
 	}
-	r.DrawSmallText(summary, 20, y, 140, 140, 140)
-	y += smallFH + 12
+	r.DrawSmallText(summary, 20, summaryY, 140, 140, 140)
 
 	rowH := mainFH + 14
-	for i, row := range s.rows {
+	listTop := summaryY + smallFH + 12
+	listBottom := r.H - footerH - 4
+	maxVisible := int((listBottom - listTop) / rowH)
+	if maxVisible < 1 {
+		maxVisible = 1
+	}
+
+	// Keep cursor inside the visible window.
+	if s.cursor < s.scrollOffset {
+		s.scrollOffset = s.cursor
+	}
+	if s.cursor >= s.scrollOffset+maxVisible {
+		s.scrollOffset = s.cursor - maxVisible + 1
+	}
+
+	// Scroll indicators.
+	if s.scrollOffset > 0 {
+		r.DrawSmallTextCentered("▲", 0, listTop-smallFH-2, r.W, ht[0], ht[1], ht[2])
+	}
+	if s.scrollOffset+maxVisible < len(s.rows) {
+		r.DrawSmallTextCentered("▼", 0, listBottom, r.W, ht[0], ht[1], ht[2])
+	}
+
+	y := listTop
+	for i := s.scrollOffset; i < s.scrollOffset+maxVisible && i < len(s.rows); i++ {
+		row := s.rows[i]
 		selected := i == s.cursor
 		if selected {
 			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
@@ -165,7 +197,8 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 			if s.selectedROMs[row.ext] == row.entry.Name {
 				marker = "● "
 			}
-			r.DrawText(marker+row.entry.Name, 20, y, tr, tg, tb)
+			label := truncateToWidth(r, marker+row.entry.Name, r.W-40)
+			r.DrawText(label, 20, y, tr, tg, tb)
 		case zipRowMusicToggle:
 			val := "NO"
 			if row.toggled {
