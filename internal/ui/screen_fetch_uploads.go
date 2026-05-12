@@ -274,6 +274,11 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 	if len(known) > 0 {
 		if len(known) == 1 {
 			upload := known[0]
+			// Route ZIP uploads through ZIPInspectScreen for smart handling.
+			if strings.ToLower(filepath.Ext(upload.Filename)) == ".zip" {
+				return NewZIPInspectScreen(s.client, s.cfg, s.cfgPath, s.cache,
+					s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
+			}
 			if s.cfg.ROMLocation == "ask" {
 				return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 			}
