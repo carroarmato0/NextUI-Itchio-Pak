@@ -14,6 +14,11 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
+const (
+	feedMaxRetries = 3
+	feedRetryDelay = 2 * time.Second
+)
+
 type Game struct {
 	Title       string    `json:"title"`
 	Author      string    `json:"author"`
@@ -108,6 +113,26 @@ func parsePubDate(raw string) time.Time {
 }
 
 func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
+	var lastErr error
+	for attempt := 0; attempt <= feedMaxRetries; attempt++ {
+		if attempt > 0 {
+			logger.Warn("feed: retry %d/%d after %v (last error: %v)", attempt, feedMaxRetries, feedRetryDelay, lastErr)
+			time.Sleep(feedRetryDelay)
+		}
+		games, err := c.fetchGamesFromURLOnce(url)
+		if err == nil {
+			return games, nil
+		}
+		lastErr = err
+		// Only retry on transient server-side errors, not permanent ones.
+		if err == ErrCloudflareBlocked {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	logger.Debug("feed: fetching %s", url)
 	resp, err := c.http.Get(url)
 	if err != nil {
@@ -117,7 +142,7 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 
 	if resp.StatusCode == http.StatusForbidden {
 		logger.Error("feed: HTTP 403 from %s (Cloudflare bot-protection)", url)
-		return nil, fmt.Errorf("fetch feed: %w", ErrCloudflareBlocked)
+		return nil, ErrCloudflareBlocked
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("feed: HTTP %d from %s", resp.StatusCode, url)
