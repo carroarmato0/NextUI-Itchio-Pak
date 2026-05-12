@@ -56,6 +56,8 @@ type Config struct {
 	SortMode      string            `json:"sort_mode,omitempty"`  // "az" | "za" | "new" | "dl" | "free" | "paid" | "" (empty = [RSS])
 	NextUITheme   bool              `json:"nextui_theme"`
 	UnifiedNaming bool              `json:"unified_naming"` // default true — no omitempty so false survives save/load
+	MusicDownload string            `json:"music_download,omitempty"` // "auto" | "ask" | "off"
+	MusicLocation string            `json:"music_location,omitempty"` // "auto" | "ask"
 }
 
 func defaults() *Config {
@@ -64,6 +66,8 @@ func defaults() *Config {
 		ROMSelection:  "auto",
 		ROMLocation:   "auto",
 		UnifiedNaming: true,
+		MusicDownload: "off",
+		MusicLocation: "auto",
 		Filter: ContentFilter{
 			AdultContent: CategoryFilter{Enabled: true},
 			HeavyThemes:  CategoryFilter{Enabled: true},

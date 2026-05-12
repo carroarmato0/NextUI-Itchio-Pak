@@ -433,3 +433,37 @@ func TestSave_IsAtomic(t *testing.T) {
 		t.Errorf("APIKey = %q, want %q", loaded.APIKey, "test-key")
 	}
 }
+
+func TestMusicDefaults(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MusicDownload != "off" {
+		t.Errorf("MusicDownload default = %q, want \"off\"", cfg.MusicDownload)
+	}
+	if cfg.MusicLocation != "auto" {
+		t.Errorf("MusicLocation default = %q, want \"auto\"", cfg.MusicLocation)
+	}
+}
+
+func TestMusicBackwardCompat(t *testing.T) {
+	// Old config JSON without music fields
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	raw := `{"api_key":"","rom_selection":"auto","rom_location":"auto","unified_naming":true}`
+	if err := os.WriteFile(path, []byte(raw), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// After Load() the defaults are applied.
+	if cfg.MusicDownload != "off" {
+		t.Errorf("backward-compat default MusicDownload = %q, want \"off\"", cfg.MusicDownload)
+	}
+	if cfg.MusicLocation != "auto" {
+		t.Errorf("backward-compat default MusicLocation = %q, want \"auto\"", cfg.MusicLocation)
+	}
+}
