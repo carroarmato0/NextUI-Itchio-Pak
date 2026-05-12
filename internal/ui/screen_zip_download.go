@@ -116,6 +116,10 @@ func (s *ZIPDownloadScreen) run() {
 			continue
 		}
 		baseName := filepath.Base(f.Name)
+		// macOS resource-fork stubs start with "._"; skip them.
+		if strings.HasPrefix(baseName, "._") {
+			continue
+		}
 		kind := roms.ClassifyEntry(baseName)
 
 		switch kind {
@@ -218,7 +222,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 		GameURL: s.game.URL, Title: s.game.Title,
 		Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 	}, inventory.DownloadedFile{
-		Filename:     s.plan.Upload.Filename,
+		Filename:     filepath.Base(finalDest),
 		DestPath:     finalDest,
 		DownloadedAt: now,
 		UnifiedName:  unifiedName,
@@ -247,7 +251,7 @@ func (s *ZIPDownloadScreen) extractMusic(f *zip.File, baseName string, now time.
 		GameURL: s.game.URL, Title: s.game.Title,
 		Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 	}, inventory.DownloadedFile{
-		Filename:     s.plan.Upload.Filename,
+		Filename:     filepath.Base(dest),
 		DestPath:     dest,
 		DownloadedAt: now,
 		FileType:     inventory.FileTypeMusic,
