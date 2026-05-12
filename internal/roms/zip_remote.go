@@ -80,32 +80,77 @@ func (r *rangeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 }
 
 // InspectRemoteZIP reads the ZIP central directory via HTTP Range requests.
-// Falls back to full download when Range is not supported, ContentLength is unknown, or Range reading fails.
+// Falls back to a full download only when the server does not support Range at
+// all. The probe sequence is:
+//  1. HEAD — cheapest; gives size + Accept-Ranges in one shot.
+//  2. Range GET probe (bytes=-1) — used when HEAD fails or is blocked (e.g.
+//     403); the 206 Content-Range header reveals the total file size.
+//  3. Full download — last resort for servers that reject Range entirely.
 func InspectRemoteZIP(client *http.Client, cdnURL string) (ZIPManifest, error) {
-	headResp, err := client.Head(cdnURL)
-	if err != nil {
-		return inspectViaFullDownload(client, cdnURL)
-	}
-	headResp.Body.Close()
-	if headResp.StatusCode != http.StatusOK {
-		logger.Debug("zip-inspect: HEAD returned %d, using fallback", headResp.StatusCode)
-		return inspectViaFullDownload(client, cdnURL)
-	}
-
-	size := headResp.ContentLength
-	supportsRange := strings.EqualFold(headResp.Header.Get("Accept-Ranges"), "bytes")
-
-	if size > 0 && supportsRange {
-		logger.Debug("zip-inspect: using range path url=%s size=%d", cdnURL, size)
+	size, ok := probeSizeAndRange(client, cdnURL)
+	if ok {
 		m, err := inspectViaRange(client, cdnURL, size)
 		if err == nil {
 			return m, nil
 		}
 		logger.Debug("zip-inspect: range path failed (%v), falling back to full download", err)
-	} else {
-		logger.Debug("zip-inspect: using full-download path url=%s", cdnURL)
 	}
 	return inspectViaFullDownload(client, cdnURL)
+}
+
+// probeSizeAndRange returns the total byte size of the remote file and true
+// when the server supports Range requests. It tries HEAD first; if that fails
+// or does not advertise Accept-Ranges, it probes with a Range GET.
+func probeSizeAndRange(client *http.Client, url string) (int64, bool) {
+	if resp, err := client.Head(url); err == nil {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK && resp.ContentLength > 0 &&
+			strings.EqualFold(resp.Header.Get("Accept-Ranges"), "bytes") {
+			logger.Debug("zip-inspect: HEAD ok size=%d range=yes", resp.ContentLength)
+			return resp.ContentLength, true
+		}
+		logger.Debug("zip-inspect: HEAD returned status=%d cl=%d accept-ranges=%q — trying range probe",
+			resp.StatusCode, resp.ContentLength, resp.Header.Get("Accept-Ranges"))
+	}
+
+	// Range GET probe: request the last 1 byte. A 206 response includes a
+	// Content-Range header that reveals the total file size.
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return 0, false
+	}
+	req.Header.Set("Range", "bytes=-1")
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, false
+	}
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 8192)) //nolint:errcheck
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		logger.Debug("zip-inspect: range probe returned %d — no range support, will full-download", resp.StatusCode)
+		return 0, false
+	}
+	total := parseContentRangeTotal(resp.Header.Get("Content-Range"))
+	if total <= 0 {
+		return 0, false
+	}
+	logger.Debug("zip-inspect: range probe ok total=%d", total)
+	return total, true
+}
+
+// parseContentRangeTotal extracts the total size from a Content-Range header
+// value of the form "bytes start-end/total".
+func parseContentRangeTotal(cr string) int64 {
+	idx := strings.LastIndex(cr, "/")
+	if idx < 0 || idx == len(cr)-1 {
+		return 0
+	}
+	var total int64
+	if _, err := fmt.Sscanf(cr[idx+1:], "%d", &total); err != nil {
+		return 0
+	}
+	return total
 }
 
 func inspectViaRange(client *http.Client, cdnURL string, size int64) (ZIPManifest, error) {

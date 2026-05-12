@@ -104,6 +104,48 @@ func TestInspectRemoteZIP_FallbackOn200(t *testing.T) {
 	}
 }
 
+// TestInspectRemoteZIP_HeadForbiddenRangeProbe simulates the itch.io Butler CDN
+// behaviour where HEAD returns 403 but GET with Range works. The inspector must
+// succeed via the Range probe path without a full download.
+func TestInspectRemoteZIP_HeadForbiddenRangeProbe(t *testing.T) {
+	data := buildTestZIP(t, map[string]string{
+		"game.gbc":    "romdata",
+		"track01.mp3": "musicdata",
+	})
+
+	var rangeCount, fullBodyCount int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if r.Header.Get("Range") != "" {
+			atomic.AddInt32(&rangeCount, 1)
+		} else {
+			atomic.AddInt32(&fullBodyCount, 1)
+		}
+		http.ServeContent(w, r, "test.zip", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP error: %v", err)
+	}
+	if atomic.LoadInt32(&rangeCount) == 0 {
+		t.Error("no Range requests issued — expected range probe path after 403 HEAD")
+	}
+	if atomic.LoadInt32(&fullBodyCount) > 0 {
+		t.Errorf("full-body GET issued %d time(s) — expected range-only access", atomic.LoadInt32(&fullBodyCount))
+	}
+	if manifest.ROMCount() != 1 {
+		t.Errorf("ROMCount = %d, want 1", manifest.ROMCount())
+	}
+	if manifest.MusicCount() != 1 {
+		t.Errorf("MusicCount = %d, want 1", manifest.MusicCount())
+	}
+}
+
 func TestInspectRemoteZIP_MusicOnly(t *testing.T) {
 	data := buildTestZIP(t, map[string]string{
 		"track01.mp3": "music1",
