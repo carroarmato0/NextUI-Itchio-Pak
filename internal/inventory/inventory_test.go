@@ -668,6 +668,112 @@ func TestUpdateFile_UnknownDestPath_ReturnsFalse(t *testing.T) {
 	}
 }
 
+func TestDownloadedFileFileType_RoundTrip(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	// Add a music file
+	inv.Add("http://example.com/game", inventory.Entry{
+		GameURL: "http://example.com/game", Title: "Game",
+	}, inventory.DownloadedFile{
+		Filename: "ost.zip",
+		DestPath: "/mnt/SDCARD/Music/Game/track.mp3",
+		FileType: inventory.FileTypeMusic,
+	})
+	// Add a ROM file (different filename to avoid dedup)
+	inv.Add("http://example.com/game", inventory.Entry{
+		GameURL: "http://example.com/game", Title: "Game",
+	}, inventory.DownloadedFile{
+		Filename: "game.gbc",
+		DestPath: "/mnt/SDCARD/Roms/Game Boy Color (GBC)/Game.gbc",
+		FileType: inventory.FileTypeROM,
+	})
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inv.json")
+	if err := inv.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := inventory.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	entry, ok := loaded.Lookup("http://example.com/game")
+	if !ok {
+		t.Fatal("entry not found after load")
+	}
+	types := map[string]string{}
+	for _, f := range entry.Files {
+		types[f.DestPath] = f.FileType
+	}
+	if types["/mnt/SDCARD/Music/Game/track.mp3"] != inventory.FileTypeMusic {
+		t.Errorf("music file type = %q, want %q", types["/mnt/SDCARD/Music/Game/track.mp3"], inventory.FileTypeMusic)
+	}
+	if types["/mnt/SDCARD/Roms/Game Boy Color (GBC)/Game.gbc"] != inventory.FileTypeROM {
+		t.Errorf("ROM file type = %q, want %q", types["/mnt/SDCARD/Roms/Game Boy Color (GBC)/Game.gbc"], inventory.FileTypeROM)
+	}
+}
+
+func TestDownloadedFileFileType_BackwardCompat(t *testing.T) {
+	// Old JSON without file_type field
+	raw := `{"entries":{"http://example.com/game":{"game_url":"http://example.com/game","title":"Game","author":"","cover_url":"","files":[{"filename":"game.gbc","dest_path":"/mnt/SDCARD/Roms/Game Boy Color (GBC)/Game.gbc","downloaded_at":"2024-01-01T00:00:00Z"}]}}}`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inv.json")
+	if err := os.WriteFile(path, []byte(raw), 0644); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := inventory.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	entry, ok := inv.Lookup("http://example.com/game")
+	if !ok {
+		t.Fatal("entry not found")
+	}
+	if len(entry.Files) != 1 {
+		t.Fatalf("files len = %d, want 1", len(entry.Files))
+	}
+	// Empty FileType is valid ("" == rom for display purposes)
+	if entry.Files[0].FileType != "" {
+		t.Errorf("old entry FileType = %q, want \"\" (backward compat)", entry.Files[0].FileType)
+	}
+}
+
+func TestVerifyAndClean_MixedFileTypes(t *testing.T) {
+	dir := t.TempDir()
+
+	romPath := filepath.Join(dir, "game.gbc")
+	musicPath := filepath.Join(dir, "track.mp3")
+	os.WriteFile(romPath, []byte("rom"), 0644)
+	os.WriteFile(musicPath, []byte("music"), 0644)
+
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("http://g", inventory.Entry{GameURL: "http://g", Title: "G"}, inventory.DownloadedFile{
+		Filename: "game.gbc", DestPath: romPath, FileType: inventory.FileTypeROM,
+	})
+	inv.Add("http://g", inventory.Entry{GameURL: "http://g", Title: "G"}, inventory.DownloadedFile{
+		Filename: "ost.zip", DestPath: musicPath, FileType: inventory.FileTypeMusic,
+	})
+
+	invPath := filepath.Join(dir, "inv.json")
+	inv.Save(invPath)
+
+	// Delete the music file
+	os.Remove(musicPath)
+	inv.VerifyAndClean(invPath)
+
+	entry, ok := inv.Lookup("http://g")
+	if !ok {
+		t.Fatal("game entry should still exist (ROM is present)")
+	}
+	for _, f := range entry.Files {
+		if f.FileType == inventory.FileTypeMusic {
+			t.Error("music entry should have been pruned")
+		}
+	}
+	if len(entry.Files) != 1 || entry.Files[0].FileType != inventory.FileTypeROM {
+		t.Errorf("only ROM entry should remain, got %+v", entry.Files)
+	}
+}
+
 // ── Bug 1: Re-downloading creates duplicate files ─────────────────────────────
 
 func TestAdd_UpdatesExistingOnSameFilename(t *testing.T) {
