@@ -15,7 +15,7 @@ func TestClassifyEntry(t *testing.T) {
 		{"game.GB", roms.KindROM},
 		{"game.gbc", roms.KindROM},
 		{"game.GBC", roms.KindROM},
-		{"game.gba", roms.KindROM},
+		{"game.gba", roms.KindOther},
 		{"track01.mp3", roms.KindMusic},
 		{"track01.MP3", roms.KindMusic},
 		{"track01.ogg", roms.KindMusic},
