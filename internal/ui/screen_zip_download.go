@@ -200,7 +200,10 @@ func (s *ZIPDownloadScreen) shouldExtractROM(name string) bool {
 
 func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Time) (string, error) {
 	ext := strings.ToLower(filepath.Ext(baseName))
-	destDir := roms.DestinationDir(ext)
+	destDir := s.plan.ROMDirs[ext]
+	if destDir == "" {
+		destDir = roms.DestinationDir(ext)
+	}
 	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
 	safeName := roms.SanitiseFilename(stem, ext)
 	if safeName == "" {

@@ -27,7 +27,10 @@ type ZIPPlan struct {
 	// SelectedROMs maps lowercase extension → chosen entry Name.
 	// Empty map means all ROMs in the manifest are selected.
 	SelectedROMs map[string]string
-	MusicDir     string
+	// ROMDirs maps lowercase extension → chosen destination directory.
+	// Overrides DestinationDir when set (used for user-chosen GBA folder).
+	ROMDirs  map[string]string
+	MusicDir string
 }
 
 type zipInspectState int32
@@ -193,9 +196,28 @@ func (s *ZIPInspectScreen) route() Screen {
 		return s.prev
 	}
 
+	manifestHasGBA := len(m.ROMsByExt()[".gba"]) > 0
+
+	// GBA + "ask": route through contents screen before anything else so the
+	// user can choose between Game Boy Advance (GBA) and Game Boy Advance (MGBA).
+	if manifestHasGBA && s.cfg.ROMLocation == "ask" {
+		return NewZIPContentsScreen(s.client, s.cfg, s.cfgPath, s.cache,
+			s.game, s.detail, s.plan, s.inv, s.invPath, s.prev)
+	}
+
 	// Single ROM, no music → keep ZIP, use DownloadScreen unchanged.
 	if m.IsSingleROMOnly() {
+		// Use the inner ROM's extension to route to the correct destination directory
+		// (e.g., a ZIP containing a single .gba should land in the GBA folder).
 		ext := strings.ToLower(filepath.Ext(s.upload.Filename))
+		for _, e := range m.Entries {
+			if e.Kind == roms.KindROM {
+				if inner := strings.ToLower(filepath.Ext(e.Name)); roms.DestinationDir(inner) != "" {
+					ext = inner
+				}
+				break
+			}
+		}
 		dest := roms.DestinationDir(ext) + s.upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
 			dest = existing
@@ -205,8 +227,8 @@ func (s *ZIPInspectScreen) route() Screen {
 		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
 	}
 
-	// Multiple ROMs of same extension always require a version picker.
-	if m.HasDuplicateROMExt() || s.cfg.MusicDownload == "ask" {
+	// Multiple ROMs of same extension or GBA present always require the picker.
+	if m.HasDuplicateROMExt() || s.cfg.MusicDownload == "ask" || manifestHasGBA {
 		return NewZIPContentsScreen(s.client, s.cfg, s.cfgPath, s.cache,
 			s.game, s.detail, s.plan, s.inv, s.invPath, s.prev)
 	}

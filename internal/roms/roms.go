@@ -24,12 +24,20 @@ func ScoreUpload(filename string) int {
 	}
 }
 
+// GBADir is the default NextUI GBA ROM directory (uses the built-in GBA emulator).
+const GBADir = "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"
+
+// GBAMGBADir is the alternative NextUI GBA ROM directory (uses the MGBA emulator).
+const GBAMGBADir = "/mnt/SDCARD/Roms/Game Boy Advance (MGBA)/"
+
 func DestinationDir(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".gbc":
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	case ".gb":
 		return "/mnt/SDCARD/Roms/Game Boy (GB)/"
+	case ".gba":
+		return GBADir
 	case ".zip":
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	default:

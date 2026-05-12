@@ -36,6 +36,8 @@ func TestDestinationDir(t *testing.T) {
 		{".GBC", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 		{".gb", "/mnt/SDCARD/Roms/Game Boy (GB)/"},
 		{".GB", "/mnt/SDCARD/Roms/Game Boy (GB)/"},
+		{".gba", "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"},
+		{".GBA", "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"},
 		{".zip", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 		{".ZIP", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 	}

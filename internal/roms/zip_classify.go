@@ -9,7 +9,7 @@ type FileKind int
 
 const (
 	KindOther FileKind = iota
-	KindROM            // .gb .gbc
+	KindROM            // .gb .gbc .gba
 	KindMusic          // .mp3 .ogg .flac .wav .opus .mod .xm .s3m .it
 )
 
@@ -26,7 +26,7 @@ type ZIPManifest struct {
 }
 
 var romExts = map[string]bool{
-	".gb": true, ".gbc": true,
+	".gb": true, ".gbc": true, ".gba": true,
 }
 
 var musicExts = map[string]bool{
