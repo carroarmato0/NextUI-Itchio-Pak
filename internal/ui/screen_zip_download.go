@@ -4,6 +4,7 @@ package ui
 
 import (
 	"archive/zip"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"os"
@@ -211,6 +212,12 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 	}
 	dest := destDir + safeName
 
+	// Skip extraction when the game already has an identical ROM on disk.
+	if existing := s.findIdenticalROMInInventory(f, ext); existing != "" {
+		logger.Info("zip-download: ROM %s: identical file already at %s, skipping", baseName, existing)
+		return existing, nil
+	}
+
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return "", fmt.Errorf("mkdirall %s: %w", destDir, err)
 	}
@@ -280,6 +287,71 @@ func (s *ZIPDownloadScreen) extractMusic(f *zip.File, baseName string, now time.
 		FileType:     inventory.FileTypeMusic,
 	})
 	return dest, nil
+}
+
+// findIdenticalROMInInventory returns the DestPath of an already-downloaded ROM
+// for this game that has byte-for-byte identical content to the ZIP entry f.
+// Size is checked first (cheap); MD5 is computed only when sizes match.
+// Returns "" when no identical file is found or the check cannot be performed.
+func (s *ZIPDownloadScreen) findIdenticalROMInInventory(f *zip.File, ext string) string {
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok {
+		return ""
+	}
+	wantSize := f.FileInfo().Size()
+	wantHash, err := zipEntryMD5(f)
+	if err != nil {
+		logger.Warn("zip-download: dedup hash failed for %s: %v", f.Name, err)
+		return ""
+	}
+	for _, df := range entry.Files {
+		if df.FileType != inventory.FileTypeROM {
+			continue
+		}
+		if strings.ToLower(filepath.Ext(df.DestPath)) != ext {
+			continue
+		}
+		fi, err := os.Stat(df.DestPath)
+		if err != nil || fi.Size() != wantSize {
+			continue
+		}
+		hash, err := fileMD5(df.DestPath)
+		if err != nil {
+			continue
+		}
+		if hash == wantHash {
+			return df.DestPath
+		}
+	}
+	return ""
+}
+
+// zipEntryMD5 reads the uncompressed content of a ZIP entry and returns its MD5 hex digest.
+func zipEntryMD5(f *zip.File) (string, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, rc); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// fileMD5 returns the MD5 hex digest of the file at path.
+func fileMD5(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 // extractZIPEntry copies a single ZIP file entry to dest on disk.
