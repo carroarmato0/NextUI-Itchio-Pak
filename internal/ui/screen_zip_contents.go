@@ -197,8 +197,9 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 			if s.selectedROMs[row.ext] == row.entry.Name {
 				marker = "● "
 			}
-			label := truncateToWidth(r, marker+row.entry.Name, r.W-40)
-			r.DrawText(label, 20, y, tr, tg, tb)
+			markerW, _ := r.TextSize(marker)
+			r.DrawText(marker, 20, y, tr, tg, tb)
+			r.DrawScrollingText(row.entry.Name, 20+markerW, y, r.W-40-markerW, tr, tg, tb)
 		case zipRowMusicToggle:
 			val := "NO"
 			if row.toggled {

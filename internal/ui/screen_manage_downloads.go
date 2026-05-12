@@ -44,7 +44,7 @@ func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, ga
 	}
 }
 
-func (s *ManageDownloadsScreen) NeedsRedraw() bool { return false }
+func (s *ManageDownloadsScreen) NeedsRedraw() bool { return true }
 func (s *ManageDownloadsScreen) HasPendingAnimation() bool { return false }
 
 func hasFileType(files []inventory.DownloadedFile, ft string) bool {
@@ -86,19 +86,31 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 
 	lt := r.Theme.ListText
 	at := r.Theme.AccentText
+	arrowLabel := "→  "
+	arrowW, _ := r.SmallTextSize(arrowLabel)
 	for i, f := range entry.Files {
 		y := contentTop + int32(i)*rowH
-		if i == s.cursor && !s.confirmActive {
+		selected := i == s.cursor && !s.confirmActive
+		if selected {
 			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
-			nameW, _ := r.TextSize(f.Filename)
-			r.DrawText(f.Filename, margin, y, at[0], at[1], at[2])
-			dirLabel := "→  " + f.DestPath
-			r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
+		}
+		var nr, ng, nb uint8
+		if selected {
+			nr, ng, nb = at[0], at[1], at[2]
 		} else {
-			nameW, _ := r.TextSize(f.Filename)
-			r.DrawText(f.Filename, margin, y, lt[0], lt[1], lt[2])
-			dirLabel := "→  " + f.DestPath
-			r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
+			nr, ng, nb = lt[0], lt[1], lt[2]
+		}
+		nameMaxW := r.W/2 - margin
+		r.DrawScrollingText(f.Filename, margin, y, nameMaxW, nr, ng, nb)
+		nameW, _ := r.TextSize(f.Filename)
+		if nameW > nameMaxW {
+			nameW = nameMaxW
+		}
+		pathX := margin + nameW + 12
+		pathMaxW := r.W - pathX - margin
+		if pathMaxW > arrowW {
+			r.DrawSmallText(arrowLabel, pathX, y+(fontH-smallFH)/2, 120, 120, 120)
+			r.DrawSmallScrollingText(f.DestPath, pathX+arrowW, y+(fontH-smallFH)/2, pathMaxW-arrowW, 120, 120, 120)
 		}
 	}
 

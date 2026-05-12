@@ -359,8 +359,7 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 			if y+rowH > bottomLimit {
 				break
 			}
-			name := truncateSmallToWidth(r, filepath.Base(p), r.W-40)
-			r.DrawSmallTextCentered(name, 0, y, r.W, 120, 120, 120)
+			r.DrawSmallScrollingText(filepath.Base(p), 20, y, r.W-40, 120, 120, 120)
 			y += rowH
 			shown++
 		}
