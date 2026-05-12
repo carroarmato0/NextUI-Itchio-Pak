@@ -82,6 +82,7 @@ func NewZIPInspectScreen(
 
 func (s *ZIPInspectScreen) runInspect() {
 	defer func() { sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT}) }()
+	logger.Info("zip-inspect: starting for %s", s.upload.Filename)
 
 	var cdnURL string
 	var err error

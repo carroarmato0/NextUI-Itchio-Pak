@@ -78,6 +78,7 @@ func (s *ZIPDownloadScreen) run() {
 
 	tmp, err := os.CreateTemp("", "itchio-zip-*.zip")
 	if err != nil {
+		logger.Error("zip-download: create temp file: %v", err)
 		s.err = fmt.Errorf("create temp file: %w", err)
 		s.storeState(zipDLError)
 		return
@@ -102,6 +103,7 @@ func (s *ZIPDownloadScreen) run() {
 
 	r, err := zip.OpenReader(tmpPath)
 	if err != nil {
+		logger.Error("zip-download: open ZIP: %v", err)
 		s.err = fmt.Errorf("open ZIP: %w", err)
 		s.storeState(zipDLError)
 		return
@@ -148,6 +150,7 @@ func (s *ZIPDownloadScreen) run() {
 	}
 
 	if len(s.extracted) == 0 {
+		logger.Error("zip-download: no files extracted (skipped=%d)", len(s.skipped))
 		s.err = fmt.Errorf("no files could be extracted from ZIP")
 		s.storeState(zipDLError)
 		return

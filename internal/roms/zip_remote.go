@@ -101,6 +101,7 @@ func InspectRemoteZIP(client *http.Client, cdnURL string) (ZIPManifest, error) {
 		if err == nil {
 			return m, nil
 		}
+		logger.Debug("zip-inspect: range path failed (%v), falling back to full download", err)
 	} else {
 		logger.Debug("zip-inspect: using full-download path url=%s", cdnURL)
 	}
