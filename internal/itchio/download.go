@@ -248,7 +248,16 @@ func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, i
 }
 
 func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) error {
-	resp, err := c.http.Get(srcURL)
+	// c.http has a 30-second Timeout that covers the entire response body read —
+	// fine for API calls but fatal for large file downloads. Create a per-call
+	// client with no overall timeout (Timeout: 0) that shares the same
+	// transport so UA injection, h2/h1 fallback and dial timeouts still apply.
+	dlClient := &http.Client{
+		Transport:     c.http.Transport,
+		Jar:           c.http.Jar,
+		CheckRedirect: c.http.CheckRedirect,
+	}
+	resp, err := dlClient.Get(srcURL)
 	if err != nil {
 		return fmt.Errorf("fetch file: %w", err)
 	}
