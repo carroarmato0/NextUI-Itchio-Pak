@@ -49,3 +49,15 @@ func SelectBest(uploads []Upload) *Upload {
 	}
 	return best
 }
+
+// MusicBaseDir is the root directory for all extracted game soundtracks.
+const MusicBaseDir = "/mnt/SDCARD/Music/"
+
+// MusicDestinationDir returns the target directory for a game's music files.
+func MusicDestinationDir(gameTitle string) string {
+	safe := SanitiseFilename(gameTitle, "")
+	if safe == "" {
+		safe = "Unknown"
+	}
+	return MusicBaseDir + safe + "/"
+}
