@@ -140,7 +140,7 @@ func NewDevStartScreen(
 	switch name {
 	case "settings":
 		// onRefreshGames is nil-safe inside SettingsScreen.
-		return NewSettingsScreen(client, cfg, cfgPath, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, nil)
+		return NewSettingsScreen(client, cfg, cfgPath, cache, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, nil)
 	case "detail":
 		return newDevAutoDetailScreen(list, client, cfg, cfgPath, cache, inv, inventoryPath, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
 	default:
