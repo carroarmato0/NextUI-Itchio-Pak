@@ -5,7 +5,6 @@ package ui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -24,6 +23,12 @@ import (
 // narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
 // are abbreviated at or below this width to prevent overflow.
 const narrowScreenW = int32(640)
+
+// Per-frame slice buffers reused across Draw calls to avoid per-frame heap escapes.
+var (
+	filteredTagsBuf []string
+	footerHintsBuf  []renderer.FooterHint
+)
 
 const (
 	scrollDelay = time.Second
@@ -164,6 +169,11 @@ type ListScreen struct {
 
 	// truncCache memoises per-frame title truncation; rebuilt on each rebuildView.
 	truncCache map[truncCacheKey]string
+
+	// Cached page-counter string — rebuilt only when cursor or totalPages changes.
+	pageInfoStr   string
+	pageInfoPage  int
+	pageInfoTotal int32
 	// badgePriceCache holds pre-formatted "$X.XX" strings keyed by game URL.
 	// Populated lazily on first Draw access; cleared on rebuildView.
 	badgePriceCache map[string]string
@@ -818,7 +828,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			metaY += lineGap
 		}
 		// Tags: filter and render as pill badges with vertical-scroll if overflow.
-		var filteredTags []string
+		filteredTagsBuf = filteredTagsBuf[:0]
 		for _, tag := range g.Tags {
 			if strings.EqualFold(tag, "free") {
 				continue
@@ -826,13 +836,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
 				continue
 			}
-			filteredTags = append(filteredTags, tag)
+			filteredTagsBuf = append(filteredTagsBuf, tag)
 		}
-		if len(filteredTags) > 0 {
+		if len(filteredTagsBuf) > 0 {
 			ac := r.Theme.Accent
 			aT := r.Theme.AccentText
 			// Measure total pill height to know whether scroll is needed.
-			totalTagH := r.MeasureTagPills(filteredTags, rightX, rightW, lineGap)
+			totalTagH := r.MeasureTagPills(filteredTagsBuf, rightX, rightW, lineGap)
 			availH := r.H - footerH - metaY
 			if availH <= 0 {
 				availH = 0
@@ -846,7 +856,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					uint8((int(ac[1]) + 35) / 2),
 					uint8((int(ac[2]) + 35) / 2),
 				}
-				r.DrawTagPills(filteredTags, rightX, metaY, rightW, lineGap,
+				r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
 					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
 				metaY += totalTagH
 			} else {
@@ -865,7 +875,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					uint8((int(ac[1]) + 35) / 2),
 					uint8((int(ac[2]) + 35) / 2),
 				}
-				r.DrawTagPills(filteredTags, rightX, metaY-s.tagScrollY, rightW, lineGap,
+				r.DrawTagPills(filteredTagsBuf, rightX, metaY-s.tagScrollY, rightW, lineGap,
 					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
 				r.ClearClipRect()
 			}
@@ -875,26 +885,22 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// Build footer hints.
 	ftrY := r.DrawFooterBar(footerH)
 
-	var footerHints []renderer.FooterHint
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
+	footerHintsBuf = footerHintsBuf[:0]
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
 	if s.cacheReady {
-		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"})
+		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"})
 	}
-	footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	if r.W <= narrowScreenW {
-		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Set"})
+		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Set"})
 	} else {
-		footerHints = append(footerHints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
+		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
-	r.DrawFooterHints(footerHints, ftrY)
+	r.DrawFooterHints(footerHintsBuf, ftrY)
 
 	// Pagination info right-aligned.
-	currentPage := s.cursor/itchio.PerPage + 1
-	pageInfo := fmt.Sprintf("Page %d", currentPage)
-	if tp := s.totalPages.Load(); tp > 0 {
-		pageInfo = fmt.Sprintf("Page %d/%d", currentPage, tp)
-	}
+	pageInfo := s.cachedPageInfo()
 	ht := r.Theme.HintText
 	piW, _ := r.SmallTextSize(pageInfo)
 	r.DrawSmallText(pageInfo, r.W-piW-10, ftrY, ht[0], ht[1], ht[2])
@@ -902,6 +908,21 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
+
+func (s *ListScreen) cachedPageInfo() string {
+	cp := s.cursor/itchio.PerPage + 1
+	tp := s.totalPages.Load()
+	if s.pageInfoStr == "" || cp != s.pageInfoPage || tp != s.pageInfoTotal {
+		if tp > 0 {
+			s.pageInfoStr = "Page " + strconv.Itoa(cp) + "/" + strconv.Itoa(int(tp))
+		} else {
+			s.pageInfoStr = "Page " + strconv.Itoa(cp)
+		}
+		s.pageInfoPage = cp
+		s.pageInfoTotal = tp
+	}
+	return s.pageInfoStr
+}
 
 func (s *ListScreen) startHold(dir int) {
 	s.moveCursor(dir)
