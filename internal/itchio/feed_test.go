@@ -80,6 +80,45 @@ func TestFetchGamesFreePriceParsing(t *testing.T) {
 	}
 }
 
+func TestFetchGamesTrailingCurrencySymbol(t *testing.T) {
+	cases := []struct {
+		price string
+		want  bool
+	}{
+		{"3.39€", false}, // European format: symbol after number
+		{"3.99£", false},
+		{"$3.99", false}, // Leading symbol still works
+		{"0.0", true},
+	}
+	for _, tc := range cases {
+		xml := `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+<item>
+  <title>Test Game</title>
+  <link>https://testdev.itch.io/test-game</link>
+  <description>&lt;img src="https://img.itch.zone/test.png"/&gt;</description>
+  <price>` + tc.price + `</price>
+</item>
+</channel></rss>`
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(xml))
+		}))
+		c := itchio.NewClient()
+		games, err := c.FetchGamesFromURL(srv.URL)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("price %q: FetchGamesFromURL: %v", tc.price, err)
+		}
+		if len(games) != 1 {
+			t.Fatalf("price %q: want 1 game, got %d", tc.price, len(games))
+		}
+		if games[0].IsFree != tc.want {
+			t.Errorf("price %q: IsFree = %v, want %v", tc.price, games[0].IsFree, tc.want)
+		}
+	}
+}
+
 func TestFetchAllGames(t *testing.T) {
 	page1, err := os.ReadFile("../../testdata/rss_page1.xml")
 	if err != nil {

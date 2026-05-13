@@ -91,8 +91,7 @@ func parseCover(imageURL, desc string) string {
 
 func parsePrice(raw string) float64 {
 	s := strings.TrimSpace(raw)
-	// Strip leading currency symbol(s) like "$", "€", "£"
-	s = strings.TrimLeft(s, "$€£¥")
+	s = strings.Trim(s, "$€£¥")
 	s = strings.TrimSpace(s)
 	price, _ := strconv.ParseFloat(s, 64)
 	return price

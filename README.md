@@ -425,6 +425,16 @@ in the Settings screen on the device.
   without notice, which would break the free download flow. The paid API path
   is more stable.
 
+- **"Pay What You Want" games with a mandatory minimum price show as free.**
+  itch.io reports a price of `0` in its RSS feed for games configured as
+  "name your price", even when the creator has set a non-zero minimum purchase
+  amount. The Pak cannot distinguish these from genuinely free games using feed
+  data alone, so they are labelled **Free** and appear in the `[FREE]` filter.
+  You can recognise them on itch.io by their **"Download Now"** button (instead
+  of "Buy Now") and a note that a minimum purchase price is required. If you
+  attempt to download one without owning it, the download will fail and a QR
+  code will be shown so you can complete the purchase in a browser first.
+
 - **Unified naming and save format changes** — the save/state migration flow reads your current `saveFormat` and `stateFormat` settings from `minuisettings.txt` at the time of migration. If you later change the save format in NextUI's settings, existing saves and states will not be automatically re-migrated to the new naming scheme. You would need to rename them manually or re-run the per-game toggle to trigger the flow again.
 
 ---
