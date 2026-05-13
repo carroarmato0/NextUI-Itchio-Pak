@@ -14,6 +14,12 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+const (
+	deleteIdxAll        = -1 // delete entire game entry
+	deleteIdxROMs       = -2 // delete only ROM-typed files
+	deleteIdxSoundtrack = -3 // delete only music-typed files
+)
+
 type ManageDownloadsScreen struct {
 	inv           *inventory.Inventory
 	inventoryPath string
@@ -21,7 +27,7 @@ type ManageDownloadsScreen struct {
 	cursor        int // 0..len(files)-1 = file rows; len(files) = "Delete all"
 
 	confirmActive  bool
-	confirmFileIdx int // -1 = delete all, otherwise index into entry.Files
+	confirmFileIdx int // deleteIdxAll/deleteIdxROMs/deleteIdxSoundtrack or index into entry.Files
 
 	cfg  *settings.Config
 	prev Screen
@@ -38,8 +44,17 @@ func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, ga
 	}
 }
 
-func (s *ManageDownloadsScreen) NeedsRedraw() bool { return false }
+func (s *ManageDownloadsScreen) NeedsRedraw() bool { return true }
 func (s *ManageDownloadsScreen) HasPendingAnimation() bool { return false }
+
+func hasFileType(files []inventory.DownloadedFile, ft string) bool {
+	for _, f := range files {
+		if f.FileType == ft || (ft == inventory.FileTypeROM && f.FileType == "") {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 	entry, ok := s.inv.Lookup(s.gameURL)
@@ -71,35 +86,75 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 
 	lt := r.Theme.ListText
 	at := r.Theme.AccentText
+	arrowLabel := "→  "
+	arrowW, _ := r.SmallTextSize(arrowLabel)
 	for i, f := range entry.Files {
 		y := contentTop + int32(i)*rowH
-		if i == s.cursor && !s.confirmActive {
+		selected := i == s.cursor && !s.confirmActive
+		if selected {
 			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
-			nameW, _ := r.TextSize(f.Filename)
-			r.DrawText(f.Filename, margin, y, at[0], at[1], at[2])
-			dirLabel := "→  " + f.DestPath
-			r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
+		}
+		var nr, ng, nb uint8
+		if selected {
+			nr, ng, nb = at[0], at[1], at[2]
 		} else {
-			nameW, _ := r.TextSize(f.Filename)
-			r.DrawText(f.Filename, margin, y, lt[0], lt[1], lt[2])
-			dirLabel := "→  " + f.DestPath
-			r.DrawSmallText(dirLabel, margin+nameW+12, y+(fontH-smallFH)/2, 120, 120, 120)
+			nr, ng, nb = lt[0], lt[1], lt[2]
+		}
+		nameMaxW := r.W/2 - margin
+		r.DrawScrollingText(f.Filename, margin, y, nameMaxW, nr, ng, nb)
+		nameW, _ := r.TextSize(f.Filename)
+		if nameW > nameMaxW {
+			nameW = nameMaxW
+		}
+		pathX := margin + nameW + 12
+		pathMaxW := r.W - pathX - margin
+		if pathMaxW > arrowW {
+			r.DrawSmallText(arrowLabel, pathX, y+(fontH-smallFH)/2, 120, 120, 120)
+			r.DrawSmallScrollingText(f.DestPath, pathX+arrowW, y+(fontH-smallFH)/2, pathMaxW-arrowW, 120, 120, 120)
 		}
 	}
 
 	sepY := contentTop + int32(len(entry.Files))*rowH
 	r.DrawRect(margin, sepY, r.W-margin*2, 1, 50, 50, 50)
-	deleteAllY := sepY + 8
+	actionY := sepY + 8
 	deleteAllIdx := len(entry.Files)
-	if s.cursor == deleteAllIdx && !s.confirmActive {
-		r.DrawPill(4, deleteAllY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
-	}
-	r.DrawText("Delete all", margin, deleteAllY, 200, 80, 80)
 
-	sep2Y := deleteAllY + rowH + 4
+	hasROM := hasFileType(entry.Files, inventory.FileTypeROM)
+	hasMusic := hasFileType(entry.Files, inventory.FileTypeMusic)
+
+	if hasROM && hasMusic {
+		if s.cursor == deleteAllIdx && !s.confirmActive {
+			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		}
+		r.DrawText("Delete ROM", margin, actionY, 200, 120, 80)
+		actionY += rowH
+
+		if s.cursor == deleteAllIdx+1 && !s.confirmActive {
+			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		}
+		r.DrawText("Delete Soundtrack", margin, actionY, 200, 120, 80)
+		actionY += rowH
+
+		if s.cursor == deleteAllIdx+2 && !s.confirmActive {
+			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		}
+		r.DrawText("Delete all", margin, actionY, 200, 80, 80)
+		actionY += rowH
+	} else {
+		if s.cursor == deleteAllIdx && !s.confirmActive {
+			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		}
+		r.DrawText("Delete all", margin, actionY, 200, 80, 80)
+		actionY += rowH
+	}
+
+	sep2Y := actionY + 4
 	r.DrawRect(margin, sep2Y, r.W-margin*2, 1, 50, 50, 50)
 	toggleY := sep2Y + 8
 	toggleIdx := len(entry.Files) + 1
+	if hasROM && hasMusic {
+		toggleIdx = len(entry.Files) + 3
+	}
 	unifiedDisabled := entry.UnifiedNamingDisabled
 	toggleLabel := "Use game title as filename"
 	toggleVal := "ON"
@@ -140,14 +195,37 @@ func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry i
 	pad := int32(16)
 
 	var title, body string
-	if s.confirmFileIdx == -1 {
+	switch s.confirmFileIdx {
+	case deleteIdxAll:
 		title = fmt.Sprintf("Delete all %d file(s)?", len(entry.Files))
 		var names []string
 		for _, f := range entry.Files {
 			names = append(names, f.Filename)
 		}
 		body = strings.Join(names, "\n")
-	} else {
+	case deleteIdxROMs:
+		var names []string
+		count := 0
+		for _, f := range entry.Files {
+			if f.FileType == inventory.FileTypeROM || f.FileType == "" {
+				names = append(names, f.Filename)
+				count++
+			}
+		}
+		title = fmt.Sprintf("Delete %d ROM file(s)?", count)
+		body = strings.Join(names, "\n")
+	case deleteIdxSoundtrack:
+		var names []string
+		count := 0
+		for _, f := range entry.Files {
+			if f.FileType == inventory.FileTypeMusic {
+				names = append(names, f.Filename)
+				count++
+			}
+		}
+		title = fmt.Sprintf("Delete %d soundtrack file(s)?", count)
+		body = strings.Join(names, "\n")
+	default:
 		title = "Delete this file?"
 		f := entry.Files[s.confirmFileIdx]
 		body = f.Filename + "\n" + f.DestPath
@@ -164,14 +242,15 @@ func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry i
 	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, 70, 70, 70)
 	r.DrawRect(boxX, boxY, boxW, boxH, 25, 25, 35)
 
+	innerW := boxW - pad*2
 	y := boxY + pad
-	r.DrawTextCentered(title, boxX, y, boxW, 240, 180, 60)
+	r.DrawTextCentered(truncateToWidth(r, title, innerW), boxX, y, boxW, 240, 180, 60)
 	y += fontH + pad
-	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	r.DrawRect(boxX+pad, y, innerW, 1, 60, 60, 60)
 	y += 1 + pad
 
 	for _, line := range strings.Split(body, "\n") {
-		r.DrawSmallText(line, boxX+pad, y, 200, 200, 200)
+		r.DrawSmallText(truncateSmallToWidth(r, line, innerW), boxX+pad, y, 200, 200, 200)
 		y += lineH
 	}
 	y += pad
@@ -185,7 +264,15 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 	if !ok {
 		return s.prev
 	}
-	rowCount := len(entry.Files) + 2 // +1 delete-all, +1 unified-naming toggle
+
+	hasROM := hasFileType(entry.Files, inventory.FileTypeROM)
+	hasMusic := hasFileType(entry.Files, inventory.FileTypeMusic)
+	extraActions := 1
+	if hasROM && hasMusic {
+		extraActions = 3
+	}
+	rowCount := len(entry.Files) + extraActions + 1 // +1 for unified naming toggle
+	deleteAllIdx := len(entry.Files)
 
 	if s.confirmActive {
 		switch ev := e.(type) {
@@ -252,16 +339,23 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				s.cursor--
 			}
 		case sdl.K_RETURN:
-			if s.cursor == len(entry.Files) {
+			switch {
+			case s.cursor < len(entry.Files):
 				s.confirmActive = true
-				s.confirmFileIdx = -1
-			} else if s.cursor == len(entry.Files)+1 {
+				s.confirmFileIdx = s.cursor
+			case hasROM && hasMusic && s.cursor == deleteAllIdx:
+				s.confirmActive = true
+				s.confirmFileIdx = deleteIdxROMs
+			case hasROM && hasMusic && s.cursor == deleteAllIdx+1:
+				s.confirmActive = true
+				s.confirmFileIdx = deleteIdxSoundtrack
+			case s.cursor == deleteAllIdx+extraActions-1:
+				s.confirmActive = true
+				s.confirmFileIdx = deleteIdxAll
+			case s.cursor == len(entry.Files)+extraActions:
 				if s.cfg.UnifiedNaming {
 					return s.startUnifiedNamingMigration(entry)
 				}
-			} else {
-				s.confirmActive = true
-				s.confirmFileIdx = s.cursor
 			}
 		case sdl.K_ESCAPE:
 			return s.prev
@@ -280,16 +374,23 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				s.cursor--
 			}
 		case sdl.CONTROLLER_BUTTON_B: // physical A = select
-			if s.cursor == len(entry.Files) {
+			switch {
+			case s.cursor < len(entry.Files):
 				s.confirmActive = true
-				s.confirmFileIdx = -1
-			} else if s.cursor == len(entry.Files)+1 {
+				s.confirmFileIdx = s.cursor
+			case hasROM && hasMusic && s.cursor == deleteAllIdx:
+				s.confirmActive = true
+				s.confirmFileIdx = deleteIdxROMs
+			case hasROM && hasMusic && s.cursor == deleteAllIdx+1:
+				s.confirmActive = true
+				s.confirmFileIdx = deleteIdxSoundtrack
+			case s.cursor == deleteAllIdx+extraActions-1:
+				s.confirmActive = true
+				s.confirmFileIdx = deleteIdxAll
+			case s.cursor == len(entry.Files)+extraActions:
 				if s.cfg.UnifiedNaming {
 					return s.startUnifiedNamingMigration(entry)
 				}
-			} else {
-				s.confirmActive = true
-				s.confirmFileIdx = s.cursor
 			}
 		case sdl.CONTROLLER_BUTTON_A: // physical B = back
 			return s.prev
@@ -305,11 +406,31 @@ func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool
 	}
 
 	var toDelete []inventory.DownloadedFile
-	if fileIdx == -1 {
+	switch fileIdx {
+	case deleteIdxAll:
 		toDelete = make([]inventory.DownloadedFile, len(entry.Files))
 		copy(toDelete, entry.Files)
-	} else if fileIdx < len(entry.Files) {
-		toDelete = []inventory.DownloadedFile{entry.Files[fileIdx]}
+	case deleteIdxROMs:
+		for _, f := range entry.Files {
+			if f.FileType == inventory.FileTypeROM || f.FileType == "" {
+				toDelete = append(toDelete, f)
+			}
+		}
+	case deleteIdxSoundtrack:
+		for _, f := range entry.Files {
+			if f.FileType == inventory.FileTypeMusic {
+				toDelete = append(toDelete, f)
+			}
+		}
+	default:
+		if fileIdx >= 0 && fileIdx < len(entry.Files) {
+			toDelete = []inventory.DownloadedFile{entry.Files[fileIdx]}
+		}
+	}
+
+	if len(toDelete) == 0 {
+		logger.Warn("inventory: performDelete no matching files game=%q fileIdx=%d", entry.Title, fileIdx)
+		return false, len(entry.Files)
 	}
 
 	for _, f := range toDelete {
@@ -318,32 +439,36 @@ func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool
 		} else {
 			logger.Debug("inventory: deleted file=%s", f.DestPath)
 		}
-		if artPath := inventory.CoverArtPath(entry.CoverURL, f.DestPath); artPath != "" {
-			if err := os.Remove(artPath); err != nil && !os.IsNotExist(err) {
-				logger.Warn("inventory: delete cover-art=%s: %v", artPath, err)
-			} else {
-				logger.Debug("inventory: deleted cover-art=%s", artPath)
+		// Only delete cover art for ROM files, not music.
+		if f.FileType != inventory.FileTypeMusic {
+			if artPath := inventory.CoverArtPath(entry.CoverURL, f.DestPath); artPath != "" {
+				if err := os.Remove(artPath); err != nil && !os.IsNotExist(err) {
+					logger.Warn("inventory: delete cover-art=%s: %v", artPath, err)
+				}
 			}
 		}
 	}
 	logger.Info("inventory: deleted game=%q files=%d", entry.Title, len(toDelete))
 
-	var allGone bool
-	var remaining int
-	if fileIdx == -1 {
+	if fileIdx == deleteIdxAll {
 		s.inv.Remove(gameURL)
-		allGone = true
-		remaining = 0
-	} else if len(toDelete) > 0 {
-		allGone = s.inv.RemoveFile(gameURL, toDelete[0].DestPath)
-		if allGone {
-			remaining = 0
-		} else {
-			remaining = len(entry.Files) - 1
+		if err := s.inv.Save(s.inventoryPath); err != nil {
+			logger.Warn("inventory: save after delete failed: %v", err)
 		}
-	} else {
-		allGone = false
-		remaining = len(entry.Files)
+		return true, 0
+	}
+
+	allGone := false
+	for _, f := range toDelete {
+		if s.inv.RemoveFile(gameURL, f.DestPath) {
+			allGone = true
+		}
+	}
+	remaining := 0
+	if !allGone {
+		if e, ok := s.inv.Lookup(gameURL); ok {
+			remaining = len(e.Files)
+		}
 	}
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Warn("inventory: save after delete failed: %v", err)

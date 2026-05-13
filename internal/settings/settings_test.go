@@ -20,8 +20,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.APIKey != "" {
 		t.Errorf("default APIKey = %q, want %q", cfg.APIKey, "")
 	}
-	if cfg.ROMSelection != "auto" {
-		t.Errorf("default ROMSelection = %q, want %q", cfg.ROMSelection, "auto")
+	if cfg.ROMLocation != "auto" {
+		t.Errorf("default ROMLocation = %q, want %q", cfg.ROMLocation, "auto")
 	}
 }
 
@@ -29,7 +29,7 @@ func TestRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	cfg := &settings.Config{APIKey: "abc123", ROMSelection: "ask"}
+	cfg := &settings.Config{APIKey: "abc123", ROMLocation: "ask"}
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -41,8 +41,8 @@ func TestRoundTrip(t *testing.T) {
 	if loaded.APIKey != "abc123" {
 		t.Errorf("APIKey = %q, want %q", loaded.APIKey, "abc123")
 	}
-	if loaded.ROMSelection != "ask" {
-		t.Errorf("ROMSelection = %q, want %q", loaded.ROMSelection, "ask")
+	if loaded.ROMLocation != "ask" {
+		t.Errorf("ROMLocation = %q, want %q", loaded.ROMLocation, "ask")
 	}
 }
 
@@ -57,8 +57,8 @@ func TestLoadCorruptedFileReturnsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.ROMSelection != "auto" {
-		t.Errorf("corrupted load should return defaults, got ROMSelection = %q", cfg.ROMSelection)
+	if cfg.ROMLocation != "auto" {
+		t.Errorf("corrupted load should return defaults, got ROMLocation = %q", cfg.ROMLocation)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestContentFilterRoundTrip(t *testing.T) {
 
 	cfg := &settings.Config{
 		APIKey:       "",
-		ROMSelection: "auto",
+		ROMLocation: "auto",
 		Filter: settings.ContentFilter{
 			AdultContent: settings.CategoryFilter{Enabled: true, Disabled: []string{"ecchi", "suggestive"}},
 			QueerContent: settings.CategoryFilter{Enabled: true, Disabled: []string{"lgbtq"}},
@@ -415,7 +415,7 @@ func TestSave_IsAtomic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	cfg := &settings.Config{APIKey: "test-key", ROMSelection: "ask"}
+	cfg := &settings.Config{APIKey: "test-key", ROMLocation: "ask"}
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -431,5 +431,39 @@ func TestSave_IsAtomic(t *testing.T) {
 	}
 	if loaded.APIKey != "test-key" {
 		t.Errorf("APIKey = %q, want %q", loaded.APIKey, "test-key")
+	}
+}
+
+func TestMusicDefaults(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MusicDownload != "off" {
+		t.Errorf("MusicDownload default = %q, want \"off\"", cfg.MusicDownload)
+	}
+	if cfg.MusicLocation != "auto" {
+		t.Errorf("MusicLocation default = %q, want \"auto\"", cfg.MusicLocation)
+	}
+}
+
+func TestMusicBackwardCompat(t *testing.T) {
+	// Old config JSON without music fields
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	raw := `{"api_key":"","rom_selection":"auto","rom_location":"auto","unified_naming":true}`
+	if err := os.WriteFile(path, []byte(raw), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// After Load() the defaults are applied.
+	if cfg.MusicDownload != "off" {
+		t.Errorf("backward-compat default MusicDownload = %q, want \"off\"", cfg.MusicDownload)
+	}
+	if cfg.MusicLocation != "auto" {
+		t.Errorf("backward-compat default MusicLocation = %q, want \"auto\"", cfg.MusicLocation)
 	}
 }

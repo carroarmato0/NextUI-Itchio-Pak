@@ -72,6 +72,7 @@ type DetailScreen struct {
 	prev          Screen
 	inv           *inventory.Inventory
 	inventoryPath string
+	updateSvc     UpdateServicer
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -95,6 +96,7 @@ func NewDetailScreen(
 	inv *inventory.Inventory,
 	inventoryPath string,
 	prev Screen,
+	updateSvc UpdateServicer,
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
@@ -110,6 +112,7 @@ func NewDetailScreen(
 		loading:        true,
 		inv:            inv,
 		inventoryPath:  inventoryPath,
+		updateSvc:      updateSvc,
 		pathScrollAt:   time.Now(),
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
@@ -136,10 +139,28 @@ func NewDetailScreen(
 			if game.CoverURL != "" {
 				d.ScreenshotURLs = append([]string{game.CoverURL}, d.ScreenshotURLs...)
 			}
-			logger.Debug("detail: warming %d screenshot URLs", len(d.ScreenshotURLs))
+			// Warm all non-GIF screenshots immediately. When there are multiple
+			// GIF screenshots, only warm the first one — concurrent large animated
+			// GIF decodes exhaust GPU memory on constrained hardware. The rest are
+			// warmed lazily during Draw() as the user navigates.
+			gifCount := 0
 			for _, u := range d.ScreenshotURLs {
+				if strings.EqualFold(filepath.Ext(u), ".gif") {
+					gifCount++
+				}
+			}
+			gifsWarmed := 0
+			for _, u := range d.ScreenshotURLs {
+				if strings.EqualFold(filepath.Ext(u), ".gif") {
+					if gifCount > 1 && gifsWarmed > 0 {
+						continue // deferred to Draw()
+					}
+					gifsWarmed++
+				}
 				cache.Warm(u)
 			}
+			logger.Debug("detail: warming %d screenshot URLs (%d GIF(s) deferred)",
+				len(d.ScreenshotURLs)-max(0, gifCount-1), max(0, gifCount-1))
 		}
 		s.detail = d
 		s.err = err
@@ -318,6 +339,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	if s.detail != nil && len(s.detail.ScreenshotURLs) > 0 {
 		ssURL := s.detail.ScreenshotURLs[s.screenshotIdx]
 		tex := s.cache.Get(r, ssURL)
+		// Proactively warm the next screenshot so navigation feels instant.
+		if s.screenshotIdx+1 < len(s.detail.ScreenshotURLs) {
+			s.cache.Warm(s.detail.ScreenshotURLs[s.screenshotIdx+1])
+		}
 
 		// Background box for screenshot
 		r.DrawRect(margin, y, imgBoxW, imgBoxH, bg[0], bg[1], bg[2])
@@ -792,7 +817,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				return s.startUnifiedNamingToggle()
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, nil)
 
 		}
 	case *sdl.ControllerButtonEvent:
@@ -837,7 +862,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s, nil, nil, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, nil)
 
 		}
 	}

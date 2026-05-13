@@ -12,11 +12,17 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
+const (
+	FileTypeROM   = "rom"
+	FileTypeMusic = "music"
+)
+
 type DownloadedFile struct {
 	Filename     string    `json:"filename"`
 	DestPath     string    `json:"dest_path"`
 	DownloadedAt time.Time `json:"downloaded_at"`
 	UnifiedName  bool      `json:"unified_name,omitempty"`
+	FileType     string    `json:"file_type,omitempty"` // "rom" | "music"; empty == "rom"
 }
 
 type UpstreamFile struct {

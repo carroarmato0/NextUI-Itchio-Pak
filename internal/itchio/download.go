@@ -26,7 +26,7 @@ var knownNonROMExts = map[string]bool{
 	".pdf": true, ".txt": true, ".md": true, ".epub": true, ".mobi": true,
 	".mp4": true, ".avi": true, ".mkv": true, ".mov": true,
 	".exe": true, ".dmg": true, ".apk": true,
-	".pocket": true, ".nes": true, ".gba": true, ".nds": true, ".sfc": true, ".smc": true,
+	".pocket": true, ".nes": true, ".nds": true, ".sfc": true, ".smc": true,
 }
 
 func isSkippableExt(ext string) bool {
@@ -182,16 +182,11 @@ func extractKeyID(jwtKey string) string {
 	return fmt.Sprintf("%d", p.ID)
 }
 
-// DownloadFree resolves the CDN URL for a free game upload and streams it.
-//
-// upload.URL must be a resolver endpoint of the form:
-//
-//	gameURL/file/UPLOAD_ID?key=KEY&csrf=CSRF
-func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, int64)) error {
+func (c *Client) ResolveFreeURL(upload Upload) (string, error) {
 	// Parse the resolver URL to extract base path, key, and csrf.
 	parsed, err := url.Parse(upload.URL)
 	if err != nil {
-		return fmt.Errorf("parse resolver URL: %w", err)
+		return "", fmt.Errorf("parse resolver URL: %w", err)
 	}
 	key := parsed.Query().Get("key")
 	csrf := parsed.Query().Get("csrf")
@@ -204,18 +199,18 @@ func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, i
 	form := url.Values{"csrf_token": {csrf}, "download_key_id": {keyID}}
 	resp, err := c.http.Post(baseURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 	if err != nil {
-		return fmt.Errorf("resolve CDN URL: %w", err)
+		return "", fmt.Errorf("resolve CDN URL: %w", err)
 	}
 	defer resp.Body.Close()
 
 	rawBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return fmt.Errorf("read resolver response: %w", readErr)
+		return "", fmt.Errorf("read resolver response: %w", readErr)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("uploads: resolver HTTP %d: %.200s", resp.StatusCode, rawBody)
-		return fmt.Errorf("resolve CDN URL: HTTP %d: %.200s", resp.StatusCode, rawBody)
+		return "", fmt.Errorf("resolve CDN URL: HTTP %d: %.200s", resp.StatusCode, rawBody)
 	}
 
 	var result struct {
@@ -224,23 +219,45 @@ func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, i
 	}
 	if err := json.Unmarshal(rawBody, &result); err != nil {
 		logger.Error("uploads: parse resolver response: %v (body: %.200s)", err, rawBody)
-		return fmt.Errorf("parse CDN URL response: %w (body: %.200s)", err, rawBody)
+		return "", fmt.Errorf("parse CDN URL response: %w (body: %.200s)", err, rawBody)
 	}
 	if len(result.Errors) > 0 {
 		logger.Error("uploads: resolver error: %s", strings.Join(result.Errors, "; "))
-		return fmt.Errorf("resolver error: %s", strings.Join(result.Errors, "; "))
+		return "", fmt.Errorf("resolver error: %s", strings.Join(result.Errors, "; "))
 	}
 	if result.URL == "" {
 		logger.Error("uploads: empty CDN URL from resolver (file may require purchase)")
-		return fmt.Errorf("empty CDN URL from resolver (file may require purchase)")
+		return "", fmt.Errorf("empty CDN URL from resolver (file may require purchase)")
 	}
 
 	// CDN URL may contain signed tokens — do not log it.
-	return c.streamToFile(result.URL, dest, progress)
+	return result.URL, nil
+}
+
+// DownloadFree resolves the CDN URL for a free game upload and streams it.
+//
+// upload.URL must be a resolver endpoint of the form:
+//
+//	gameURL/file/UPLOAD_ID?key=KEY&csrf=CSRF
+func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, int64)) error {
+	cdnURL, err := c.ResolveFreeURL(upload)
+	if err != nil {
+		return err
+	}
+	return c.streamToFile(cdnURL, dest, progress)
 }
 
 func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) error {
-	resp, err := c.http.Get(srcURL)
+	// c.http has a 30-second Timeout that covers the entire response body read —
+	// fine for API calls but fatal for large file downloads. Create a per-call
+	// client with no overall timeout (Timeout: 0) that shares the same
+	// transport so UA injection, h2/h1 fallback and dial timeouts still apply.
+	dlClient := &http.Client{
+		Transport:     c.http.Transport,
+		Jar:           c.http.Jar,
+		CheckRedirect: c.http.CheckRedirect,
+	}
+	resp, err := dlClient.Get(srcURL)
 	if err != nil {
 		return fmt.Errorf("fetch file: %w", err)
 	}

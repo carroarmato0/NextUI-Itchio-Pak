@@ -230,3 +230,9 @@ func NewClientWithBaseAndButler(base, butler string) *Client {
 func (c *Client) HTTPClient() *http.Client {
 	return c.http
 }
+
+// DownloadURL streams directly from a pre-resolved CDN URL to dest.
+// Use when the CDN URL was already resolved by ResolveFreeURL or ResolveAuthURL.
+func (c *Client) DownloadURL(cdnURL, dest string, progress func(int64, int64)) error {
+	return c.streamToFile(cdnURL, dest, progress)
+}

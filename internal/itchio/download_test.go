@@ -399,3 +399,74 @@ func TestFetchUploadsForKey_UploadIDPassedThrough(t *testing.T) {
 		t.Errorf("UploadID = %q, want \"98765\"", uploads[0].UploadID)
 	}
 }
+
+func TestResolveFreeURL(t *testing.T) {
+	// Key encodes {"id":42,...} so extractKeyID returns "42"; csrf is passed through as-is.
+	const testKey = "eyJpZCI6NDIsImV4cGlyZXMiOjk5OTk5OTk5OTl9.SIG"
+	const testCSRF = "TESTCSRF"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/file/") {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST to resolver, got %s", r.Method)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse form: %v", err)
+		}
+		if r.FormValue("csrf_token") == "" {
+			t.Errorf("csrf_token missing from POST form body")
+		}
+		if r.FormValue("download_key_id") == "" {
+			t.Errorf("download_key_id missing from POST form body")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"url":"https://cdn.example.com/file.zip"}`)
+	}))
+	defer srv.Close()
+
+	client := itchio.NewClientWithBase(srv.URL)
+	upload := itchio.Upload{
+		Filename: "game.zip",
+		UploadID: "999",
+		URL:      srv.URL + "/author/game/file/999?key=" + testKey + "&csrf=" + testCSRF,
+	}
+	cdnURL, err := client.ResolveFreeURL(upload)
+	if err != nil {
+		t.Fatalf("ResolveFreeURL: %v", err)
+	}
+	if cdnURL != "https://cdn.example.com/file.zip" {
+		t.Errorf("cdnURL = %q, want %q", cdnURL, "https://cdn.example.com/file.zip")
+	}
+}
+
+func TestResolveAuthURL(t *testing.T) {
+	const uploadID = "555"
+	const downloadKeyID = "777"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if !strings.Contains(r.URL.Path, uploadID) {
+			t.Errorf("URL path %q does not contain upload ID %q", r.URL.Path, uploadID)
+		}
+		if !strings.Contains(r.URL.RawQuery, downloadKeyID) {
+			t.Errorf("URL query %q does not contain download key ID %q", r.URL.RawQuery, downloadKeyID)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"url":"https://cdn.example.com/auth-file.zip"}`)
+	}))
+	defer srv.Close()
+
+	client := itchio.NewClientWithBase(srv.URL)
+	cdnURL, err := client.ResolveAuthURL("apikey", uploadID, downloadKeyID)
+	if err != nil {
+		t.Fatalf("ResolveAuthURL: %v", err)
+	}
+	if cdnURL != "https://cdn.example.com/auth-file.zip" {
+		t.Errorf("cdnURL = %q, want %q", cdnURL, "https://cdn.example.com/auth-file.zip")
+	}
+}

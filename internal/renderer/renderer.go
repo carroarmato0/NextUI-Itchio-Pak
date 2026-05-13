@@ -364,6 +364,52 @@ func (r *Renderer) DrawTextureAt(tex *sdl.Texture, x, y, w, h int32) {
 	r.Renderer.Copy(tex, nil, &copyDstBuf)
 }
 
+// scrollTextOffset computes the horizontal marquee offset for text that is
+// `excess` pixels wider than its clip window. The cycle is:
+//
+//	pause at start → scroll left → pause at end → reset
+func scrollTextOffset(excess int32) int32 {
+	const speedPxPerSec = uint32(60)
+	const pauseMs = uint32(1500)
+	scrollMs := uint32(excess) * 1000 / speedPxPerSec
+	cycleMs := pauseMs + scrollMs + pauseMs
+	t := sdl.GetTicks() % cycleMs
+	if t < pauseMs {
+		return 0
+	}
+	t -= pauseMs
+	if t >= scrollMs {
+		return excess
+	}
+	return int32(t) * int32(speedPxPerSec) / 1000
+}
+
+// DrawScrollingText draws text within a clip window of width maxW. When the text
+// is wider than maxW it autoscrolls horizontally; otherwise it is drawn normally.
+func (r *Renderer) DrawScrollingText(text string, x, y, maxW int32, cr, cg, cb uint8) {
+	tw, th := r.TextSize(text)
+	if tw <= maxW {
+		r.DrawText(text, x, y, cr, cg, cb)
+		return
+	}
+	r.SetClipRect(x, y, maxW, th)
+	r.DrawText(text, x-scrollTextOffset(tw-maxW), y, cr, cg, cb)
+	r.ClearClipRect()
+}
+
+// DrawSmallScrollingText draws small-font text within a clip window of width maxW.
+// When the text is wider than maxW it autoscrolls horizontally; otherwise drawn normally.
+func (r *Renderer) DrawSmallScrollingText(text string, x, y, maxW int32, cr, cg, cb uint8) {
+	tw, th := r.SmallTextSize(text)
+	if tw <= maxW {
+		r.DrawSmallText(text, x, y, cr, cg, cb)
+		return
+	}
+	r.SetClipRect(x, y, maxW, th)
+	r.DrawSmallText(text, x-scrollTextOffset(tw-maxW), y, cr, cg, cb)
+	r.ClearClipRect()
+}
+
 // SetClipRect sets the clipping rectangle for rendering.
 func (r *Renderer) SetClipRect(x, y, w, h int32) {
 	clipRectBuf = sdl.Rect{X: x, Y: y, W: w, H: h}

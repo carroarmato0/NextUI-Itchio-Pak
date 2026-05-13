@@ -227,7 +227,7 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	var uploads []Upload
 	for _, u := range items {
 		ext := strings.ToLower(filepath.Ext(u.Filename))
-		if ext == ".gb" || ext == ".gbc" || ext == ".zip" {
+		if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".zip" {
 			uploads = append(uploads, Upload{
 				Filename: u.Filename,
 				UploadID: fmt.Sprintf("%d", u.ID),
@@ -256,9 +256,7 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	return uploads, nil
 }
 
-// DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
-// Uses the simple API (itch.io/api/1) with a per-game download key.
-func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string, progress func(int64, int64)) error {
+func (c *Client) ResolveAuthURL(apiKey, uploadID, downloadKeyID string) (string, error) {
 	// URL contains the API key; do not log it.
 	dlURL := fmt.Sprintf("%s/api/1/%s/upload/%s/download?download_key_id=%s",
 		c.base, apiKey, uploadID, downloadKeyID)
@@ -266,13 +264,13 @@ func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string
 
 	resp, err := c.http.Get(dlURL)
 	if err != nil {
-		return fmt.Errorf("resolve auth CDN URL: %w", err)
+		return "", fmt.Errorf("resolve auth CDN URL: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("auth: CDN resolve HTTP %d", resp.StatusCode)
-		return fmt.Errorf("auth CDN resolve status %d", resp.StatusCode)
+		return "", fmt.Errorf("auth CDN resolve status %d", resp.StatusCode)
 	}
 
 	var result struct {
@@ -280,17 +278,28 @@ func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string
 		Errors []string `json:"errors"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decode auth CDN response: %w", err)
+		return "", fmt.Errorf("decode auth CDN response: %w", err)
 	}
 	if len(result.Errors) > 0 {
 		logger.Error("auth: CDN error: %s", strings.Join(result.Errors, "; "))
-		return fmt.Errorf("auth CDN error: %s", strings.Join(result.Errors, "; "))
+		return "", fmt.Errorf("auth CDN error: %s", strings.Join(result.Errors, "; "))
 	}
 	if result.URL == "" {
 		logger.Error("auth: empty CDN URL from resolver")
-		return fmt.Errorf("empty CDN URL from auth resolver")
+		return "", fmt.Errorf("empty CDN URL from auth resolver")
 	}
 
+	// CDN URL may contain signed tokens — do not log it.
+	return result.URL, nil
+}
+
+// DownloadAuthUpload resolves the CDN URL for an owned upload and streams it to dest.
+// Uses the simple API (itch.io/api/1) with a per-game download key.
+func (c *Client) DownloadAuthUpload(apiKey, uploadID, downloadKeyID, dest string, progress func(int64, int64)) error {
+	cdnURL, err := c.ResolveAuthURL(apiKey, uploadID, downloadKeyID)
+	if err != nil {
+		return err
+	}
 	logger.Info("auth: streaming to %s", dest)
-	return c.streamToFile(result.URL, dest, progress)
+	return c.streamToFile(cdnURL, dest, progress)
 }

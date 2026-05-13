@@ -257,7 +257,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 		if n.Type == html.ElementNode && n.Data == "div" && nodeHasClass(n, "upload") {
 			if u, ok := extractUploadEntry(n); ok {
 				ext := strings.ToLower(filepath.Ext(u.Filename))
-				if ext == ".gb" || ext == ".gbc" || ext == ".zip" {
+				if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".zip" {
 					logger.Debug("download-page: found ROM %s id=%s", u.Filename, u.UploadID)
 					result.Uploads = append(result.Uploads, u)
 				} else if !isSkippableExt(ext) {

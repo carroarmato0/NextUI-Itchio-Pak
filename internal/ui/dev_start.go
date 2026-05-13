@@ -105,6 +105,7 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 			return NewDetailScreen(
 				s.client, s.cfg, s.cfgPath, s.cache,
 				s.list.viewGames[0], s.inv, s.inventoryPath, s.list,
+				nil,
 				s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle,
 			)
 		}
@@ -139,7 +140,7 @@ func NewDevStartScreen(
 	switch name {
 	case "settings":
 		// onRefreshGames is nil-safe inside SettingsScreen.
-		return NewSettingsScreen(client, cfg, cfgPath, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, nil)
+		return NewSettingsScreen(client, cfg, cfgPath, cache, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, nil)
 	case "detail":
 		return newDevAutoDetailScreen(list, client, cfg, cfgPath, cache, inv, inventoryPath, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
 	default:

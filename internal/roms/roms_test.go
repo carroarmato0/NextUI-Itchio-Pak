@@ -36,6 +36,8 @@ func TestDestinationDir(t *testing.T) {
 		{".GBC", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 		{".gb", "/mnt/SDCARD/Roms/Game Boy (GB)/"},
 		{".GB", "/mnt/SDCARD/Roms/Game Boy (GB)/"},
+		{".gba", "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"},
+		{".GBA", "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"},
 		{".zip", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 		{".ZIP", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 	}
@@ -66,5 +68,22 @@ func TestSelectBestNoROMs(t *testing.T) {
 	got := roms.SelectBest(uploads)
 	if got != nil {
 		t.Errorf("SelectBest with no ROMs: expected nil, got %v", got)
+	}
+}
+
+func TestMusicDestinationDir(t *testing.T) {
+	tests := []struct {
+		title string
+		want  string
+	}{
+		{"Solastra", "/mnt/SDCARD/Music/Solastra/"},
+		{"Game: Title?", "/mnt/SDCARD/Music/Game Title/"},
+		{"", "/mnt/SDCARD/Music/Unknown/"},
+	}
+	for _, tt := range tests {
+		got := roms.MusicDestinationDir(tt.title)
+		if got != tt.want {
+			t.Errorf("MusicDestinationDir(%q) = %q, want %q", tt.title, got, tt.want)
+		}
 	}
 }

@@ -204,7 +204,12 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 	}
 
 	// Warn if any downloaded file is no longer offered upstream.
+	// Music files extracted from ZIPs have individual track names that are never
+	// directly listed as upload filenames, so skip them here.
 	for _, f := range downloadedFiles {
+		if f.FileType == FileTypeMusic {
+			continue
+		}
 		stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename))
 		if !upstreamNames[f.Filename] && !upstreamNames[stem] {
 			s.inv.MarkRemoved(gameURL)

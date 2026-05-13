@@ -108,19 +108,19 @@ func (s *LocationPickerScreen) loadDir(dir string) {
 		dir += "/"
 	}
 	s.currentDir = dir
-	s.rows = buildRows(dir)
+	s.rows = buildRows(dir, locationRoot)
 	s.cursor = 0
 	s.scrollOffset = 0
 }
 
 // buildRows constructs the navigable row list for dir:
 //   - index 0:   rowSaveHere  (always)
-//   - index 1:   rowUp        (omitted when dir == locationRoot)
+//   - index 1:   rowUp        (omitted when dir == root)
 //   - index 1+:  rowEntry     (one per visible subdirectory, sorted case-insensitively)
-func buildRows(dir string) []pickerRow {
+func buildRows(dir, root string) []pickerRow {
 	rows := []pickerRow{{kind: rowSaveHere}}
 
-	atRoot := strings.TrimRight(dir, "/") == locationRoot
+	atRoot := strings.TrimRight(dir, "/") == root
 	if !atRoot {
 		rows = append(rows, pickerRow{kind: rowUp})
 	}
