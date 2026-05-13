@@ -18,7 +18,7 @@ jobs:
           go-version: "1.22"
 
       - name: Install SDL2 dev libs
-        run: sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev
+        run: sudo apt-get install -y --fix-missing libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev
 
       - name: Build
         run: go build -tags headless ./...
