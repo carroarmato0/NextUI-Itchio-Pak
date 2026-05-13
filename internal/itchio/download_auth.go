@@ -227,7 +227,7 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	var uploads []Upload
 	for _, u := range items {
 		ext := strings.ToLower(filepath.Ext(u.Filename))
-		if ext == ".gb" || ext == ".gbc" || ext == ".zip" {
+		if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".zip" {
 			uploads = append(uploads, Upload{
 				Filename: u.Filename,
 				UploadID: fmt.Sprintf("%d", u.ID),

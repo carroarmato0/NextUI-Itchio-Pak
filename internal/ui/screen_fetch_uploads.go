@@ -289,7 +289,30 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 			}
 			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 		}
-		return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
+		// Multiple known uploads — check if any are ZIPs.
+		hasZIP := false
+		for _, u := range known {
+			if strings.ToLower(filepath.Ext(u.Filename)) == ".zip" {
+				hasZIP = true
+				break
+			}
+		}
+		if hasZIP {
+			// Mixed set with ZIPs — let the user pick which file to download.
+			return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
+		}
+		// All known uploads are direct ROM files — download all automatically.
+		var downloads []romDownload
+		for _, u := range known {
+			ext := strings.ToLower(filepath.Ext(u.Filename))
+			dest := roms.DestinationDir(ext) + u.Filename
+			if existing := s.inv.ExistingDestPath(s.game.URL, u.Filename); existing != "" {
+				dest = existing
+			}
+			downloads = append(downloads, romDownload{Upload: u, DestPath: dest})
+			logger.Debug("fetch: multi-dl queued %s → %s", u.Filename, dest)
+		}
+		return NewMultiROMDownloadScreen(s.client, s.cfg, s.game, s.detail, downloads, s.inv, s.inventoryPath, s.prev)
 	}
 	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, unknown, s.inv, s.inventoryPath, s.prev)
 }

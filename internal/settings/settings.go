@@ -47,9 +47,8 @@ type ContentFilter struct {
 
 // Config is the top-level application configuration.
 type Config struct {
-	APIKey        string            `json:"api_key"`
-	ROMSelection  string            `json:"rom_selection"`
-	ROMLocation   string            `json:"rom_location"`
+	APIKey       string            `json:"api_key"`
+	ROMLocation  string            `json:"rom_location"`
 	LastROMDirs   map[string]string `json:"last_rom_dirs,omitempty"`
 	Filter        ContentFilter     `json:"content_filter"`
 	LogLevel      string            `json:"log_level,omitempty"`  // "debug" | "" (resolves to "info")
@@ -62,9 +61,8 @@ type Config struct {
 
 func defaults() *Config {
 	return &Config{
-		APIKey:        "",
-		ROMSelection:  "auto",
-		ROMLocation:   "auto",
+		APIKey:      "",
+		ROMLocation: "auto",
 		UnifiedNaming: true,
 		MusicDownload: "off",
 		MusicLocation: "auto",

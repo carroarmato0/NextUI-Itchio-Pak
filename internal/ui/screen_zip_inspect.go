@@ -229,8 +229,8 @@ func (s *ZIPInspectScreen) route() Screen {
 		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
 	}
 
-	// Multiple ROMs of same extension or GBA present always require the picker.
-	if m.HasDuplicateROMExt() || s.cfg.MusicDownload == "ask" || manifestHasGBA {
+	// Multiple ROMs of same extension, GBA present, or music choice needed → picker.
+	if m.HasDuplicateROMExt() || (s.cfg.MusicDownload == "ask" && m.HasMusic()) || manifestHasGBA {
 		return NewZIPContentsScreen(s.client, s.cfg, s.cfgPath, s.cache,
 			s.game, s.detail, s.plan, s.inv, s.invPath, s.prev)
 	}

@@ -27,7 +27,6 @@ type settingsItem int
 
 const (
 	sItemAPIKey settingsItem = iota
-	sItemROMMode
 	sItemROMLocation
 	sItemMusicDownload
 	sItemMusicLocation
@@ -207,7 +206,6 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 	var items []menuItem
 	items = append(items, menuItem{sItemAPIKey, "API Key: "})
-	items = append(items, menuItem{sItemROMMode, "ROM Selection: " + s.cfg.ROMSelection})
 	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
 	items = append(items, menuItem{sItemMusicDownload, "Music Download: " + musicDownloadLabel(s.cfg.MusicDownload)})
 	if s.cfg.MusicDownload != "off" {
@@ -476,13 +474,6 @@ func (s *SettingsScreen) activate() Screen {
 			s.showAPIKeyHelp = true
 			logger.Info("settings: API key help overlay shown")
 		}
-	case sItemROMMode:
-		if s.cfg.ROMSelection == "auto" {
-			s.cfg.ROMSelection = "ask"
-		} else {
-			s.cfg.ROMSelection = "auto"
-		}
-		s.cfg.Save(s.cfgPath)
 	case sItemROMLocation:
 		if s.cfg.ROMLocation == "auto" {
 			s.cfg.ROMLocation = "ask"

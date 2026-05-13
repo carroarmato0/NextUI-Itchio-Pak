@@ -26,7 +26,7 @@ var knownNonROMExts = map[string]bool{
 	".pdf": true, ".txt": true, ".md": true, ".epub": true, ".mobi": true,
 	".mp4": true, ".avi": true, ".mkv": true, ".mov": true,
 	".exe": true, ".dmg": true, ".apk": true,
-	".pocket": true, ".nes": true, ".gba": true, ".nds": true, ".sfc": true, ".smc": true,
+	".pocket": true, ".nes": true, ".nds": true, ".sfc": true, ".smc": true,
 }
 
 func isSkippableExt(ext string) bool {
