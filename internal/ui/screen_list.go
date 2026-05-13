@@ -522,13 +522,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		ftrY := r.DrawFooterBar(footerH)
 		if r.W <= narrowScreenW {
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"},
+				{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"},
 				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
 				{Kind: renderer.BadgePill, Label: "START", Text: "Set"},
 			}, ftrY)
 		} else {
 			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"},
+				{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"},
 				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
 				{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
 			}, ftrY)
@@ -889,7 +889,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
 	if s.cacheReady {
-		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Sort"})
+		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"})
 	}
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	if r.W <= narrowScreenW {

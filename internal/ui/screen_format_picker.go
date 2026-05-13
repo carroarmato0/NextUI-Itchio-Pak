@@ -20,6 +20,7 @@ type formatChoice int
 const (
 	formatGB  formatChoice = iota // .gb
 	formatGBC                     // .gbc
+	formatGBA                     // .gba
 	formatZIP                     // .zip
 )
 
@@ -29,6 +30,8 @@ func (f formatChoice) ext() string {
 		return ".gb"
 	case formatGBC:
 		return ".gbc"
+	case formatGBA:
+		return ".gba"
 	case formatZIP:
 		return ".zip"
 	}
@@ -41,14 +44,16 @@ func (f formatChoice) label() string {
 		return "GB"
 	case formatGBC:
 		return "GBC"
+	case formatGBA:
+		return "GBA"
 	case formatZIP:
 		return "ZIP"
 	}
 	return "GBC"
 }
 
-func (f formatChoice) next() formatChoice { return (f + 1) % 3 }
-func (f formatChoice) prev() formatChoice { return (f + 2) % 3 }
+func (f formatChoice) next() formatChoice { return (f + 1) % 4 }
+func (f formatChoice) prev() formatChoice { return (f + 3) % 4 }
 
 // defaultFormatChoice returns ZIP when the filename already ends in .zip,
 // GBC for everything else (most GB Studio games target Game Boy Color).
@@ -118,20 +123,20 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 8
-	r.DrawSmallText("No .gb/.gbc detected — choose file and format:", 12, contentTop, 180, 160, 100)
+	r.DrawSmallText("No .gb/.gbc/.gba/.zip detected — choose file and format:", 12, contentTop, 180, 160, 100)
 	contentTop += smallFH + 10
 
-	rowH := fontH + 20
-	const tagMargin = int32(8)
+	rowH := fontH + 12 // matches list screen row height
+	const tagMargin = int32(12)
 	const badgePad = int32(4)
 	maxTagW, _ := r.SmallTextSize("GBC") // widest label — used for a stable filename budget
 	badgeW := maxTagW + badgePad*2
 	badgeH := smallFH + badgePad
 
 	for i, u := range s.uploads {
-		y := contentTop + int32(i)*rowH
+		rowTop := contentTop + int32(i)*rowH
 		if i == s.cursor {
-			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			r.DrawPill(4, rowTop+2, r.W-8, rowH-4, ac[0], ac[1], ac[2])
 		}
 		var tr, tg, tb uint8
 		if i == s.cursor {
@@ -141,19 +146,22 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 			c := r.Theme.ListText
 			tr, tg, tb = c[0], c[1], c[2]
 		}
+		textY := rowTop + (rowH-fontH)/2
 		name := truncateToWidth(r, u.Filename, r.W-badgeW-tagMargin-20-12)
-		r.DrawText(name, 20, y, tr, tg, tb)
+		r.DrawText(name, 20, textY, tr, tg, tb)
 
 		f := s.formats[i]
 		lbl := f.label()
 		tagX := r.W - badgeW - tagMargin
-		badgeY := y + (fontH-badgeH)/2
+		badgeY := rowTop + (rowH-badgeH)/2
 		var fR, fG, fB uint8
 		switch f {
 		case formatGB:
 			fR, fG, fB = 120, 220, 120
 		case formatGBC:
 			fR, fG, fB = 80, 180, 255
+		case formatGBA:
+			fR, fG, fB = 200, 100, 240
 		case formatZIP:
 			fR, fG, fB = 220, 180, 80
 		}
@@ -164,7 +172,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
 		{Kind: renderer.BadgePill, Label: "↕", Text: "Select"},
-		{Kind: renderer.BadgePill, Label: "L1/R1", Text: "Format"},
+		{Kind: renderer.BadgePill, Label: "←→", Text: "Format"},
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Download"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}, ftrY)

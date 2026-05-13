@@ -11,7 +11,11 @@ import (
 )
 
 const (
-	maxGIFFrames        = 64
+	// maxGIFFrames caps how many frames we keep in VRAM per animated GIF.
+	// Each frame at 640×577 costs ~1.5 MB; 16 frames ≈ 22 MB per GIF, safe for
+	// the device's constrained GPU memory.  64 frames (the old cap) consumed
+	// ~90 MB per GIF — three concurrent GIF screenshots could crash the device.
+	maxGIFFrames        = 16
 	gifZeroDelayDefault = 100 * time.Millisecond
 )
 
