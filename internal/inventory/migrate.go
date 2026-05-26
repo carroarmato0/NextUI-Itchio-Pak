@@ -95,7 +95,7 @@ func MigrateFile(
 	// Determine target path.
 	var targetPath string
 	if enable {
-		targetPath, _ = roms.ResolveUnifiedDest(currentPath, gameTitle)
+		targetPath, _ = roms.ResolveUnifiedDest(currentPath, gameTitle, false)
 	} else {
 		if !file.UnifiedName {
 			return res, nil // already disabled — no-op

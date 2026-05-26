@@ -88,7 +88,7 @@ func (s *MigrateFlowScreen) detect() {
 
 	var targetPath string
 	if s.enable {
-		targetPath, _ = roms.ResolveUnifiedDest(currentPath, s.gameTitle)
+		targetPath, _ = roms.ResolveUnifiedDest(currentPath, s.gameTitle, false)
 	} else {
 		targetPath = filepath.Join(filepath.Dir(currentPath), s.file.Filename)
 	}

@@ -231,7 +231,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 		entry, entryExists := s.inv.Lookup(s.game.URL)
 		disabled := entryExists && entry.UnifiedNamingDisabled
 		if !disabled {
-			newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title)
+			newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true)
 			if didRename {
 				if err := os.Rename(dest, newDest); err != nil {
 					logger.Warn("zip-download: unified rename: %v", err)

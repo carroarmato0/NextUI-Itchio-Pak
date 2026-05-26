@@ -116,7 +116,7 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 			entry, entryExists := s.inv.Lookup(s.game.URL)
 			disabled := entryExists && entry.UnifiedNamingDisabled
 			if !disabled {
-				newDest, didRename := roms.ResolveUnifiedDest(dl.DestPath, s.game.Title)
+				newDest, didRename := roms.ResolveUnifiedDest(dl.DestPath, s.game.Title, true)
 				if didRename {
 					if renameErr := os.Rename(dl.DestPath, newDest); renameErr != nil {
 						logger.Warn("unified-naming: rename failed: %v", renameErr)

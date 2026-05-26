@@ -88,7 +88,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 				entry, entryExists := inv.Lookup(game.URL)
 				disabled := entryExists && entry.UnifiedNamingDisabled
 				if !disabled {
-					newDest, didRename := roms.ResolveUnifiedDest(dest, game.Title)
+					newDest, didRename := roms.ResolveUnifiedDest(dest, game.Title, true)
 					if didRename {
 						if renameErr := os.Rename(dest, newDest); renameErr != nil {
 							logger.Warn("unified-naming: rename failed: %v", renameErr)
