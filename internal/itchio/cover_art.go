@@ -257,5 +257,19 @@ func CopyCoverArt(romDestPath string) error {
 		return fmt.Errorf("cover-art: rename: %w", err)
 	}
 	logger.Info("cover-art: saved → %s", artPath)
+
+	// Remove stale art files with the same stem but a different extension.
+	artBase := filepath.Base(artPath)
+	if entries, err := os.ReadDir(mediaDir); err == nil {
+		for _, e := range entries {
+			name := e.Name()
+			if strings.TrimSuffix(name, filepath.Ext(name)) == base && name != artBase {
+				stale := filepath.Join(mediaDir, name)
+				if removeErr := os.Remove(stale); removeErr == nil {
+					logger.Debug("cover-art: removed stale %s", name)
+				}
+			}
+		}
+	}
 	return nil
 }

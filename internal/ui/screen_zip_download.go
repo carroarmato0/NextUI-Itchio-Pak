@@ -195,6 +195,9 @@ func (s *ZIPDownloadScreen) run() {
 				DownloadedAt: now,
 				FileType:     inventory.FileTypeM3U,
 			})
+			if saveErr := s.inv.Save(s.invPath); saveErr != nil {
+				logger.Warn("inventory: save failed after M3U: %v", saveErr)
+			}
 			if artErr := s.client.DownloadCoverArt(s.game.CoverURL, m3uPath); artErr != nil {
 				logger.Warn("zip-download: M3U cover art: %v", artErr)
 			}
@@ -218,7 +221,7 @@ func (s *ZIPDownloadScreen) shouldExtractROM(name string) bool {
 	if len(s.plan.SelectedROMs) == 0 {
 		return true
 	}
-	ext := strings.ToLower(filepath.Ext(name))
+	ext := strings.ToLower(roms.ROMExt(name))
 	chosen, ok := s.plan.SelectedROMs[ext]
 	if !ok {
 		return true
@@ -374,7 +377,7 @@ func (s *ZIPDownloadScreen) findIdenticalROMInInventory(f *zip.File, ext string)
 		if df.FileType != inventory.FileTypeROM {
 			continue
 		}
-		if strings.ToLower(filepath.Ext(df.DestPath)) != ext {
+		if strings.ToLower(roms.ROMExt(df.DestPath)) != ext {
 			continue
 		}
 		fi, err := os.Stat(df.DestPath)
