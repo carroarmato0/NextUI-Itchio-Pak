@@ -15,7 +15,6 @@ import (
 const (
 	FileTypeROM   = "rom"
 	FileTypeMusic = "music"
-	FileTypeM3U   = "m3u"
 )
 
 type DownloadedFile struct {

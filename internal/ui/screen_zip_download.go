@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -175,35 +174,6 @@ func (s *ZIPDownloadScreen) run() {
 		logger.Warn("zip-download: save inventory: %v", err)
 	}
 
-	// Generate M3U playlist for multi-cart Pico-8 games.
-	if s.plan.IsPico8MultiCart && len(s.extracted) > 0 {
-		subDir := s.plan.ROMDirs[".p8"]
-		if subDir == "" {
-			subDir = s.plan.ROMDirs[".p8.png"]
-		}
-		m3uPath, m3uErr := s.writePico8M3U(subDir, s.extracted)
-		if m3uErr != nil {
-			logger.Warn("zip-download: M3U generation: %v", m3uErr)
-		} else {
-			s.extracted = append(s.extracted, m3uPath)
-			s.inv.Add(s.game.URL, inventory.Entry{
-				GameURL: s.game.URL, Title: s.game.Title,
-				Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
-			}, inventory.DownloadedFile{
-				Filename:     filepath.Base(m3uPath),
-				DestPath:     m3uPath,
-				DownloadedAt: now,
-				FileType:     inventory.FileTypeM3U,
-			})
-			if saveErr := s.inv.Save(s.invPath); saveErr != nil {
-				logger.Warn("inventory: save failed after M3U: %v", saveErr)
-			}
-			if artErr := s.client.DownloadCoverArt(s.game.CoverURL, m3uPath); artErr != nil {
-				logger.Warn("zip-download: M3U cover art: %v", artErr)
-			}
-		}
-	}
-
 	if len(s.extracted) == 0 {
 		logger.Error("zip-download: no files extracted (skipped=%d)", len(s.skipped))
 		s.err = fmt.Errorf("no files could be extracted from ZIP")
@@ -275,9 +245,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 		}
 	}
 
-	if s.plan.IsPico8MultiCart {
-		// cover art is handled once by writePico8M3U after all ROMs are extracted
-	} else if ext == ".p8.png" {
+	if ext == ".p8.png" {
 		if artErr := itchio.CopyCoverArt(finalDest); artErr != nil {
 			logger.Warn("zip-download: cover art copy: %v", artErr)
 		}
@@ -323,39 +291,6 @@ func (s *ZIPDownloadScreen) extractMusic(f *zip.File, baseName string, now time.
 		FileType:     inventory.FileTypeMusic,
 	})
 	return dest, nil
-}
-
-// writePico8M3U writes a .m3u playlist for a multi-cart Pico-8 game into subDir.
-// The playlist lists cart filenames (no path prefix) sorted alphabetically.
-// Returns the path of the written M3U file.
-func (s *ZIPDownloadScreen) writePico8M3U(subDir string, extractedPaths []string) (string, error) {
-	cleanDir := strings.TrimSuffix(subDir, "/")
-	var carts []string
-	for _, p := range extractedPaths {
-		if filepath.Dir(p) != cleanDir {
-			continue
-		}
-		ext := strings.ToLower(roms.ROMExt(filepath.Base(p)))
-		if ext == ".p8" || ext == ".p8.png" {
-			carts = append(carts, filepath.Base(p))
-		}
-	}
-	if len(carts) == 0 {
-		return "", fmt.Errorf("no Pico-8 cart files found in %s", subDir)
-	}
-	sort.Strings(carts)
-
-	safe := roms.SanitiseFilename(s.game.Title, "")
-	if safe == "" {
-		safe = "Unknown"
-	}
-	m3uPath := filepath.Join(cleanDir, safe+".m3u")
-
-	if err := os.WriteFile(m3uPath, []byte(strings.Join(carts, "\n")+"\n"), 0644); err != nil {
-		return "", fmt.Errorf("write m3u: %w", err)
-	}
-	logger.Info("zip-download: wrote M3U %s with %d cart(s)", m3uPath, len(carts))
-	return m3uPath, nil
 }
 
 // findIdenticalROMInInventory returns the DestPath of an already-downloaded ROM
