@@ -38,6 +38,12 @@ type fallbackFont struct {
 	ranges      []cmapRange
 }
 
+// pillKey identifies a unique pill shape by size and fill colour.
+type pillKey struct {
+	w, h    int32
+	r, g, b uint8
+}
+
 type Renderer struct {
 	Window        *sdl.Window
 	Renderer      *sdl.Renderer
@@ -51,6 +57,7 @@ type Renderer struct {
 	sizes         map[sizeKey][2]int32 // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
 	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
 	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
+	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -103,6 +110,7 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		sizes:         make(map[sizeKey][2]int32),
 		runeFont:      make(map[rune]int),
 		wrapCache:     make(map[wrapKey][]string),
+		pillCache:     make(map[pillKey]*sdl.Texture),
 	}
 	if r.primaryRanges == nil {
 		logger.Warn("renderer: could not parse primary font cmap; fallback fonts disabled")
@@ -136,6 +144,11 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 }
 
 func (r *Renderer) Close() {
+	for _, tex := range r.pillCache {
+		if tex != nil {
+			tex.Destroy()
+		}
+	}
 	for _, fb := range r.fallbacks {
 		if fb.small != nil {
 			fb.small.Close()
@@ -516,8 +529,32 @@ func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red
 }
 
 // DrawPill draws a filled pill (capsule) shape.
-// The border radius is clamped to h/2 so it is always a true capsule.
+// On first call for a given (w, h, colour) the shape is pre-rendered into an
+// SDL_Texture; subsequent calls blit that texture with a single Copy call,
+// replacing ~5 CGo FillRects calls with one. Falls back to direct drawing if
+// the renderer does not support render targets.
 func (r *Renderer) DrawPill(x, y, w, h int32, red, green, blue uint8) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	key := pillKey{w, h, red, green, blue}
+	tex, cached := r.pillCache[key]
+	if !cached {
+		tex = r.createPillTexture(w, h, red, green, blue)
+		r.pillCache[key] = tex // nil stored on failure to prevent retrying every frame
+	}
+	if tex != nil {
+		copyDstBuf = sdl.Rect{X: x, Y: y, W: w, H: h}
+		r.Renderer.Copy(tex, nil, &copyDstBuf)
+		return
+	}
+	// Fallback: direct geometry draw (render targets not supported).
+	r.drawPillDirect(x, y, w, h, red, green, blue)
+}
+
+// drawPillDirect draws a pill without the texture cache. Used as a fallback
+// when SDL render targets are unavailable.
+func (r *Renderer) drawPillDirect(x, y, w, h int32, red, green, blue uint8) {
 	radius := h / 2
 	if radius < 1 {
 		radius = 1
@@ -527,6 +564,52 @@ func (r *Renderer) DrawPill(x, y, w, h int32, red, green, blue uint8) {
 	r.Renderer.FillRect(&pillBodyBuf)
 	drawFilledCircle(r.Renderer, x+radius, y+radius, radius, red, green, blue)
 	drawFilledCircle(r.Renderer, x+w-radius, y+radius, radius, red, green, blue)
+}
+
+// createPillTexture pre-renders a pill into an SDL_Texture with the given
+// dimensions and fill colour. Returns nil if the renderer does not support
+// render targets (software fallback).
+//
+// The texture is created with SDL_BLENDMODE_BLEND so it composites correctly
+// over any background when blitted. Fringe pixels are written with raw alpha
+// (BLENDMODE_NONE during creation) so they are not double-applied when blitting.
+func (r *Renderer) createPillTexture(w, h int32, red, green, blue uint8) *sdl.Texture {
+	tex, err := r.Renderer.CreateTexture(sdl.PIXELFORMAT_RGBA8888, sdl.TEXTUREACCESS_TARGET, w, h)
+	if err != nil {
+		logger.Debug("renderer: pill texture (%dx%d): %v — using direct draw fallback", w, h, err)
+		return nil
+	}
+	if err := tex.SetBlendMode(sdl.BLENDMODE_BLEND); err != nil {
+		tex.Destroy()
+		return nil
+	}
+
+	prev := r.Renderer.GetRenderTarget()
+	if err := r.Renderer.SetRenderTarget(tex); err != nil {
+		tex.Destroy()
+		logger.Debug("renderer: SetRenderTarget for pill: %v — using direct draw fallback", err)
+		return nil
+	}
+
+	// Write raw RGBA into the texture (BLENDMODE_NONE avoids premultiplying
+	// alpha against the transparent clear colour).
+	r.Renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	r.Renderer.SetDrawColor(0, 0, 0, 0)
+	r.Renderer.Clear()
+
+	radius := h / 2
+	if radius < 1 {
+		radius = 1
+	}
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	pillBodyBuf = sdl.Rect{X: radius, Y: 0, W: w - radius*2, H: h}
+	r.Renderer.FillRect(&pillBodyBuf)
+	drawFilledCircleRawAlpha(r.Renderer, radius, radius, radius, red, green, blue)
+	drawFilledCircleRawAlpha(r.Renderer, w-radius, radius, radius, red, green, blue)
+
+	r.Renderer.SetRenderTarget(prev)
+	r.Renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	return tex
 }
 
 // DrawCircleBadge draws a filled circle badge (used for face buttons A, B).
@@ -547,24 +630,47 @@ const maxCircleRadius = 128
 // Only accessed from the SDL main goroutine — no locking needed.
 var circleRectBuf [maxCircleRadius*6 + 3]sdl.Rect
 
+// circleExtentsCache stores the per-row x-extents (dxi) for each radius value,
+// computed once on first use. Index is the radius (0 … maxCircleRadius).
+// Only accessed from the SDL main goroutine — no locking needed.
+var circleExtentsCache [maxCircleRadius + 1][]int32
+
+// circleExtents returns the cached slice of x-extents for the given radius,
+// computing and storing it on the first call for that value.
+// Each element i is the half-width of the solid circle body at row i.
+func circleExtents(radius int32) []int32 {
+	if ext := circleExtentsCache[radius]; ext != nil {
+		return ext
+	}
+	n := int(radius*2 + 1)
+	r2 := float64(radius * radius)
+	ext := make([]int32, n)
+	for i := 0; i < n; i++ {
+		dy := float64(int32(i) - radius)
+		ext[i] = int32(math.Sqrt(math.Max(0, r2-dy*dy)))
+	}
+	circleExtentsCache[radius] = ext
+	return ext
+}
+
 // drawFilledCircle draws a filled anti-aliased circle.
 // The solid interior uses floor-quantised extents; a 1px fringe at 50% alpha
 // softens the staircase edge. Two FillRects calls; no per-pixel alpha variation.
 // Safe to call inside DrawPill — blend mode is restored to NONE on return.
 // AA fringe is skipped for radius < 4: at that size the fringe is sub-pixel and
 // saving 4 CGo calls per invocation outweighs the imperceptible quality loss.
+// Per-row x-extents are cached by radius so math.Sqrt is only called once per
+// distinct radius value across the entire session.
 func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	if radius > maxCircleRadius {
 		radius = maxCircleRadius
 	}
-	n := int(radius*2 + 1)
-	r2 := float64(radius * radius)
+	ext := circleExtents(radius)
+	n := len(ext)
 
-	// Solid rects at [0:n]; fringe rects at [n : n+n*2].
-	for i := 0; i < n; i++ {
+	// Fill circleRectBuf using cached extents — no sqrt per call.
+	for i, dxi := range ext {
 		iy := cy + int32(i) - radius
-		dy := float64(int32(i) - radius)
-		dxi := int32(math.Sqrt(math.Max(0, r2-dy*dy))) // floor: solid body inside circle
 		circleRectBuf[i] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
 		// Fringe pixels one step outside the solid body.
 		circleRectBuf[n+i*2] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
@@ -580,6 +686,30 @@ func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue 
 		ren.SetDrawColor(red, green, blue, 128)
 		ren.FillRects(circleRectBuf[n : n+n*2])
 		ren.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	}
+}
+
+// drawFilledCircleRawAlpha is identical to drawFilledCircle but always uses
+// BLENDMODE_NONE, writing literal alpha values into the target. Used when
+// rendering into a texture so that fringe pixels are stored as (r,g,b,128)
+// rather than blended against the transparent clear colour.
+func drawFilledCircleRawAlpha(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
+	if radius > maxCircleRadius {
+		radius = maxCircleRadius
+	}
+	ext := circleExtents(radius)
+	n := len(ext)
+	for i, dxi := range ext {
+		iy := cy + int32(i) - radius
+		circleRectBuf[i] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
+		circleRectBuf[n+i*2] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
+		circleRectBuf[n+i*2+1] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
+	}
+	ren.SetDrawColor(red, green, blue, 255)
+	ren.FillRects(circleRectBuf[:n])
+	if radius >= 4 {
+		ren.SetDrawColor(red, green, blue, 128)
+		ren.FillRects(circleRectBuf[n : n+n*2])
 	}
 }
 
