@@ -69,6 +69,7 @@ func TestDetectROMExt(t *testing.T) {
 		{"PNG width=128 → p8.png", pngHeader(128), ".p8.png"},
 		{"PNG width=256 → not p8.png", pngHeader(256), ""},
 		{"Pico-8 .p8 text cart", []byte("pico-8 cartridge // http://www.pico-8.com\n"), ".p8"},
+		{"ZIP magic", []byte{0x50, 0x4B, 0x03, 0x04, 0x14, 0x00}, ".zip"},
 		{"empty data", []byte{}, ""},
 		{"too short", []byte{0x2E, 0x00, 0x00}, ""},
 		{"random bytes", []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}, ""},

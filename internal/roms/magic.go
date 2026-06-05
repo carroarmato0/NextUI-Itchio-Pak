@@ -5,11 +5,20 @@ package roms
 // at 0x104 + CGB flag at 0x143 = 324 bytes, rounded up).
 const DetectBufSize = 336
 
-// DetectROMExt returns the ROM file extension inferred from the leading bytes
+// DetectROMExt returns the file extension inferred from the leading bytes of a
+// file. In addition to ROM formats it also recognises ".zip" so callers can
+// route ZIP containers through the ZIP inspection pipeline without relying on
+// the filename. Returns "" when no known signature matches.
 // of a file. Returns "" when no known ROM signature matches. Callers should
 // pass at least DetectBufSize bytes; shorter slices are handled gracefully
 // (signatures requiring more bytes than available are simply skipped).
 func DetectROMExt(data []byte) string {
+	// ZIP: "PK\x03\x04" local-file-header magic
+	if len(data) >= 4 &&
+		data[0] == 0x50 && data[1] == 0x4B && data[2] == 0x03 && data[3] == 0x04 {
+		return ".zip"
+	}
+
 	// NES (iNES): "NES\x1A" at offset 0
 	if len(data) >= 4 &&
 		data[0] == 'N' && data[1] == 'E' && data[2] == 'S' && data[3] == 0x1A {

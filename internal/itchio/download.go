@@ -312,3 +312,29 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 	logger.Info("stream: done, wrote %d bytes", downloaded)
 	return nil
 }
+
+// FetchFileHeader fetches the first n bytes of a CDN URL via an HTTP Range
+// request. Falls back to reading the start of a full response when the server
+// does not honour Range. Used for magic-byte detection before a full download.
+func (c *Client) FetchFileHeader(cdnURL string, n int) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, cdnURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("header fetch: %w", err)
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", n-1))
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("header fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		logger.Error("header fetch: HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("header fetch: HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, int64(n)))
+	if err != nil {
+		return nil, fmt.Errorf("header fetch: read: %w", err)
+	}
+	logger.Debug("header fetch: read %d bytes from %s", len(data), cdnURL)
+	return data, nil
+}

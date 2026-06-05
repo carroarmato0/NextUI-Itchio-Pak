@@ -17,7 +17,8 @@ import (
 type formatChoice int
 
 const (
-	formatP8PNG formatChoice = iota // .p8.png
+	formatAuto  formatChoice = iota // auto-detect from file header (default)
+	formatP8PNG                     // .p8.png
 	formatP8                        // .p8
 	formatGBC                       // .gbc
 	formatGB                        // .gb
@@ -30,6 +31,8 @@ const (
 
 func (f formatChoice) ext() string {
 	switch f {
+	case formatAuto:
+		return "" // handled separately in confirm()
 	case formatP8PNG:
 		return ".p8.png"
 	case formatP8:
@@ -52,6 +55,8 @@ func (f formatChoice) ext() string {
 
 func (f formatChoice) label() string {
 	switch f {
+	case formatAuto:
+		return "AUTO"
 	case formatP8PNG:
 		return "P8.PNG"
 	case formatP8:
@@ -78,21 +83,9 @@ func (f formatChoice) prev() formatChoice { return (f + formatCount - 1) % forma
 // defaultFormatChoiceForGame returns a sensible default format based on the
 // game's platform tag and the upload filename. The upload filename overrides
 // when it already carries a known extension.
-func defaultFormatChoiceForGame(game itchio.Game, filename string) formatChoice {
-	if strings.ToLower(roms.ROMExt(filename)) == ".zip" {
-		return formatZIP
-	}
-	switch game.Platform {
-	case "P8":
-		return formatP8PNG
-	case "GBA":
-		return formatGBA
-	case "NES":
-		return formatNES
-	case "MD":
-		return formatMD
-	}
-	return formatGBC
+func defaultFormatChoiceForGame(_ itchio.Game, _ string) formatChoice {
+	// Always default to auto-detect; the user can override with L/R if needed.
+	return formatAuto
 }
 
 // FormatPickerScreen is shown when a game's uploads have no recognized .gb/.gbc
@@ -157,7 +150,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 8
-	r.DrawSmallText("Unknown format — choose file and format:", 12, contentTop, 180, 160, 100)
+	r.DrawSmallText("Select file to download (auto-detect enabled):", 12, contentTop, 180, 160, 100)
 	contentTop += smallFH + 10
 
 	rowH := fontH + 12 // matches list screen row height
@@ -190,6 +183,8 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 		badgeY := rowTop + (rowH-badgeH)/2
 		var fR, fG, fB uint8
 		switch f {
+		case formatAuto:
+			fR, fG, fB = 160, 160, 160 // neutral gray
 		case formatP8PNG, formatP8:
 			fR, fG, fB = 255, 100, 80 // Pico-8 red/orange
 		case formatGB:
@@ -282,19 +277,27 @@ func (s *FormatPickerScreen) confirm() Screen {
 		return s
 	}
 	original := s.uploads[s.cursor]
-	chosenExt := s.formats[s.cursor].ext()
+	choice := s.formats[s.cursor]
 
+	// Auto-detect: resolve CDN URL, read file header, determine correct format.
+	if choice == formatAuto {
+		logger.Info("format-picker: %q → auto-detect", original.Filename)
+		return NewAutoDetectScreen(s.client, s.cfg, s.cfgPath, s.cache,
+			s.game, s.detail, original, s.inv, s.inventoryPath, s.prev)
+	}
+
+	// Manual override: user explicitly chose a format.
+	chosenExt := choice.ext()
 	upload := original
 	// Only append the extension if the file does not already carry it,
 	// to avoid producing names like "game.zip.zip" or "game.p8.png.p8.png".
 	if strings.ToLower(roms.ROMExt(original.Filename)) != chosenExt {
 		upload.Filename = original.Filename + chosenExt
 	}
-	logger.Info("format-picker: %q → %s", original.Filename,
+	logger.Info("format-picker: %q → %s (manual)", original.Filename,
 		strings.ToUpper(strings.TrimPrefix(chosenExt, ".")))
 
-	// ZIP: inspect contents before routing, so the correct destination is chosen
-	// based on what's inside (e.g. .p8 files → Pico-8 folder, not GBC folder).
+	// ZIP: inspect contents before routing.
 	if chosenExt == ".zip" {
 		return NewZIPInspectScreen(s.client, s.cfg, s.cfgPath, s.cache,
 			s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
