@@ -207,9 +207,7 @@ func (s *ZIPInspectScreen) route() Screen {
 			s.game, s.detail, s.plan, s.inv, s.invPath, s.prev)
 	}
 
-	// Single ROM, no music, no extra files → keep the ZIP on disk as-is.
-	// A ZIP that bundles images, trailers, booklets etc. alongside the ROM
-	// is extracted instead so only the ROM lands on disk.
+	// Single ROM, no music, no extra files.
 	if m.IsSingleROMOnly() && !m.HasOtherFiles() {
 		// Use the inner ROM's extension to route to the correct destination directory
 		// (e.g., a ZIP containing a single .gba should land in the GBA folder).
@@ -222,6 +220,15 @@ func (s *ZIPInspectScreen) route() Screen {
 				break
 			}
 		}
+
+		if ext == ".p8" || ext == ".p8.png" {
+			// Pico-8: always extract — emulators cannot load .p8/.p8.png from a ZIP.
+			plan := s.plan
+			plan.DownloadROMs = true
+			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+		}
+
+		// Non-Pico-8: keep the ZIP on disk (most emulators support ZIP natively).
 		dest := roms.DestinationDir(ext) + s.upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
 			dest = existing
@@ -231,14 +238,14 @@ func (s *ZIPInspectScreen) route() Screen {
 		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
 	}
 
-	// Pico-8 multi-cart: extract all carts to a named subdirectory.
-	// Checked before HasDuplicateROMExt so it never hits the single-selection picker.
-	if m.IsPico8MultiCart() {
-		subDir := roms.Pico8MultiCartDir(s.game.Title)
+	// Multi-file Pico-8: extract all .p8/.p8.png/.lua files to a game
+	// subdirectory, preserving the ZIP's relative path structure.
+	p8Count := len(m.ROMsByExt()[".p8"]) + len(m.ROMsByExt()[".p8.png"])
+	if p8Count > 1 || (p8Count == 1 && m.HasLuaFiles()) {
+		gameDir := roms.Pico8GameDir(s.game.Title)
 		plan := s.plan
 		plan.DownloadROMs = true
-		plan.Pico8GameDir = subDir
-		plan.ROMDirs = map[string]string{".p8": subDir, ".p8.png": subDir}
+		plan.Pico8GameDir = gameDir
 		plan.DownloadMusic = m.HasMusic() && s.cfg.MusicDownload == "auto"
 		if plan.DownloadMusic {
 			if s.cfg.MusicLocation == "ask" {
