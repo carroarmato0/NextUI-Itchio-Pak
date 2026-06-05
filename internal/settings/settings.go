@@ -57,15 +57,17 @@ type Config struct {
 	UnifiedNaming bool              `json:"unified_naming"` // default true — no omitempty so false survives save/load
 	MusicDownload string            `json:"music_download,omitempty"` // "auto" | "ask" | "off"
 	MusicLocation string            `json:"music_location,omitempty"` // "auto" | "ask"
+	Pico8Core     string            `json:"pico8_core,omitempty"`     // "fakeo8" | "pico8"
 }
 
 func defaults() *Config {
 	return &Config{
-		APIKey:      "",
-		ROMLocation: "auto",
+		APIKey:        "",
+		ROMLocation:   "auto",
 		UnifiedNaming: true,
 		MusicDownload: "off",
 		MusicLocation: "auto",
+		Pico8Core:     "fakeo8",
 		Filter: ContentFilter{
 			AdultContent: CategoryFilter{Enabled: true},
 			HeavyThemes:  CategoryFilter{Enabled: true},

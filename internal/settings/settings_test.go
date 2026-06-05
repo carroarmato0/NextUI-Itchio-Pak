@@ -467,3 +467,46 @@ func TestMusicBackwardCompat(t *testing.T) {
 		t.Errorf("backward-compat default MusicLocation = %q, want \"auto\"", cfg.MusicLocation)
 	}
 }
+
+func TestPico8CoreDefault(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Pico8Core != "fakeo8" {
+		t.Errorf("default Pico8Core = %q, want %q", cfg.Pico8Core, "fakeo8")
+	}
+}
+
+func TestPico8CoreRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{Pico8Core: "pico8"}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Pico8Core != "pico8" {
+		t.Errorf("Pico8Core = %q, want %q", loaded.Pico8Core, "pico8")
+	}
+}
+
+func TestPico8CoreOldConfigDefaultsFakeo8(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	// Old config JSON without pico8_core field.
+	if err := os.WriteFile(path, []byte(`{"unified_naming":true}`), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Pico8Core != "fakeo8" {
+		t.Errorf("old config Pico8Core = %q, want %q", loaded.Pico8Core, "fakeo8")
+	}
+}
