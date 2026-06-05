@@ -5,6 +5,16 @@ import (
 	"strings"
 )
 
+// ROMExt returns the effective ROM extension for filename.
+// For Pico-8 cartridges with the compound extension .p8.png it returns ".p8.png"
+// rather than the ".png" that filepath.Ext would return.
+func ROMExt(filename string) string {
+	if strings.HasSuffix(strings.ToLower(filename), ".p8.png") {
+		return ".p8.png"
+	}
+	return filepath.Ext(filename)
+}
+
 type Upload struct {
 	Filename      string
 	URL           string

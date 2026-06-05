@@ -99,3 +99,24 @@ func TestMusicDestinationDir(t *testing.T) {
 		}
 	}
 }
+
+func TestROMExt(t *testing.T) {
+	tests := []struct {
+		filename string
+		want     string
+	}{
+		{"game.p8.png", ".p8.png"},
+		{"game.P8.PNG", ".p8.png"},
+		{"GAME.P8.PNG", ".p8.png"},
+		{"game.p8", ".p8"},
+		{"game.gbc", ".gbc"},
+		{"game.png", ".png"},
+		{"game", ""},
+	}
+	for _, tt := range tests {
+		got := roms.ROMExt(tt.filename)
+		if got != tt.want {
+			t.Errorf("ROMExt(%q) = %q, want %q", tt.filename, got, tt.want)
+		}
+	}
+}
