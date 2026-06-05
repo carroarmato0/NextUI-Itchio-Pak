@@ -131,6 +131,36 @@ func (s *ZIPDownloadScreen) run() {
 	}
 	defer r.Close()
 
+	// Pico-8 multi-file: path-preserving extraction to game subdirectory.
+	if s.plan.Pico8GameDir != "" {
+		now := time.Now()
+		s.extractPico8ZIP(&r.Reader, now)
+		if err := s.inv.Save(s.invPath); err != nil {
+			logger.Warn("zip-download: save inventory: %v", err)
+		}
+		// Cover art: keyed to a synthetic path so NextUI's .media lookup works
+		// for the game directory (stem = sanitised title, placed in gameDir/.media/).
+		if len(s.extracted) > 0 {
+			safe := roms.SanitiseFilename(s.game.Title, "")
+			if safe == "" {
+				safe = "Unknown"
+			}
+			artRef := filepath.Join(strings.TrimSuffix(s.plan.Pico8GameDir, "/"), safe+".p8")
+			if artErr := s.client.DownloadCoverArt(s.game.CoverURL, artRef); artErr != nil {
+				logger.Warn("zip-download: pico8 cover art: %v", artErr)
+			}
+		}
+		if len(s.extracted) == 0 {
+			logger.Error("zip-download: pico8: no files extracted (skipped=%d)", len(s.skipped))
+			s.err = fmt.Errorf("no Pico-8 files could be extracted from ZIP")
+			s.storeState(zipDLError)
+			return
+		}
+		logger.Info("zip-download: pico8 done, extracted %d file(s)", len(s.extracted))
+		s.storeState(zipDLDone)
+		return
+	}
+
 	now := time.Now()
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
@@ -293,6 +323,78 @@ func (s *ZIPDownloadScreen) extractMusic(f *zip.File, baseName string, now time.
 	return dest, nil
 }
 
+// extractPico8ZIP extracts all .p8, .p8.png, and .lua files from r into
+// s.plan.Pico8GameDir, preserving relative paths from the ZIP after stripping
+// any common top-level wrapper directory. Support files (.lua) required by
+// Pico-8 carts are extracted alongside the cartridges.
+func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
+	gameDir := strings.TrimSuffix(s.plan.Pico8GameDir, "/")
+
+	// Collect all relevant file paths to determine the common prefix to strip.
+	var relevantPaths []string
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(f.Name)
+		base := filepath.Base(name)
+		if strings.HasPrefix(base, "._") {
+			continue
+		}
+		lower := strings.ToLower(base)
+		ext := strings.ToLower(roms.ROMExt(base))
+		if ext == ".p8" || ext == ".p8.png" || strings.HasSuffix(lower, ".lua") {
+			relevantPaths = append(relevantPaths, name)
+		}
+	}
+	prefix := topLevelDirPrefix(relevantPaths)
+	logger.Debug("zip-download: pico8 strip-prefix=%q game-dir=%s", prefix, gameDir)
+
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(f.Name)
+		base := filepath.Base(name)
+		if strings.HasPrefix(base, "._") {
+			continue
+		}
+		lower := strings.ToLower(base)
+		ext := strings.ToLower(roms.ROMExt(base))
+		isP8 := ext == ".p8" || ext == ".p8.png"
+		isLua := strings.HasSuffix(lower, ".lua")
+		if !isP8 && !isLua {
+			continue
+		}
+
+		relPath := strings.TrimPrefix(name, prefix)
+		dest := filepath.Join(gameDir, filepath.FromSlash(relPath))
+
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			logger.Warn("zip-download: pico8 mkdir %s: %v", filepath.Dir(dest), err)
+			s.skipped = append(s.skipped, base)
+			continue
+		}
+		if err := extractZIPEntry(f, dest); err != nil {
+			logger.Warn("zip-download: pico8 extract %s: %v", base, err)
+			s.skipped = append(s.skipped, base)
+			continue
+		}
+		logger.Info("zip-download: pico8 extracted %s → %s", base, dest)
+		s.extracted = append(s.extracted, dest)
+
+		s.inv.Add(s.game.URL, inventory.Entry{
+			GameURL: s.game.URL, Title: s.game.Title,
+			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
+		}, inventory.DownloadedFile{
+			Filename:     base,
+			DestPath:     dest,
+			DownloadedAt: now,
+			FileType:     inventory.FileTypeROM,
+		})
+	}
+}
+
 // findIdenticalROMInInventory returns the DestPath of an already-downloaded ROM
 // for this game that has byte-for-byte identical content to the ZIP entry f.
 // Size is checked first (cheap); MD5 is computed only when sizes match.
@@ -372,6 +474,36 @@ func extractZIPEntry(f *zip.File, dest string) error {
 	defer out.Close()
 	_, err = io.Copy(out, rc)
 	return err
+}
+
+// topLevelDirPrefix returns the common top-level directory prefix shared by
+// all paths, including the trailing slash. Returns "" when files are at the
+// ZIP root or share no common top-level directory.
+//
+// Example: ["game-v1/main.p8", "game-v1/data.lua"] → "game-v1/"
+// Example: ["main.p8", "data.lua"]                 → ""
+func topLevelDirPrefix(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	first := func(p string) string {
+		p = filepath.ToSlash(p)
+		idx := strings.Index(p, "/")
+		if idx < 0 {
+			return ""
+		}
+		return p[:idx+1]
+	}
+	prefix := first(paths[0])
+	if prefix == "" {
+		return ""
+	}
+	for _, p := range paths[1:] {
+		if first(p) != prefix {
+			return ""
+		}
+	}
+	return prefix
 }
 
 func (s *ZIPDownloadScreen) NeedsRedraw() bool        { return true }
