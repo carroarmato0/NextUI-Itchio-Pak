@@ -252,6 +252,37 @@ func TestDownloadCoverArtAnimatedGIFComposited(t *testing.T) {
 	}
 }
 
+// TestCopyCoverArt verifies that CopyCoverArt copies the ROM file to the
+// .media/ sibling directory with the correct art filename.
+func TestCopyCoverArt(t *testing.T) {
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.p8.png")
+
+	// Write a small PNG as the "ROM" (CopyCoverArt treats it as opaque bytes).
+	if err := os.WriteFile(romPath, minimalPNG(), 0644); err != nil {
+		t.Fatalf("write rom: %v", err)
+	}
+
+	if err := itchio.CopyCoverArt(romPath); err != nil {
+		t.Fatalf("CopyCoverArt: %v", err)
+	}
+
+	// coverArtBasename strips the last ext: "game.p8.png" → stem "game.p8"
+	// → art path ".media/game.p8.png"
+	artPath := filepath.Join(dir, ".media", "game.p8.png")
+	if _, err := os.Stat(artPath); os.IsNotExist(err) {
+		t.Fatalf("art file not created at %s", artPath)
+	}
+
+	got, err := os.ReadFile(artPath)
+	if err != nil {
+		t.Fatalf("read art: %v", err)
+	}
+	if !bytes.Equal(got, minimalPNG()) {
+		t.Error("art file content does not match ROM content")
+	}
+}
+
 // gifHighBrightnessLowVariance returns a 2-frame animated GIF where frame 1 is
 // uniform gray (high brightness, zero colour variance) and frame 2 has one red
 // and one blue pixel (lower summed brightness, high colour variance).

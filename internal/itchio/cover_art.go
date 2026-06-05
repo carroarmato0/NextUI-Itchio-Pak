@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"image/png"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -211,5 +212,50 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 			}
 		}
 	}
+	return nil
+}
+
+// CopyCoverArt copies the ROM file at romDestPath into the .media/ directory
+// alongside it, using the same art filename that DownloadCoverArt would produce.
+// Used for .p8.png cartridges, which are themselves valid PNG images — no
+// separate network request is needed.
+func CopyCoverArt(romDestPath string) error {
+	dir := filepath.Dir(romDestPath)
+	mediaDir := filepath.Join(dir, ".media")
+	if err := os.MkdirAll(mediaDir, 0755); err != nil {
+		return fmt.Errorf("cover-art: mkdir: %w", err)
+	}
+
+	base := coverArtBasename(romDestPath)
+	artPath := filepath.Join(mediaDir, base+".png")
+
+	logger.Info("cover-art: copying .p8.png as art → %s", artPath)
+
+	src, err := os.Open(romDestPath)
+	if err != nil {
+		return fmt.Errorf("cover-art: open source: %w", err)
+	}
+	defer src.Close()
+
+	tmp, err := os.CreateTemp(mediaDir, ".art-*.tmp")
+	if err != nil {
+		return fmt.Errorf("cover-art: create temp: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpPath)
+	}()
+
+	if _, err := io.Copy(tmp, src); err != nil {
+		return fmt.Errorf("cover-art: copy: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("cover-art: close temp: %w", err)
+	}
+	if err := os.Rename(tmpPath, artPath); err != nil {
+		return fmt.Errorf("cover-art: rename: %w", err)
+	}
+	logger.Info("cover-art: saved → %s", artPath)
 	return nil
 }
