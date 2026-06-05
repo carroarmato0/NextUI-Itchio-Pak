@@ -6,9 +6,9 @@
 <img src="docs/screenshots/main.png" alt="Game list" width="800"/>
 
 An unofficial community Pak for NextUI on TrimUI and Miyoo Flip handheld gaming
-devices. Browse, discover, and download Game Boy / Game Boy Color ROM files
-directly from itch.io's "made-with-gb-studio" category — all on-device, no PC
-required.
+devices. Browse, discover, and download homebrew ROM games for Game Boy, Game
+Boy Color, Game Boy Advance, NES/Famicom, and Sega Genesis directly from
+itch.io — all on-device, no PC required.
 
 > **Disclaimer:** This is an unofficial community project, not affiliated with
 > or endorsed by itch.io.
@@ -34,7 +34,7 @@ required.
 ## Features
 
 ### Game browsing
-- Scrollable list of GB Studio games from itch.io's "made-with-gb-studio" category
+- Scrollable list of homebrew ROM games sourced from multiple itch.io tag feeds, merged and deduplicated into a single catalogue covering Game Boy, Game Boy Color, Game Boy Advance, NES/Famicom, and Sega Genesis
 - Live cover art thumbnails alongside the list with support for animated GIF cover art
 - Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; D-pad Left/Right jumps pages directly
 - On first launch the list loads live from the network while a full cache is built in the background
@@ -73,11 +73,14 @@ The selected sort mode is saved automatically and restored on the next launch.
 ### Downloading
 - Download free games without an itch.io account
 - Download paid games you already own using your itch.io API key
-- When a game has multiple `.gb`/`.gbc` files, a file picker is shown
+- When a game has multiple ROM files, a file picker is shown
 - Progress bar with live percentage and downloaded/total size
 - Files saved directly to the correct ROM folder:
   - `.gb` → `Roms/Game Boy (GB)/`
   - `.gbc` → `Roms/Game Boy Color (GBC)/`
+  - `.gba` → `Roms/Game Boy Advance (GBA)/`
+  - `.nes` → `Roms/Nintendo Entertainment System (FC)/`
+  - `.md` / `.gen` / `.smd` → `Roms/Sega Genesis (MD)/`
 - When **ROM Location** is set to `ask`, a directory browser lets you choose the destination folder before each download; the last chosen path is remembered per file type
 - On download failure, a QR code is shown so you can try from a browser
 - **Bundle purchases** — if you own a game both individually and as part of one or more itch.io bundles, a purchase picker lists each transaction (labelled `Individual purchase` or `Bundle: <name>`) so you can choose which to download from
@@ -129,7 +132,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
-- **Refresh Game List** — re-fetches the full game list from itch.io with a live progress screen showing how many games have been retrieved; the cache is updated on completion
+- **Refresh Game List** — re-fetches the full game list from itch.io across all platform feeds with a live progress screen showing how many games have been retrieved; the cache is updated on completion. Press **B** at any time to cancel the fetch cleanly — no partial cache is written
 - **Update Inventory** — manually triggers a background check for new upstream files, removed games, and missing cover art across all inventory entries; the right side of the row shows when the last check ran (`just now`, `Xm ago`, `Xh ago`, or `Xd ago`) or `never` if no check has run yet
 - **Content Moderation** — configure per-category content filters
 - **About** — app description, version, and QR code linking to the project page
@@ -411,11 +414,12 @@ in the Settings screen on the device.
   GIF that opens on a black frame, uses unusual disposal methods, or has few
   visually distinct frames may still produce a poor thumbnail.
 
-- **`.pocket` and other non-ROM files** are filtered out — only `.gb` and
-  `.gbc` files are shown.
+- **`.pocket` and other non-ROM files** are filtered out — only `.gb`, `.gbc`,
+  `.gba`, `.nes`, `.md`, `.gen`, and `.smd` files are shown.
 
-- **No search** — the game list is the full "made-with-gb-studio" category in
-  itch.io's default sort order.
+- **No search** — the game list is sourced from multiple itch.io tag feeds
+  (one per platform) combined in itch.io's default sort order. There is no
+  free-text search.
 
 - **CSRF token expiry** — if the ROM picker is left open for a long time before
   selecting a file, the resolver may reject the request. Back out and
