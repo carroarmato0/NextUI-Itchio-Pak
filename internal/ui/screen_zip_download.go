@@ -430,8 +430,11 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 			bottomLimit -= rowH // reserve a row for the warning
 		}
 		shown := 0
-		for _, p := range s.extracted {
-			if y+rowH > bottomLimit {
+		for i, p := range s.extracted {
+			remaining := len(s.extracted) - i
+			// Stop one row early when more items follow so the "…and N more"
+			// summary line fits within bottomLimit.
+			if y+rowH > bottomLimit || (remaining > 1 && y+rowH*2 > bottomLimit) {
 				break
 			}
 			r.DrawSmallScrollingText(filepath.Base(p), 20, y, r.W-40, 120, 120, 120)
