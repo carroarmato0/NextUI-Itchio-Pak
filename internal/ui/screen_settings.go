@@ -221,7 +221,9 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 	items = append(items, menuItem{sItemLogLevel, "Log Level: " + logLevelLabel})
 	items = append(items, menuItem{sItemClearCache, "Clear Image Cache"})
-	items = append(items, menuItem{sItemRefreshCache, "Refresh Game List"})
+	if s.onRefreshGames != nil {
+		items = append(items, menuItem{sItemRefreshCache, "Refresh Game List"})
+	}
 	items = append(items, menuItem{sItemUpdateInventory, "Update Inventory"})
 	items = append(items, menuItem{sItemContentModeration, "Content Moderation >"})
 	items = append(items, menuItem{sItemAbout, "About"})
