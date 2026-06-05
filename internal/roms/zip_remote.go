@@ -203,11 +203,40 @@ func manifestFromZipReader(r *zip.Reader) ZIPManifest {
 			continue
 		}
 		name := filepath.Base(f.Name)
+		kind := ClassifyEntry(name)
+
+		// For entries the extension-based classifier cannot identify, read the
+		// file header and attempt magic-byte detection. This handles uploads
+		// whose filenames carry no extension or a version-number suffix (e.g.
+		// "soulbound_v1_0" → detected as .p8 from the pico-8 text header).
+		if kind == KindOther {
+			if detected := classifyByMagic(f); detected != "" {
+				stem := strings.TrimSuffix(name, filepath.Ext(name))
+				name = stem + detected
+				kind = KindROM
+			}
+		}
+
 		m.Entries = append(m.Entries, ZIPEntry{
 			Name: name,
-			Kind: ClassifyEntry(name),
+			Kind: kind,
 			Size: f.UncompressedSize64,
 		})
 	}
 	return m
+}
+
+// classifyByMagic opens a ZIP entry, reads the first DetectBufSize uncompressed
+// bytes, and returns the detected ROM extension. Returns "" on any error or when
+// no signature matches. Works for both local and remote ZIPs (remote reads
+// trigger HTTP Range requests via the underlying ReaderAt).
+func classifyByMagic(f *zip.File) string {
+	rc, err := f.Open()
+	if err != nil {
+		return ""
+	}
+	defer rc.Close()
+	buf := make([]byte, DetectBufSize)
+	n, _ := io.ReadFull(rc, buf)
+	return DetectROMExt(buf[:n])
 }
