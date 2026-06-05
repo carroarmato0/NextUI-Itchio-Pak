@@ -20,6 +20,7 @@ const (
 	refreshCacheLoading refreshCacheState = iota
 	refreshCacheDone
 	refreshCacheError
+	refreshCacheCancelled
 )
 
 // CacheRefreshScreen is a blocking progress screen shown while the full game
@@ -30,6 +31,7 @@ type CacheRefreshScreen struct {
 	cachePath      string
 	prev           Screen
 	onCacheUpdated func([]itchio.Game) // called from background goroutine; must be concurrency-safe
+	cancel         context.CancelFunc
 
 	state   refreshCacheState
 	fetched int64 // written atomically from goroutine, read in Draw
@@ -47,19 +49,28 @@ func NewCacheRefreshScreen(
 	prev Screen,
 	onCacheUpdated func([]itchio.Game),
 ) *CacheRefreshScreen {
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &CacheRefreshScreen{
 		client:         client,
 		cachePath:      cachePath,
 		prev:           prev,
 		onCacheUpdated: onCacheUpdated,
+		cancel:         cancel,
 		state:          refreshCacheLoading,
 	}
 	go func() {
-		// TODO: use a cancelable context tied to screen lifetime
-		games, err := client.FetchAllGames(context.Background(), func(partial []itchio.Game) {
+		games, err := client.FetchAllGames(ctx, func(partial []itchio.Game) {
 			atomic.StoreInt64(&s.fetched, int64(len(partial)))
+			// Wake the SDL event loop so the counter redraws immediately.
+			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 		})
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				logger.Info("cache refresh: cancelled by user after %d games", len(games))
+				atomic.StoreInt32((*int32)(&s.state), int32(refreshCacheCancelled))
+				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+				return
+			}
 			logger.Error("cache refresh: failed after %d games: %v", len(games), err)
 			s.err = err
 			atomic.StoreInt32((*int32)(&s.state), int32(refreshCacheError))
@@ -85,7 +96,7 @@ func NewCacheRefreshScreen(
 }
 
 func (s *CacheRefreshScreen) NeedsRedraw() bool {
-	return true
+	return false // redraws are driven by UserEvent pushes from the goroutine
 }
 func (s *CacheRefreshScreen) HasPendingAnimation() bool { return false }
 
@@ -125,13 +136,17 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 			r.DrawTextCentered("Refresh failed:", 0, mid-fontH-8, r.W, 200, 60, 60)
 			r.DrawWrappedText(s.err.Error(), 20, mid, r.W-40, fontH+4, 200, 100, 100)
 		}
+
+	case refreshCacheCancelled:
+		r.DrawTextCentered("Cancelled.", 0, mid, r.W, 160, 160, 160)
 	}
 
-	ht := r.Theme.HintText
 	ftrY := r.DrawFooterBar(footerH)
 	switch state {
 	case refreshCacheLoading:
-		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+		}, ftrY)
 	default:
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
@@ -147,21 +162,29 @@ func (s *CacheRefreshScreen) HandleEvent(e sdl.Event) Screen {
 		if ev.Type != sdl.KEYDOWN {
 			return s
 		}
-		if state != refreshCacheLoading {
-			switch ev.Keysym.Sym {
-			case sdl.K_ESCAPE, sdl.K_RETURN:
-				return s.prev
+		if state == refreshCacheLoading {
+			if ev.Keysym.Sym == sdl.K_ESCAPE {
+				s.cancel()
 			}
+			return s
+		}
+		switch ev.Keysym.Sym {
+		case sdl.K_ESCAPE, sdl.K_RETURN:
+			return s.prev
 		}
 	case *sdl.ControllerButtonEvent:
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
 		}
-		if state != refreshCacheLoading {
-			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
-				return s.prev
+		if state == refreshCacheLoading {
+			if ev.Button == sdl.CONTROLLER_BUTTON_A { // physical B = back/cancel
+				s.cancel()
 			}
+			return s
+		}
+		switch ev.Button {
+		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+			return s.prev
 		}
 	}
 	return s
