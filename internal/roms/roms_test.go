@@ -107,7 +107,7 @@ func TestMusicDestinationDir(t *testing.T) {
 	}
 }
 
-func TestPico8MultiCartDir(t *testing.T) {
+func TestPico8GameDir(t *testing.T) {
 	tests := []struct {
 		title string
 		want  string
@@ -117,9 +117,9 @@ func TestPico8MultiCartDir(t *testing.T) {
 		{"", "/mnt/SDCARD/Roms/Pico-8 (P8)/Unknown/"},
 	}
 	for _, tt := range tests {
-		got := roms.Pico8MultiCartDir(tt.title)
+		got := roms.Pico8GameDir(tt.title)
 		if got != tt.want {
-			t.Errorf("Pico8MultiCartDir(%q) = %q, want %q", tt.title, got, tt.want)
+			t.Errorf("Pico8GameDir(%q) = %q, want %q", tt.title, got, tt.want)
 		}
 	}
 }

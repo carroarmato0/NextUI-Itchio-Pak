@@ -143,54 +143,72 @@ func TestHasNoDuplicateROMExt(t *testing.T) {
 	}
 }
 
-func TestIsPico8MultiCart(t *testing.T) {
+func TestHasPico8ROMs(t *testing.T) {
 	tests := []struct {
 		name    string
 		entries []roms.ZIPEntry
 		want    bool
 	}{
 		{
-			name: "two p8 files → multi-cart",
-			entries: []roms.ZIPEntry{
-				{Name: "poom.p8", Kind: roms.KindROM},
-				{Name: "poom-2.p8", Kind: roms.KindROM},
-			},
-			want: true,
+			name:    "single p8 → has pico8",
+			entries: []roms.ZIPEntry{{Name: "game.p8", Kind: roms.KindROM}},
+			want:    true,
 		},
 		{
-			name: "one p8 + one p8.png → multi-cart",
-			entries: []roms.ZIPEntry{
-				{Name: "game.p8", Kind: roms.KindROM},
-				{Name: "game.p8.png", Kind: roms.KindROM},
-			},
-			want: true,
+			name:    "p8.png → has pico8",
+			entries: []roms.ZIPEntry{{Name: "cart.p8.png", Kind: roms.KindROM}},
+			want:    true,
 		},
 		{
-			name: "one p8 only → not multi-cart",
-			entries: []roms.ZIPEntry{
-				{Name: "game.p8", Kind: roms.KindROM},
-			},
-			want: false,
+			name:    "only gbc → no pico8",
+			entries: []roms.ZIPEntry{{Name: "game.gbc", Kind: roms.KindROM}},
+			want:    false,
 		},
 		{
-			name: "no pico-8 files → not multi-cart",
-			entries: []roms.ZIPEntry{
-				{Name: "game.gbc", Kind: roms.KindROM},
-				{Name: "game.gb", Kind: roms.KindROM},
-			},
-			want: false,
-		},
-		{
-			name:    "empty manifest → not multi-cart",
+			name:    "empty → no pico8",
 			entries: nil,
 			want:    false,
 		},
 	}
 	for _, tt := range tests {
 		m := roms.ZIPManifest{Entries: tt.entries}
-		got := m.IsPico8MultiCart()
-		if got != tt.want {
-			t.Errorf("%s: IsPico8MultiCart() = %v, want %v", tt.name, got, tt.want)
+		if got := m.HasPico8ROMs(); got != tt.want {
+			t.Errorf("%s: HasPico8ROMs() = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestHasLuaFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []roms.ZIPEntry
+		want    bool
+	}{
+		{
+			name:    "lua present → true",
+			entries: []roms.ZIPEntry{{Name: "helper.lua", Kind: roms.KindOther}},
+			want:    true,
+		},
+		{
+			name:    "UPPER.LUA → true",
+			entries: []roms.ZIPEntry{{Name: "HELPER.LUA", Kind: roms.KindOther}},
+			want:    true,
+		},
+		{
+			name:    "no lua → false",
+			entries: []roms.ZIPEntry{{Name: "game.p8", Kind: roms.KindROM}},
+			want:    false,
+		},
+		{
+			name:    "empty → false",
+			entries: nil,
+			want:    false,
+		},
+	}
+	for _, tt := range tests {
+		m := roms.ZIPManifest{Entries: tt.entries}
+		if got := m.HasLuaFiles(); got != tt.want {
+			t.Errorf("%s: HasLuaFiles() = %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }

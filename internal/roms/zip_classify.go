@@ -121,8 +121,20 @@ func (m ZIPManifest) HasDuplicateROMExt() bool {
 	return false
 }
 
-// IsPico8MultiCart reports whether the manifest contains more than one
-// Pico-8 cartridge file (.p8 or .p8.png), indicating a multi-cart game.
-func (m ZIPManifest) IsPico8MultiCart() bool {
-	return len(m.ROMsByExt()[".p8"])+len(m.ROMsByExt()[".p8.png"]) > 1
+// HasPico8ROMs reports whether the manifest contains at least one Pico-8
+// cartridge file (.p8 or .p8.png).
+func (m ZIPManifest) HasPico8ROMs() bool {
+	return len(m.ROMsByExt()[".p8"])+len(m.ROMsByExt()[".p8.png"]) > 0
+}
+
+// HasLuaFiles reports whether the manifest contains any .lua file.
+// Pico-8 games sometimes ship with Lua support scripts that must live
+// alongside the cartridges.
+func (m ZIPManifest) HasLuaFiles() bool {
+	for _, e := range m.Entries {
+		if strings.HasSuffix(strings.ToLower(e.Name), ".lua") {
+			return true
+		}
+	}
+	return false
 }

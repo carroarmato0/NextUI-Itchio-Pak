@@ -95,9 +95,9 @@ func MusicDestinationDir(gameTitle string) string {
 	return MusicBaseDir + safe + "/"
 }
 
-// Pico8MultiCartDir returns the subdirectory for a multi-cart Pico-8 game.
-// All cart files and the generated M3U playlist are placed here.
-func Pico8MultiCartDir(gameTitle string) string {
+// Pico8GameDir returns the subdirectory for a Pico-8 game that ships with
+// multiple files (.p8/.p8.png/.lua). All game files are extracted here.
+func Pico8GameDir(gameTitle string) string {
 	safe := SanitiseFilename(gameTitle, "")
 	if safe == "" {
 		safe = "Unknown"
