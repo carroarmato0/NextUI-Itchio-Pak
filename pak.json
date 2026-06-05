@@ -1,6 +1,6 @@
 {
   "name": "Itch-io",
-  "version": "v1.0.15",
+  "version": "v1.0.16",
   "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
@@ -15,6 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
+    "v1.0.16": "\n• Multi-platform support (GB/GBC/GBA/NES/GENESIS).\n• Allow cancelling Gamelist update.\n• Various UI and performance fixes.",
     "v1.0.15": "\n• Smart zip file support and extraction logic.\n• Download game soundtracks when available.\n• Add GBA support.\n• Fix parsing Free/Paid games with currency symbol at the end of price.",
     "v1.0.14": "\n• Use L1/R1 for cycling between sorting. Always go back to the top of the list.",
     "v1.0.13": "\n• Fast scrolling with L1/R1 and Left/Right.\n• Emoji support.\n• Single game list scrolling.\n• Instructions for adding API Key in Settings.\n• Fix some UI issues.\n• New sorting for owned games.\n• Use HTTP/2 for better connection management.",
