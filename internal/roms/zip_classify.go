@@ -1,7 +1,6 @@
 package roms
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -29,6 +28,7 @@ var romExts = map[string]bool{
 	".gb": true, ".gbc": true, ".gba": true,
 	".nes": true,
 	".md": true, ".gen": true, ".smd": true,
+	".p8": true, ".p8.png": true,
 }
 
 var musicExts = map[string]bool{
@@ -37,7 +37,7 @@ var musicExts = map[string]bool{
 }
 
 func ClassifyEntry(name string) FileKind {
-	ext := strings.ToLower(filepath.Ext(name))
+	ext := strings.ToLower(ROMExt(name))
 	if romExts[ext] {
 		return KindROM
 	}
@@ -105,7 +105,7 @@ func (m ZIPManifest) ROMsByExt() map[string][]ZIPEntry {
 	groups := make(map[string][]ZIPEntry)
 	for _, e := range m.Entries {
 		if e.Kind == KindROM {
-			ext := strings.ToLower(filepath.Ext(e.Name))
+			ext := strings.ToLower(ROMExt(e.Name))
 			groups[ext] = append(groups[ext], e)
 		}
 	}
@@ -119,4 +119,10 @@ func (m ZIPManifest) HasDuplicateROMExt() bool {
 		}
 	}
 	return false
+}
+
+// IsPico8MultiCart reports whether the manifest contains more than one
+// Pico-8 cartridge file (.p8 or .p8.png), indicating a multi-cart game.
+func (m ZIPManifest) IsPico8MultiCart() bool {
+	return len(m.ROMsByExt()[".p8"])+len(m.ROMsByExt()[".p8.png"]) > 1
 }

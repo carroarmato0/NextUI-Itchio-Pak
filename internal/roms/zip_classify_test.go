@@ -35,6 +35,12 @@ func TestClassifyEntry(t *testing.T) {
 		{"cover.png", roms.KindOther},
 		{"manual.pdf", roms.KindOther},
 		{"noext", roms.KindOther},
+		{"game.p8", roms.KindROM},
+		{"game.P8", roms.KindROM},
+		{"cart.p8.png", roms.KindROM},
+		{"cart.P8.PNG", roms.KindROM},
+		// cover.png must remain KindOther (not confused with .p8.png)
+		{"cover.png", roms.KindOther},
 	}
 	for _, tt := range tests {
 		got := roms.ClassifyEntry(tt.name)
@@ -134,5 +140,57 @@ func TestHasNoDuplicateROMExt(t *testing.T) {
 	}}
 	if m.HasDuplicateROMExt() {
 		t.Error("HasDuplicateROMExt() = true, want false (each extension appears once)")
+	}
+}
+
+func TestIsPico8MultiCart(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []roms.ZIPEntry
+		want    bool
+	}{
+		{
+			name: "two p8 files → multi-cart",
+			entries: []roms.ZIPEntry{
+				{Name: "poom.p8", Kind: roms.KindROM},
+				{Name: "poom-2.p8", Kind: roms.KindROM},
+			},
+			want: true,
+		},
+		{
+			name: "one p8 + one p8.png → multi-cart",
+			entries: []roms.ZIPEntry{
+				{Name: "game.p8", Kind: roms.KindROM},
+				{Name: "game.p8.png", Kind: roms.KindROM},
+			},
+			want: true,
+		},
+		{
+			name: "one p8 only → not multi-cart",
+			entries: []roms.ZIPEntry{
+				{Name: "game.p8", Kind: roms.KindROM},
+			},
+			want: false,
+		},
+		{
+			name: "no pico-8 files → not multi-cart",
+			entries: []roms.ZIPEntry{
+				{Name: "game.gbc", Kind: roms.KindROM},
+				{Name: "game.gb", Kind: roms.KindROM},
+			},
+			want: false,
+		},
+		{
+			name:    "empty manifest → not multi-cart",
+			entries: nil,
+			want:    false,
+		},
+	}
+	for _, tt := range tests {
+		m := roms.ZIPManifest{Entries: tt.entries}
+		got := m.IsPico8MultiCart()
+		if got != tt.want {
+			t.Errorf("%s: IsPico8MultiCart() = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
