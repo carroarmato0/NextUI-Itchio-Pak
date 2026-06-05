@@ -21,6 +21,10 @@ func TestScoreUpload(t *testing.T) {
 		{"game.md", 1},
 		{"game.gen", 1},
 		{"game.smd", 1},
+		{"game.p8.png", 2},
+		{"game.P8.PNG", 2},
+		{"game.p8", 1},
+		{"game.P8", 1},
 		{"game.zip", 0},
 		{"game.pocket", 0},
 		{"game.pdf", 0},
@@ -50,6 +54,9 @@ func TestDestinationDir(t *testing.T) {
 		{".MD", "/mnt/SDCARD/Roms/Sega Genesis (MD)/"},
 		{".gen", "/mnt/SDCARD/Roms/Sega Genesis (MD)/"},
 		{".smd", "/mnt/SDCARD/Roms/Sega Genesis (MD)/"},
+		{".p8", "/mnt/SDCARD/Roms/Pico-8 (P8)/"},
+		{".P8", "/mnt/SDCARD/Roms/Pico-8 (P8)/"},
+		{".p8.png", "/mnt/SDCARD/Roms/Pico-8 (P8)/"},
 		{".zip", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 		{".ZIP", "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"},
 	}
@@ -96,6 +103,23 @@ func TestMusicDestinationDir(t *testing.T) {
 		got := roms.MusicDestinationDir(tt.title)
 		if got != tt.want {
 			t.Errorf("MusicDestinationDir(%q) = %q, want %q", tt.title, got, tt.want)
+		}
+	}
+}
+
+func TestPico8MultiCartDir(t *testing.T) {
+	tests := []struct {
+		title string
+		want  string
+	}{
+		{"Celeste Classic", "/mnt/SDCARD/Roms/Pico-8 (P8)/Celeste Classic/"},
+		{"Game: Title?", "/mnt/SDCARD/Roms/Pico-8 (P8)/Game Title/"},
+		{"", "/mnt/SDCARD/Roms/Pico-8 (P8)/Unknown/"},
+	}
+	for _, tt := range tests {
+		got := roms.Pico8MultiCartDir(tt.title)
+		if got != tt.want {
+			t.Errorf("Pico8MultiCartDir(%q) = %q, want %q", tt.title, got, tt.want)
 		}
 	}
 }

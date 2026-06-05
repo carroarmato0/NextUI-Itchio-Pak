@@ -24,10 +24,10 @@ type Upload struct {
 }
 
 func ScoreUpload(filename string) int {
-	switch strings.ToLower(filepath.Ext(filename)) {
-	case ".gbc":
+	switch strings.ToLower(ROMExt(filename)) {
+	case ".gbc", ".p8.png":
 		return 2
-	case ".gb", ".gba", ".nes", ".md", ".gen", ".smd":
+	case ".gb", ".gba", ".nes", ".md", ".gen", ".smd", ".p8":
 		return 1
 	default:
 		return 0
@@ -46,6 +46,9 @@ const NESDir = "/mnt/SDCARD/Roms/Nintendo Entertainment System (FC)/"
 // GenesisDir is the NextUI Sega Genesis/Mega Drive ROM directory.
 const GenesisDir = "/mnt/SDCARD/Roms/Sega Genesis (MD)/"
 
+// Pico8Dir is the NextUI Pico-8 ROM directory.
+const Pico8Dir = "/mnt/SDCARD/Roms/Pico-8 (P8)/"
+
 func DestinationDir(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".gbc":
@@ -58,6 +61,8 @@ func DestinationDir(ext string) string {
 		return NESDir
 	case ".md", ".gen", ".smd":
 		return GenesisDir
+	case ".p8", ".p8.png":
+		return Pico8Dir
 	case ".zip":
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	default:
@@ -88,4 +93,14 @@ func MusicDestinationDir(gameTitle string) string {
 		safe = "Unknown"
 	}
 	return MusicBaseDir + safe + "/"
+}
+
+// Pico8MultiCartDir returns the subdirectory for a multi-cart Pico-8 game.
+// All cart files and the generated M3U playlist are placed here.
+func Pico8MultiCartDir(gameTitle string) string {
+	safe := SanitiseFilename(gameTitle, "")
+	if safe == "" {
+		safe = "Unknown"
+	}
+	return Pico8Dir + safe + "/"
 }

@@ -48,7 +48,7 @@ func SanitiseFilename(title, ext string) string {
 // If allowOverwrite is false (migration context), appends " (2)", " (3)" etc.
 // to avoid colliding with any pre-existing file.
 func ResolveUnifiedDest(currentPath, gameTitle string, allowOverwrite bool) (string, bool) {
-	ext := filepath.Ext(currentPath)
+	ext := ROMExt(filepath.Base(currentPath))
 	candidate := SanitiseFilename(gameTitle, ext)
 	if candidate == "" || candidate == filepath.Base(currentPath) {
 		return currentPath, false
