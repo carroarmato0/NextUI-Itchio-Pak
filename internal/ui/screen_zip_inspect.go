@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 
@@ -22,8 +21,9 @@ type ZIPPlan struct {
 	CDNURL   string
 	Manifest roms.ZIPManifest
 
-	DownloadROMs  bool
-	DownloadMusic bool
+	DownloadROMs     bool
+	DownloadMusic    bool
+	IsPico8MultiCart bool // when true, skip per-ROM art; writePico8M3U handles it
 	// SelectedROMs maps lowercase extension → chosen entry Name.
 	// Empty map means all ROMs in the manifest are selected.
 	SelectedROMs map[string]string
@@ -211,10 +211,10 @@ func (s *ZIPInspectScreen) route() Screen {
 	if m.IsSingleROMOnly() && !m.HasOtherFiles() {
 		// Use the inner ROM's extension to route to the correct destination directory
 		// (e.g., a ZIP containing a single .gba should land in the GBA folder).
-		ext := strings.ToLower(filepath.Ext(s.upload.Filename))
+		ext := strings.ToLower(roms.ROMExt(s.upload.Filename))
 		for _, e := range m.Entries {
 			if e.Kind == roms.KindROM {
-				if inner := strings.ToLower(filepath.Ext(e.Name)); roms.DestinationDir(inner) != "" {
+				if inner := strings.ToLower(roms.ROMExt(e.Name)); roms.DestinationDir(inner) != "" {
 					ext = inner
 				}
 				break
@@ -227,6 +227,26 @@ func (s *ZIPInspectScreen) route() Screen {
 		patched := s.upload
 		patched.URL = s.plan.CDNURL
 		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
+	}
+
+	// Pico-8 multi-cart: extract all carts to a named subdirectory and generate
+	// an M3U playlist. Checked before HasDuplicateROMExt so it never hits the
+	// single-selection picker.
+	if m.IsPico8MultiCart() {
+		subDir := roms.Pico8MultiCartDir(s.game.Title)
+		plan := s.plan
+		plan.DownloadROMs = true
+		plan.IsPico8MultiCart = true
+		plan.ROMDirs = map[string]string{".p8": subDir, ".p8.png": subDir}
+		plan.DownloadMusic = m.HasMusic() && s.cfg.MusicDownload == "auto"
+		if plan.DownloadMusic {
+			if s.cfg.MusicLocation == "ask" {
+				return NewMusicLocationPickerScreen(s.client, s.cfg, s.cfgPath,
+					s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+			}
+			plan.MusicDir = roms.MusicDestinationDir(s.game.Title)
+		}
+		return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
 	}
 
 	// Multiple ROMs of same extension, GBA present, or music choice needed → picker.
