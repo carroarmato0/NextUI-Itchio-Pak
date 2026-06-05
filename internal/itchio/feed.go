@@ -207,7 +207,9 @@ type slugResult struct {
 // fetchSlug fetches all pages for one feed slug and returns every game found.
 // It maintains its own seen-URL set purely for within-slug wrap-around
 // detection (itch.io repeats the last real page indefinitely past the end).
-func (c *Client) fetchSlug(ctx context.Context, platformCode, slug string) ([]Game, error) {
+// onPage is called after each page that adds at least one new game; the
+// argument is the running total of games found so far within this slug.
+func (c *Client) fetchSlug(ctx context.Context, platformCode, slug string, onPage func(n int)) ([]Game, error) {
 	logger.Info("feed: fetching platform=%s slug=%s", platformCode, slug)
 	localSeen := make(map[string]bool)
 	var games []Game
@@ -233,6 +235,9 @@ func (c *Client) fetchSlug(ctx context.Context, platformCode, slug string) ([]Ga
 			}
 		}
 		logger.Debug("feed: platform=%s slug=%s page=%d: %d new, %d deduped", platformCode, slug, page, added, len(pageGames)-added)
+		if added > 0 && onPage != nil {
+			onPage(added)
+		}
 		if len(pageGames) < PerPage {
 			break
 		}
@@ -269,6 +274,10 @@ func (c *Client) FetchAllGames(ctx context.Context, progress func(partial []Game
 	}
 
 	resultCh := make(chan slugResult, len(specs))
+	// pingCh carries per-page notifications from goroutines so the collect loop
+	// can fire progress(all) more frequently than once per completed slug.
+	// Capacity = len(specs)*2 to avoid blocking goroutines on a slow main loop.
+	pingCh := make(chan struct{}, len(specs)*2)
 	sem := make(chan struct{}, feedConcurrency)
 
 	for _, spec := range specs {
@@ -282,20 +291,39 @@ func (c *Client) FetchAllGames(ctx context.Context, progress func(partial []Game
 				resultCh <- slugResult{err: ctx.Err()}
 				return
 			}
-			games, err := c.fetchSlug(ctx, spec.platformCode, spec.slug)
+			games, err := c.fetchSlug(ctx, spec.platformCode, spec.slug, func(_ int) {
+				select {
+				case pingCh <- struct{}{}:
+				default:
+				}
+			})
 			resultCh <- slugResult{platformCode: spec.platformCode, games: games, err: err}
 		}()
 	}
 
 	// Collect results as slugs complete; merge sequentially (no mutex needed).
+	// Pings from in-flight goroutines also fire progress so the caller sees
+	// live updates during long slug fetches (e.g. the large P8 feed).
 	seen := make(map[string]bool)
 	var all []Game
 	var lastErr error
-	for range specs {
+	remaining := len(specs)
+	for remaining > 0 {
 		select {
 		case <-ctx.Done():
 			return all, ctx.Err()
+		case <-pingCh:
+			// A goroutine finished a page — fire a live-count progress update
+			// using whatever has been merged so far. Drain all pending pings to
+			// avoid a flood of identical callbacks.
+			for len(pingCh) > 0 {
+				<-pingCh
+			}
+			if progress != nil {
+				progress(all)
+			}
 		case r := <-resultCh:
+			remaining--
 			if r.err != nil {
 				if errors.Is(r.err, context.Canceled) {
 					return all, r.err

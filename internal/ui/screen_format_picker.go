@@ -18,20 +18,33 @@ import (
 type formatChoice int
 
 const (
-	formatGB  formatChoice = iota // .gb
-	formatGBC                     // .gbc
-	formatGBA                     // .gba
-	formatZIP                     // .zip
+	formatP8PNG formatChoice = iota // .p8.png
+	formatP8                        // .p8
+	formatGBC                       // .gbc
+	formatGB                        // .gb
+	formatGBA                       // .gba
+	formatNES                       // .nes
+	formatMD                        // .md (Genesis/Mega Drive)
+	formatZIP                       // .zip
+	formatCount                     // sentinel — total number of choices
 )
 
 func (f formatChoice) ext() string {
 	switch f {
-	case formatGB:
-		return ".gb"
+	case formatP8PNG:
+		return ".p8.png"
+	case formatP8:
+		return ".p8"
 	case formatGBC:
 		return ".gbc"
+	case formatGB:
+		return ".gb"
 	case formatGBA:
 		return ".gba"
+	case formatNES:
+		return ".nes"
+	case formatMD:
+		return ".md"
 	case formatZIP:
 		return ".zip"
 	}
@@ -40,26 +53,45 @@ func (f formatChoice) ext() string {
 
 func (f formatChoice) label() string {
 	switch f {
-	case formatGB:
-		return "GB"
+	case formatP8PNG:
+		return "P8.PNG"
+	case formatP8:
+		return "P8"
 	case formatGBC:
 		return "GBC"
+	case formatGB:
+		return "GB"
 	case formatGBA:
 		return "GBA"
+	case formatNES:
+		return "NES"
+	case formatMD:
+		return "MD"
 	case formatZIP:
 		return "ZIP"
 	}
 	return "GBC"
 }
 
-func (f formatChoice) next() formatChoice { return (f + 1) % 4 }
-func (f formatChoice) prev() formatChoice { return (f + 3) % 4 }
+func (f formatChoice) next() formatChoice { return (f + 1) % formatCount }
+func (f formatChoice) prev() formatChoice { return (f + formatCount - 1) % formatCount }
 
-// defaultFormatChoice returns ZIP when the filename already ends in .zip,
-// GBC for everything else (most GB Studio games target Game Boy Color).
-func defaultFormatChoice(filename string) formatChoice {
-	if strings.ToLower(filepath.Ext(filename)) == ".zip" {
+// defaultFormatChoiceForGame returns a sensible default format based on the
+// game's platform tag and the upload filename. The upload filename overrides
+// when it already carries a known extension.
+func defaultFormatChoiceForGame(game itchio.Game, filename string) formatChoice {
+	if strings.ToLower(roms.ROMExt(filename)) == ".zip" {
 		return formatZIP
+	}
+	switch game.Platform {
+	case "P8":
+		return formatP8PNG
+	case "GBA":
+		return formatGBA
+	case "NES":
+		return formatNES
+	case "MD":
+		return formatMD
 	}
 	return formatGBC
 }
@@ -89,7 +121,7 @@ func NewFormatPickerScreen(
 ) *FormatPickerScreen {
 	formats := make([]formatChoice, len(uploads))
 	for i, u := range uploads {
-		formats[i] = defaultFormatChoice(u.Filename)
+		formats[i] = defaultFormatChoiceForGame(game, u.Filename)
 	}
 	return &FormatPickerScreen{
 		client: client, cfg: cfg, cfgPath: cfgPath,
@@ -123,13 +155,13 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 8
-	r.DrawSmallText("No .gb/.gbc/.gba/.zip detected — choose file and format:", 12, contentTop, 180, 160, 100)
+	r.DrawSmallText("Unknown format — choose file and format:", 12, contentTop, 180, 160, 100)
 	contentTop += smallFH + 10
 
 	rowH := fontH + 12 // matches list screen row height
 	const tagMargin = int32(12)
 	const badgePad = int32(4)
-	maxTagW, _ := r.SmallTextSize("GBC") // widest label — used for a stable filename budget
+	maxTagW, _ := r.SmallTextSize("P8.PNG") // widest label — used for a stable filename budget
 	badgeW := maxTagW + badgePad*2
 	badgeH := smallFH + badgePad
 
@@ -156,12 +188,18 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 		badgeY := rowTop + (rowH-badgeH)/2
 		var fR, fG, fB uint8
 		switch f {
+		case formatP8PNG, formatP8:
+			fR, fG, fB = 255, 100, 80 // Pico-8 red/orange
 		case formatGB:
 			fR, fG, fB = 120, 220, 120
 		case formatGBC:
 			fR, fG, fB = 80, 180, 255
 		case formatGBA:
 			fR, fG, fB = 200, 100, 240
+		case formatNES:
+			fR, fG, fB = 220, 80, 80
+		case formatMD:
+			fR, fG, fB = 80, 200, 200
 		case formatZIP:
 			fR, fG, fB = 220, 180, 80
 		}
@@ -246,8 +284,8 @@ func (s *FormatPickerScreen) confirm() Screen {
 
 	upload := original
 	// Only append the extension if the file does not already carry it,
-	// to avoid producing names like "game.zip.zip".
-	if strings.ToLower(filepath.Ext(original.Filename)) != chosenExt {
+	// to avoid producing names like "game.zip.zip" or "game.p8.png.p8.png".
+	if strings.ToLower(roms.ROMExt(original.Filename)) != chosenExt {
 		upload.Filename = original.Filename + chosenExt
 	}
 	logger.Info("format-picker: %q → %s", original.Filename,

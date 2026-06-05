@@ -184,10 +184,10 @@ func TestFetchAllGames(t *testing.T) {
 	if len(games) != 39 {
 		t.Errorf("got %d games, want 39", len(games))
 	}
-	// Progress fires once per completed slug that adds new games.
-	// Two slugs return games (made-with-gb-studio and tag-nes-rom); all others return empty.
-	if progressCalls != 2 {
-		t.Errorf("progress calls = %d, want 2", progressCalls)
+	// Progress fires at least once per slug that adds new games (and additionally
+	// per page via the live-count ping channel — exact count is nondeterministic).
+	if progressCalls < 1 {
+		t.Errorf("progress calls = %d, want >= 1", progressCalls)
 	}
 	if lastFetched != 39 {
 		t.Errorf("last fetched = %d, want 39", lastFetched)
