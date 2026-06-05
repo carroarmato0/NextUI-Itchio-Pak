@@ -46,10 +46,16 @@ const NESDir = "/mnt/SDCARD/Roms/Nintendo Entertainment System (FC)/"
 // GenesisDir is the NextUI Sega Genesis/Mega Drive ROM directory.
 const GenesisDir = "/mnt/SDCARD/Roms/Sega Genesis (MD)/"
 
-// Pico8Dir is the NextUI Pico-8 ROM directory.
-const Pico8Dir = "/mnt/SDCARD/Roms/Pico-8 (P8)/"
+// Pico8ROMDir returns the Pico-8 ROM directory for the given core.
+// core: "fakeo8" | "pico8" — any other value falls back to "fakeo8".
+func Pico8ROMDir(core string) string {
+	if core == "pico8" {
+		return "/mnt/SDCARD/Roms/Pico-8 (PICO)/"
+	}
+	return "/mnt/SDCARD/Roms/Pico-8 (P8)/"
+}
 
-func DestinationDir(ext string) string {
+func DestinationDir(ext, pico8Core string) string {
 	switch strings.ToLower(ext) {
 	case ".gbc":
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
@@ -62,7 +68,7 @@ func DestinationDir(ext string) string {
 	case ".md", ".gen", ".smd":
 		return GenesisDir
 	case ".p8", ".p8.png":
-		return Pico8Dir
+		return Pico8ROMDir(pico8Core)
 	case ".zip":
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	default:
@@ -95,12 +101,12 @@ func MusicDestinationDir(gameTitle string) string {
 	return MusicBaseDir + safe + "/"
 }
 
-// Pico8GameDir returns the subdirectory for a Pico-8 game that ships with
+// Pico8GameSubDir returns the subdirectory for a Pico-8 game that ships with
 // multiple files (.p8/.p8.png/.lua). All game files are extracted here.
-func Pico8GameDir(gameTitle string) string {
+func Pico8GameSubDir(core, gameTitle string) string {
 	safe := SanitiseFilename(gameTitle, "")
 	if safe == "" {
 		safe = "Unknown"
 	}
-	return Pico8Dir + safe + "/"
+	return Pico8ROMDir(core) + safe + "/"
 }
