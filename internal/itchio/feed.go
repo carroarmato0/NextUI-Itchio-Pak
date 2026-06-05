@@ -3,6 +3,7 @@ package itchio
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -192,10 +193,62 @@ func (c *Client) FetchGames(page int, query string) ([]Game, error) {
 	return c.FetchGamesFromURL(url)
 }
 
-// FetchAllGames fetches every page of every platform feed in AllPlatforms,
-// deduplicates games by URL (first feed wins), and returns the merged list.
-// progress is called after each page that adds at least one new game.
-// On error the games collected so far are returned alongside the error.
+// feedConcurrency is the maximum number of feed slugs fetched in parallel.
+// All requests share the same HTTP/2 connection to itch.io, so this caps
+// the number of concurrent in-flight page requests rather than connections.
+const feedConcurrency = 3
+
+type slugResult struct {
+	platformCode string
+	games        []Game
+	err          error
+}
+
+// fetchSlug fetches all pages for one feed slug and returns every game found.
+// It maintains its own seen-URL set purely for within-slug wrap-around
+// detection (itch.io repeats the last real page indefinitely past the end).
+func (c *Client) fetchSlug(ctx context.Context, platformCode, slug string) ([]Game, error) {
+	logger.Info("feed: fetching platform=%s slug=%s", platformCode, slug)
+	localSeen := make(map[string]bool)
+	var games []Game
+	for page := 1; ; page++ {
+		select {
+		case <-ctx.Done():
+			return games, ctx.Err()
+		default:
+		}
+		url := fmt.Sprintf("%s/games/%s.xml?page=%d", c.base, slug, page)
+		pageGames, err := c.FetchGamesFromURL(url)
+		if err != nil {
+			logger.Warn("feed: platform=%s slug=%s page=%d error: %v", platformCode, slug, page, err)
+			return games, fmt.Errorf("platform=%s slug=%s page %d: %w", platformCode, slug, page, err)
+		}
+		added := 0
+		for i := range pageGames {
+			if !localSeen[pageGames[i].URL] {
+				localSeen[pageGames[i].URL] = true
+				pageGames[i].Platform = platformCode
+				games = append(games, pageGames[i])
+				added++
+			}
+		}
+		logger.Debug("feed: platform=%s slug=%s page=%d: %d new, %d deduped", platformCode, slug, page, added, len(pageGames)-added)
+		if len(pageGames) < PerPage {
+			break
+		}
+		if added == 0 {
+			logger.Debug("feed: platform=%s slug=%s page=%d: full page all-duplicates, stopping (itch.io wrap-around)", platformCode, slug, page)
+			break
+		}
+	}
+	return games, nil
+}
+
+// FetchAllGames fetches every page of every platform feed in AllPlatforms in
+// parallel (up to feedConcurrency slugs at a time), deduplicates games by URL
+// across platforms, and returns the merged list. progress is called after each
+// slug completes. If a slug errors, its games are skipped and the error is
+// recorded; partial results from other slugs are always returned.
 func (c *Client) FetchAllGames(ctx context.Context, progress func(partial []Game)) ([]Game, error) {
 	select {
 	case <-ctx.Done():
@@ -203,55 +256,68 @@ func (c *Client) FetchAllGames(ctx context.Context, progress func(partial []Game
 	default:
 	}
 
+	// Enumerate all (platform, slug) pairs.
+	type slugSpec struct {
+		platformCode string
+		slug         string
+	}
+	var specs []slugSpec
+	for _, p := range AllPlatforms {
+		for _, s := range p.FeedSlugs {
+			specs = append(specs, slugSpec{p.Code, s})
+		}
+	}
+
+	resultCh := make(chan slugResult, len(specs))
+	sem := make(chan struct{}, feedConcurrency)
+
+	for _, spec := range specs {
+		spec := spec
+		go func() {
+			// Acquire semaphore slot, or abort if context is cancelled.
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				resultCh <- slugResult{err: ctx.Err()}
+				return
+			}
+			games, err := c.fetchSlug(ctx, spec.platformCode, spec.slug)
+			resultCh <- slugResult{platformCode: spec.platformCode, games: games, err: err}
+		}()
+	}
+
+	// Collect results as slugs complete; merge sequentially (no mutex needed).
 	seen := make(map[string]bool)
 	var all []Game
-
-	for _, platform := range AllPlatforms {
-		for _, slug := range platform.FeedSlugs {
-			logger.Info("feed: fetching platform=%s slug=%s", platform.Code, slug)
-			for page := 1; ; page++ {
-				select {
-				case <-ctx.Done():
-					return all, ctx.Err()
-				default:
+	var lastErr error
+	for range specs {
+		select {
+		case <-ctx.Done():
+			return all, ctx.Err()
+		case r := <-resultCh:
+			if r.err != nil {
+				if errors.Is(r.err, context.Canceled) {
+					return all, r.err
 				}
-
-				url := fmt.Sprintf("%s/games/%s.xml?page=%d", c.base, slug, page)
-				games, err := c.FetchGamesFromURL(url)
-				if err != nil {
-					logger.Warn("feed: platform=%s slug=%s page=%d error: %v (returning partial)", platform.Code, slug, page, err)
-					return all, fmt.Errorf("fetch all games platform=%s slug=%s page %d: %w", platform.Code, slug, page, err)
+				lastErr = r.err
+				continue
+			}
+			added := 0
+			for _, g := range r.games {
+				if !seen[g.URL] {
+					seen[g.URL] = true
+					all = append(all, g)
+					added++
 				}
-
-				added := 0
-				for i := range games {
-					if !seen[games[i].URL] {
-						seen[games[i].URL] = true
-						games[i].Platform = platform.Code
-						all = append(all, games[i])
-						added++
-					}
-				}
-				logger.Debug("feed: platform=%s slug=%s page=%d: %d new, %d deduped", platform.Code, slug, page, added, len(games)-added)
-
-				if added > 0 && progress != nil {
-					progress(all)
-				}
-
-				if len(games) < PerPage {
-					break // last page of this feed slug
-				}
-				if added == 0 {
-					// itch.io recycles the first page's results past the last real page
-					// rather than returning an empty feed. A full page with zero new
-					// games means we have wrapped around — stop here.
-					logger.Debug("feed: platform=%s slug=%s page=%d: full page all-duplicates, stopping (itch.io wrap-around)", platform.Code, slug, page)
-					break
-				}
+			}
+			logger.Debug("feed: platform=%s merged %d game(s) (%d cross-platform deduped)", r.platformCode, added, len(r.games)-added)
+			if added > 0 && progress != nil {
+				progress(all)
 			}
 		}
 	}
-	return all, nil
+	return all, lastErr
 }
 
 var resultCountRegex = regexp.MustCompile(`(?i)(\d[\d,]*)\s+result`)
