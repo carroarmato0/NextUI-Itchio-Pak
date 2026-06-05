@@ -17,7 +17,7 @@ func ScoreUpload(filename string) int {
 	switch strings.ToLower(filepath.Ext(filename)) {
 	case ".gbc":
 		return 2
-	case ".gb":
+	case ".gb", ".gba", ".nes", ".md", ".gen", ".smd":
 		return 1
 	default:
 		return 0
@@ -30,6 +30,12 @@ const GBADir = "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"
 // GBAMGBADir is the alternative NextUI GBA ROM directory (uses the MGBA emulator).
 const GBAMGBADir = "/mnt/SDCARD/Roms/Game Boy Advance (MGBA)/"
 
+// NESDir is the NextUI NES/Famicom ROM directory.
+const NESDir = "/mnt/SDCARD/Roms/Nintendo Entertainment System (FC)/"
+
+// GenesisDir is the NextUI Sega Genesis/Mega Drive ROM directory.
+const GenesisDir = "/mnt/SDCARD/Roms/Sega Genesis (MD)/"
+
 func DestinationDir(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".gbc":
@@ -38,6 +44,10 @@ func DestinationDir(ext string) string {
 		return "/mnt/SDCARD/Roms/Game Boy (GB)/"
 	case ".gba":
 		return GBADir
+	case ".nes":
+		return NESDir
+	case ".md", ".gen", ".smd":
+		return GenesisDir
 	case ".zip":
 		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
 	default:

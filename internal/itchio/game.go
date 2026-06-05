@@ -145,17 +145,78 @@ func extractScreenshotURLs(rawHTML []byte) []string {
 	return urls
 }
 
-// descriptionRegex matches the formatted_description div and its contents.
-var descriptionRegex = regexp.MustCompile(`(?s)<div\s+class="formatted_description[^"]*">(.*?)</div>`)
-
 // extractDescription pulls the game description from the page HTML and
-// converts it from HTML to plain text.
+// converts it from HTML to plain text. It walks the parsed HTML tree to find
+// the formatted_description div, so nested elements (e.g. YouTube embeds) do
+// not truncate the result the way a regex approach would.
 func extractDescription(pageHTML string) string {
-	m := descriptionRegex.FindStringSubmatch(pageHTML)
-	if len(m) < 2 {
+	doc, err := html.Parse(strings.NewReader(pageHTML))
+	if err != nil {
 		return ""
 	}
-	return htmlToPlainText(m[1])
+
+	// Find the first div whose class contains "formatted_description".
+	var descNode *html.Node
+	var findDiv func(*html.Node)
+	findDiv = func(n *html.Node) {
+		if descNode != nil {
+			return
+		}
+		if n.Type == html.ElementNode && n.Data == "div" {
+			for _, a := range n.Attr {
+				if a.Key == "class" && strings.Contains(a.Val, "formatted_description") {
+					descNode = n
+					return
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findDiv(c)
+		}
+	}
+	findDiv(doc)
+	if descNode == nil {
+		return ""
+	}
+
+	// Extract plain text from the subtree, skipping media embeds.
+	var buf bytes.Buffer
+	var extractText func(*html.Node)
+	extractText = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			switch n.Data {
+			case "button", "iframe", "video", "audio", "script", "style":
+				return // skip non-text embeds entirely
+			case "br":
+				buf.WriteString("\n")
+			case "p", "h1", "h2", "h3", "h4", "h5", "h6":
+				if buf.Len() > 0 {
+					buf.WriteString("\n\n")
+				}
+			case "li":
+				buf.WriteString("\n• ")
+			case "tr":
+				buf.WriteString("\n")
+			case "td", "th":
+				if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
+					buf.WriteString("  ")
+				}
+			}
+		}
+		if n.Type == html.TextNode {
+			buf.WriteString(n.Data)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			extractText(c)
+		}
+	}
+	extractText(descNode)
+
+	text := strings.ReplaceAll(buf.String(), "\r", "")
+	for strings.Contains(text, "\n\n\n") {
+		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	}
+	return strings.TrimSpace(text)
 }
 
 // htmlToPlainText converts simple HTML (paragraphs, breaks, headings) to
@@ -257,7 +318,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 		if n.Type == html.ElementNode && n.Data == "div" && nodeHasClass(n, "upload") {
 			if u, ok := extractUploadEntry(n); ok {
 				ext := strings.ToLower(filepath.Ext(u.Filename))
-				if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".zip" {
+				if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".nes" || ext == ".md" || ext == ".gen" || ext == ".smd" || ext == ".zip" {
 					logger.Debug("download-page: found ROM %s id=%s", u.Filename, u.UploadID)
 					result.Uploads = append(result.Uploads, u)
 				} else if !isSkippableExt(ext) {

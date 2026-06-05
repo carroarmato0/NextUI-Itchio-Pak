@@ -94,3 +94,17 @@ func TestSaveStatePaths_UnrecognisedDir_ReturnsNil(t *testing.T) {
 		t.Errorf("expected nil for unrecognised dir, got %v", paths)
 	}
 }
+
+func TestRomCoreInfo_NES(t *testing.T) {
+	tag, core := roms.RomCoreInfo("/mnt/SDCARD/Roms/Nintendo Entertainment System (FC)/game.nes")
+	if tag != "FC" || core != "fceumm" {
+		t.Errorf("RomCoreInfo NES: got (%q, %q), want (FC, fceumm)", tag, core)
+	}
+}
+
+func TestRomCoreInfo_Genesis(t *testing.T) {
+	tag, core := roms.RomCoreInfo("/mnt/SDCARD/Roms/Sega Genesis (MD)/game.md")
+	if tag != "MD" || core != "picodrive" {
+		t.Errorf("RomCoreInfo Genesis: got (%q, %q), want (MD, picodrive)", tag, core)
+	}
+}

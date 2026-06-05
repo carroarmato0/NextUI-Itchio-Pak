@@ -140,19 +140,31 @@ func TestFetchAllGames(t *testing.T) {
 </item>
 </channel></rss>`
 
+	// This NES game has a unique URL so it survives deduplication.
+	nesPage1XML := `<?xml version="1.0"?><rss version="2.0"><channel>
+<item>
+  <title>A NES Game</title>
+  <link>https://nesdev.itch.io/nes-game</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+</channel></rss>`
+
+	emptyFeed := `<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		slug := r.URL.Path   // e.g. "/games/made-with-gb-studio.xml"
 		page := r.URL.Query().Get("page")
-		switch page {
-		case "1":
-			w.Header().Set("Content-Type", "application/rss+xml")
+		switch {
+		case slug == "/games/made-with-gb-studio.xml" && page == "1":
 			w.Write(page1)
-		case "2":
-			w.Header().Set("Content-Type", "application/rss+xml")
+		case slug == "/games/made-with-gb-studio.xml" && page == "2":
 			w.Write([]byte(page2XML))
+		case slug == "/games/tag-nes-rom.xml" && page == "1":
+			w.Write([]byte(nesPage1XML))
 		default:
-			// Page 3+ returns empty feed → signals end of results.
-			w.Header().Set("Content-Type", "application/rss+xml")
-			w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
+			w.Write([]byte(emptyFeed))
 		}
 	}))
 	defer srv.Close()
@@ -167,15 +179,94 @@ func TestFetchAllGames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchAllGames: %v", err)
 	}
-	// rss_page1.xml has 36 items; page2 has 2 → total 38.
-	if len(games) != 38 {
-		t.Errorf("got %d games, want 38", len(games))
+	// rss_page1.xml has 36 items; page2 has 2 GB games; 1 NES game → total 39.
+	if len(games) != 39 {
+		t.Errorf("got %d games, want 39", len(games))
 	}
-	if progressCalls != 2 {
-		t.Errorf("progress calls = %d, want 2", progressCalls)
+	// Progress fires once per page that adds new games: GB page1 (36), GB page2 (2), NES page1 (1).
+	if progressCalls != 3 {
+		t.Errorf("progress calls = %d, want 3", progressCalls)
 	}
-	if lastFetched != 38 {
-		t.Errorf("last fetched = %d, want 38", lastFetched)
+	if lastFetched != 39 {
+		t.Errorf("last fetched = %d, want 39", lastFetched)
+	}
+}
+
+func TestFetchAllGames_StopsOnWrapAround(t *testing.T) {
+	// itch.io recycles the first page past the last real page instead of
+	// returning an empty feed. A full page of all-duplicates must terminate
+	// the loop for that slug.
+	page1, err := os.ReadFile("../../testdata/rss_page1.xml")
+	if err != nil {
+		t.Fatalf("read rss_page1.xml: %v", err)
+	}
+
+	var pageRequests int
+	emptyFeed := `<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if r.URL.Path == "/games/made-with-gb-studio.xml" {
+			pageRequests++
+			// Every page returns the same 36 items — simulates itch.io wrap-around.
+			w.Write(page1)
+		} else {
+			w.Write([]byte(emptyFeed))
+		}
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	games, err := c.FetchAllGames(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("FetchAllGames: %v", err)
+	}
+	// Page 1 adds 36 games; page 2 is all-duplicates → loop must stop after 2 requests.
+	if pageRequests != 2 {
+		t.Errorf("made %d page requests, want 2 (page 1 adds games, page 2 triggers wrap-around stop)", pageRequests)
+	}
+	if len(games) != 36 {
+		t.Errorf("got %d games, want 36", len(games))
+	}
+}
+
+func TestFetchAllGames_Dedup(t *testing.T) {
+	// The same game URL appears in two different feed slugs.
+	// It should only appear once in the result, tagged with the first platform.
+	dupXML := `<?xml version="1.0"?><rss version="2.0"><channel>
+<item>
+  <title>Dup Game</title>
+  <link>https://dupdev.itch.io/dup-game</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+</channel></rss>`
+
+	emptyFeed := `<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		slug := r.URL.Path
+		// Return the duplicate game from both a GBC feed and the GB Studio feed.
+		if (slug == "/games/tag-gameboy-color.xml" || slug == "/games/made-with-gb-studio.xml") && r.URL.Query().Get("page") == "1" {
+			w.Write([]byte(dupXML))
+		} else {
+			w.Write([]byte(emptyFeed))
+		}
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	games, err := c.FetchAllGames(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("FetchAllGames: %v", err)
+	}
+	if len(games) != 1 {
+		t.Errorf("got %d games after dedup, want 1", len(games))
+	}
+	// GBC feeds are processed before GB feeds, so the game should be tagged GBC.
+	if games[0].Platform != "GBC" {
+		t.Errorf("Platform = %q, want %q", games[0].Platform, "GBC")
 	}
 }
 
@@ -203,17 +294,19 @@ func TestFetchAllGames_MidFetchCancellation(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	var firstServed bool
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		page := r.URL.Query().Get("page")
-		if page == "1" {
-			// Cancel context after serving page 1, before page 2 can be requested.
+		w.Header().Set("Content-Type", "application/rss+xml")
+		// Cancel context on the very first request (any feed, page 1).
+		// Subsequent requests should not be made.
+		if !firstServed {
+			firstServed = true
 			cancel()
-			w.Header().Set("Content-Type", "application/rss+xml")
 			w.Write(page1)
 		} else {
-			// Should not be reached.
-			t.Errorf("unexpected request for page %s after cancellation", page)
+			// After cancellation the context check should prevent further requests.
+			t.Errorf("unexpected request after cancellation: %s", r.URL.String())
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -224,7 +317,7 @@ func TestFetchAllGames_MidFetchCancellation(t *testing.T) {
 	if err == nil {
 		t.Error("expected error from mid-fetch cancellation, got nil")
 	}
-	// Partial results (page 1) should still be returned.
+	// Partial results (first page served) should still be returned.
 	if len(games) != 36 {
 		t.Errorf("got %d games from partial fetch, want 36", len(games))
 	}

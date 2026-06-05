@@ -102,6 +102,69 @@ func TestFetchGameDetailExtractsScreenshots(t *testing.T) {
 	}
 }
 
+func TestFetchGameDetailExtractsDescription(t *testing.T) {
+	// Simple case: description div contains only paragraphs.
+	const simpleHTML = `<html><body>
+<div class="formatted_description user_formatted">
+<p>First paragraph of the description.</p>
+<p>Second paragraph.</p>
+</div>
+</body></html>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(simpleHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.Description == "" {
+		t.Fatal("Description is empty")
+	}
+	if !strings.Contains(detail.Description, "First paragraph") {
+		t.Errorf("Description missing expected text, got: %q", detail.Description)
+	}
+}
+
+func TestFetchGameDetailExtractsDescriptionWithNestedDiv(t *testing.T) {
+	// Regression: Tobu Tobu Girl Deluxe has a YouTube embed wrapper div as the
+	// first child of formatted_description. The old regex stopped at that inner
+	// </div> and returned an empty description. The HTML-parser approach must
+	// skip the embed and still return the paragraph text.
+	const pageHTML = `<html><body>
+<div class="formatted_description user_formatted">
+  <div>
+    <button type="button" class="embed_preload youtube_preload">YouTube embed</button>
+  </div>
+  <p>Your cat is floating into the atmosphere and you are the only one who can save it.</p>
+  <p>Tobu Tobu Girl is a fun and challenging arcade platformer.</p>
+</div>
+</body></html>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.Description == "" {
+		t.Fatal("Description is empty — nested div before text broke extraction")
+	}
+	if strings.Contains(detail.Description, "YouTube") {
+		t.Errorf("Description should not contain embed button text, got: %q", detail.Description)
+	}
+	if !strings.Contains(detail.Description, "floating into the atmosphere") {
+		t.Errorf("Description missing paragraph text, got: %q", detail.Description)
+	}
+}
+
 func TestFetchGameDetailExtractsBundleNames(t *testing.T) {
 	// Alpha appears twice (page renders it in purchase banner AND related-items section).
 	// Beta appears once. Result should be: [Alpha Bundle, Beta Bundle] — deduplicated.

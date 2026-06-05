@@ -14,8 +14,8 @@ var appVersion = "dev"
 
 const (
 	appRepoURL   = "https://github.com/carroarmato0/NextUI-Itchio-Pak"
-	appDescLine1 = "Browse and download GB/GBC games"
-	appDescLine2 = "from Itch.io's GB Studio collection."
+	appDescLine1 = "Browse and download retro homebrew ROMs"
+	appDescLine2 = "from Itch.io — GB, GBC, GBA, NES, Genesis."
 	appNote      = "Unofficial community Pak — not affiliated with Itch.io."
 )
 

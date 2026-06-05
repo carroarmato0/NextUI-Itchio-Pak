@@ -26,8 +26,9 @@ type Game struct {
 	CoverURL    string    `json:"cover_url"`
 	Price       float64   `json:"price"`
 	IsFree      bool      `json:"is_free"`
-	Tags        []string  `json:"tags,omitempty"`        // extracted from [Tag] brackets in the RSS title
-	PublishedAt time.Time `json:"published_at"` // parsed from <pubDate> in RSS feed
+	Tags        []string  `json:"tags,omitempty"`   // extracted from [Tag] brackets in the RSS title
+	PublishedAt time.Time `json:"published_at"`     // parsed from <pubDate> in RSS feed
+	Platform    string    `json:"platform,omitempty"` // NextUI system code set by FetchAllGames, e.g. "GB"
 }
 
 var (
@@ -180,6 +181,9 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 
 const PerPage = 36 // itch.io XML feeds return 36 items per page
 
+// FetchGames fetches one page of the GB Studio feed. It is used as a quick
+// live-feed preview when no local cache exists yet; the full multi-platform
+// catalogue is built by FetchAllGames.
 func (c *Client) FetchGames(page int, query string) ([]Game, error) {
 	url := fmt.Sprintf("%s/games/made-with-gb-studio.xml?page=%d", c.base, page)
 	if query != "" {
@@ -188,11 +192,10 @@ func (c *Client) FetchGames(page int, query string) ([]Game, error) {
 	return c.FetchGamesFromURL(url)
 }
 
-// FetchAllGames fetches every page of the GB Studio feed until an empty page
-// is returned or ctx is cancelled. If a page fetch fails, it returns the
-// games collected so far together with the error; callers may choose to discard
-// partial results on error. progress is called with the accumulated games slice
-// after each successful page (may be nil).
+// FetchAllGames fetches every page of every platform feed in AllPlatforms,
+// deduplicates games by URL (first feed wins), and returns the merged list.
+// progress is called after each page that adds at least one new game.
+// On error the games collected so far are returned alongside the error.
 func (c *Client) FetchAllGames(ctx context.Context, progress func(partial []Game)) ([]Game, error) {
 	select {
 	case <-ctx.Done():
@@ -200,41 +203,52 @@ func (c *Client) FetchAllGames(ctx context.Context, progress func(partial []Game
 	default:
 	}
 
+	seen := make(map[string]bool)
 	var all []Game
 
-	// Page 1 — always first so we know whether there's anything to fetch.
-	games, err := c.FetchGames(1, "")
-	if err != nil {
-		return nil, fmt.Errorf("fetch all games page 1: %w", err)
-	}
-	all = append(all, games...)
-	if progress != nil {
-		progress(all)
-	}
-	if len(games) < PerPage {
-		return all, nil // single page, done
-	}
+	for _, platform := range AllPlatforms {
+		for _, slug := range platform.FeedSlugs {
+			logger.Info("feed: fetching platform=%s slug=%s", platform.Code, slug)
+			for page := 1; ; page++ {
+				select {
+				case <-ctx.Done():
+					return all, ctx.Err()
+				default:
+				}
 
-	// Fetch remaining pages sequentially. The user sees the live feed during
-	// this background pass, so total time is acceptable.
-	for page := 2; ; page++ {
-		select {
-		case <-ctx.Done():
-			return all, ctx.Err()
-		default:
-		}
+				url := fmt.Sprintf("%s/games/%s.xml?page=%d", c.base, slug, page)
+				games, err := c.FetchGamesFromURL(url)
+				if err != nil {
+					logger.Warn("feed: platform=%s slug=%s page=%d error: %v (returning partial)", platform.Code, slug, page, err)
+					return all, fmt.Errorf("fetch all games platform=%s slug=%s page %d: %w", platform.Code, slug, page, err)
+				}
 
-		games, err := c.FetchGames(page, "")
-		if err != nil {
-			logger.Warn("cache: page %d error: %v (returning partial results)", page, err)
-			return all, fmt.Errorf("fetch all games page %d: %w", page, err)
-		}
-		all = append(all, games...)
-		if progress != nil {
-			progress(all)
-		}
-		if len(games) < PerPage {
-			break // last page
+				added := 0
+				for i := range games {
+					if !seen[games[i].URL] {
+						seen[games[i].URL] = true
+						games[i].Platform = platform.Code
+						all = append(all, games[i])
+						added++
+					}
+				}
+				logger.Debug("feed: platform=%s slug=%s page=%d: %d new, %d deduped", platform.Code, slug, page, added, len(games)-added)
+
+				if added > 0 && progress != nil {
+					progress(all)
+				}
+
+				if len(games) < PerPage {
+					break // last page of this feed slug
+				}
+				if added == 0 {
+					// itch.io recycles the first page's results past the last real page
+					// rather than returning an empty feed. A full page with zero new
+					// games means we have wrapped around — stop here.
+					logger.Debug("feed: platform=%s slug=%s page=%d: full page all-duplicates, stopping (itch.io wrap-around)", platform.Code, slug, page)
+					break
+				}
+			}
 		}
 	}
 	return all, nil

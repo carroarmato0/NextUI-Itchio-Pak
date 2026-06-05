@@ -280,16 +280,6 @@ func NewListScreen(
 			logger.Debug("cache: file exists but contains no games, using live feed")
 		}
 		go s.loadPage(1, "")
-		go func() {
-			total, err := client.FetchTotalGames()
-			if err != nil {
-				logger.Error("feed: total games: %v", err)
-				return
-			}
-			logger.Info("feed: total games=%d", total)
-			s.totalGames.Store(int32(total))
-			s.totalPages.Store(int32((total + itchio.PerPage - 1) / itchio.PerPage))
-		}()
 		go s.buildCache()
 	}
 	return s
@@ -465,7 +455,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
-	r.DrawText("Itch.io — GB Studio Games", 12, headerTextY, mt[0], mt[1], mt[2])
+	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
 	if s.cacheReady {
 		badge := itchio.SortModeBadge(s.sortMode)
 		bw, bh := r.TextSize(badge)

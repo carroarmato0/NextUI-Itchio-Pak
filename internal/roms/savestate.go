@@ -66,6 +66,10 @@ func RomCoreInfo(romDestPath string) (coreTag, coreName string) {
 		return "GBC", "gambatte"
 	case "Game Boy Advance (GBA)":
 		return "GBA", "gpsp"
+	case "Nintendo Entertainment System (FC)":
+		return "FC", "fceumm"
+	case "Sega Genesis (MD)":
+		return "MD", "picodrive"
 	default:
 		return "", ""
 	}
