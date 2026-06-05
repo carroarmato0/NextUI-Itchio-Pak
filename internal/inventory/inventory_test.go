@@ -860,6 +860,27 @@ func TestHasPendingUpdates_FalseForFirstCheckFiles(t *testing.T) {
 	}
 }
 
+func TestAllURLs(t *testing.T) {
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	inv.Add("https://a.itch.io/game-a", inventory.Entry{Title: "A"}, inventory.DownloadedFile{Filename: "a.p8", DestPath: "/roms/a.p8"})
+	inv.Add("https://b.itch.io/game-b", inventory.Entry{Title: "B"}, inventory.DownloadedFile{Filename: "b.p8", DestPath: "/roms/b.p8"})
+
+	urls := inv.AllURLs()
+	if len(urls) != 2 {
+		t.Fatalf("AllURLs() len = %d, want 2", len(urls))
+	}
+	urlSet := map[string]bool{}
+	for _, u := range urls {
+		urlSet[u] = true
+	}
+	if !urlSet["https://a.itch.io/game-a"] {
+		t.Error("expected https://a.itch.io/game-a in AllURLs()")
+	}
+	if !urlSet["https://b.itch.io/game-b"] {
+		t.Error("expected https://b.itch.io/game-b in AllURLs()")
+	}
+}
+
 func TestHasPendingUpdates_TrueForSubsequentNewFile(t *testing.T) {
 	inv, _ := inventory.Load("/nonexistent")
 	inv.Add("https://example.itch.io/game", inventory.Entry{Title: "Game", IsFree: true},

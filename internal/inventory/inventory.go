@@ -405,6 +405,17 @@ func (inv *Inventory) LatestCheckedAt() time.Time {
 	return latest
 }
 
+// AllURLs returns the game URLs of all inventory entries.
+func (inv *Inventory) AllURLs() []string {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	urls := make([]string, 0, len(inv.Entries))
+	for url := range inv.Entries {
+		urls = append(urls, url)
+	}
+	return urls
+}
+
 // CoverArtPath returns the filesystem path for the cover art of a downloaded ROM,
 // mirroring the naming convention used by itchio.DownloadCoverArt.
 // Cover art is always stored as .jpg using the exact ROM filename stem so it
