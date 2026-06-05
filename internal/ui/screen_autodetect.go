@@ -96,6 +96,18 @@ func (s *AutoDetectScreen) run() {
 
 	// Step 3: detect format from magic bytes.
 	ext := roms.DetectROMExt(header)
+
+	// In the direct-download context any PNG is almost certainly a Pico-8
+	// .p8.png cartridge — the strict 128px-width check in DetectROMExt is
+	// designed to filter artwork images inside ZIPs (where a cover.png might
+	// sit next to the cart), not standalone game files. If the strict check
+	// returned "" but the file is a PNG, treat it as .p8.png.
+	if ext == "" && len(header) >= 4 &&
+		header[0] == 0x89 && header[1] == 'P' && header[2] == 'N' && header[3] == 'G' {
+		ext = ".p8.png"
+		logger.Debug("auto-detect: PNG detected without strict width match, treating as .p8.png")
+	}
+
 	logger.Info("auto-detect: %q → detected ext=%q", s.upload.Filename, ext)
 
 	switch ext {
