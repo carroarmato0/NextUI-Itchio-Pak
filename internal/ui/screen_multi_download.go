@@ -131,7 +131,11 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 			}
 		}
 
-		if artErr := s.client.DownloadCoverArt(s.game.CoverURL, finalDest); artErr != nil {
+		if roms.ROMExt(dl.Upload.Filename) == ".p8.png" {
+			if artErr := itchio.CopyCoverArt(finalDest); artErr != nil {
+				logger.Warn("cover-art: game=%q: %v", s.game.Title, artErr)
+			}
+		} else if artErr := s.client.DownloadCoverArt(s.game.CoverURL, finalDest); artErr != nil {
 			logger.Warn("cover-art: game=%q: %v", s.game.Title, artErr)
 		}
 

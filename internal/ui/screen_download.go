@@ -103,7 +103,11 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 				}
 			}
 
-			if artErr := client.DownloadCoverArt(game.CoverURL, finalDest); artErr != nil {
+			if roms.ROMExt(upload.Filename) == ".p8.png" {
+				if artErr := itchio.CopyCoverArt(finalDest); artErr != nil {
+					logger.Warn("cover-art: game=%q: %v", game.Title, artErr)
+				}
+			} else if artErr := client.DownloadCoverArt(game.CoverURL, finalDest); artErr != nil {
 				logger.Warn("cover-art: game=%q url=%s: %v", game.Title, game.CoverURL, artErr)
 			}
 			s.inv.Add(game.URL, inventory.Entry{

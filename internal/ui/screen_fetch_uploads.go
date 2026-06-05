@@ -282,7 +282,7 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 			if s.cfg.ROMLocation == "ask" {
 				return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 			}
-			ext := strings.ToLower(filepath.Ext(upload.Filename))
+			ext := strings.ToLower(roms.ROMExt(upload.Filename))
 			dest := roms.DestinationDir(ext) + upload.Filename
 			if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
 				dest = existing
@@ -304,7 +304,7 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 		// All known uploads are direct ROM files — download all automatically.
 		var downloads []romDownload
 		for _, u := range known {
-			ext := strings.ToLower(filepath.Ext(u.Filename))
+			ext := strings.ToLower(roms.ROMExt(u.Filename))
 			dest := roms.DestinationDir(ext) + u.Filename
 			if existing := s.inv.ExistingDestPath(s.game.URL, u.Filename); existing != "" {
 				dest = existing
