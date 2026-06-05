@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"path/filepath"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
