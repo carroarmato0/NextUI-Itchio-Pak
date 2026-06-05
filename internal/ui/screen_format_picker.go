@@ -103,6 +103,7 @@ type FormatPickerScreen struct {
 	client        *itchio.Client
 	cfg           *settings.Config
 	cfgPath       string
+	cache         *renderer.ImageCache
 	game          itchio.Game
 	detail        *itchio.GameDetail
 	uploads       []roms.Upload
@@ -115,6 +116,7 @@ type FormatPickerScreen struct {
 
 func NewFormatPickerScreen(
 	client *itchio.Client, cfg *settings.Config, cfgPath string,
+	cache *renderer.ImageCache,
 	game itchio.Game, detail *itchio.GameDetail,
 	uploads []roms.Upload, inv *inventory.Inventory, inventoryPath string, prev Screen,
 ) *FormatPickerScreen {
@@ -124,6 +126,7 @@ func NewFormatPickerScreen(
 	}
 	return &FormatPickerScreen{
 		client: client, cfg: cfg, cfgPath: cfgPath,
+		cache: cache,
 		game: game, detail: detail,
 		uploads: uploads, formats: formats,
 		prev: prev,
@@ -289,6 +292,13 @@ func (s *FormatPickerScreen) confirm() Screen {
 	}
 	logger.Info("format-picker: %q → %s", original.Filename,
 		strings.ToUpper(strings.TrimPrefix(chosenExt, ".")))
+
+	// ZIP: inspect contents before routing, so the correct destination is chosen
+	// based on what's inside (e.g. .p8 files → Pico-8 folder, not GBC folder).
+	if chosenExt == ".zip" {
+		return NewZIPInspectScreen(s.client, s.cfg, s.cfgPath, s.cache,
+			s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
+	}
 
 	if s.cfg.ROMLocation == "ask" {
 		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)

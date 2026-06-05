@@ -314,5 +314,5 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 		}
 		return NewMultiROMDownloadScreen(s.client, s.cfg, s.game, s.detail, downloads, s.inv, s.inventoryPath, s.prev)
 	}
-	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, unknown, s.inv, s.inventoryPath, s.prev)
+	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, unknown, s.inv, s.inventoryPath, s.prev)
 }

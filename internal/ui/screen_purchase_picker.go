@@ -210,5 +210,5 @@ func (s *PurchasePickerScreen) choosePurchase(key itchio.OwnedKey) Screen {
 		}
 		return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
 	}
-	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, unknown, s.inv, s.inventoryPath, s.prev)
+	return NewFormatPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, unknown, s.inv, s.inventoryPath, s.prev)
 }
