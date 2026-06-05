@@ -41,4 +41,9 @@ var AllPlatforms = []FeedPlatform{
 		Name:      "Sega Genesis",
 		FeedSlugs: []string{"tag-sega-mega-drive", "tag-genesis-rom"},
 	},
+	{
+		Code:      "P8",
+		Name:      "Pico-8",
+		FeedSlugs: []string{"tag-pico-8"},
+	},
 }
