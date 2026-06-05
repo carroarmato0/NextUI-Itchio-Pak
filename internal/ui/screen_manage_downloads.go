@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -29,6 +30,10 @@ type ManageDownloadsScreen struct {
 	confirmActive  bool
 	confirmFileIdx int // deleteIdxAll/deleteIdxROMs/deleteIdxSoundtrack or index into entry.Files
 
+	heldDir    int
+	heldSince  time.Time
+	lastRepeat time.Time
+
 	cfg  *settings.Config
 	prev Screen
 }
@@ -44,7 +49,60 @@ func NewManageDownloadsScreen(inv *inventory.Inventory, inventoryPath string, ga
 	}
 }
 
-func (s *ManageDownloadsScreen) NeedsRedraw() bool { return true }
+func (s *ManageDownloadsScreen) rowCount() int {
+	entry, ok := s.inv.Lookup(s.gameURL)
+	if !ok {
+		return 0
+	}
+	extra := 1
+	if hasFileType(entry.Files, inventory.FileTypeROM) && hasFileType(entry.Files, inventory.FileTypeMusic) {
+		extra = 3
+	}
+	return len(entry.Files) + extra + 1
+}
+
+func (s *ManageDownloadsScreen) startHold(dir int) {
+	if s.heldDir == dir {
+		return
+	}
+	s.heldDir = dir
+	s.heldSince = time.Now()
+	s.lastRepeat = s.heldSince
+	s.moveCursor(dir)
+}
+
+func (s *ManageDownloadsScreen) stopHold(dir int) {
+	if s.heldDir == dir {
+		s.heldDir = 0
+	}
+}
+
+func (s *ManageDownloadsScreen) moveCursor(dir int) {
+	n := s.rowCount()
+	if dir > 0 && s.cursor < n-1 {
+		s.cursor++
+	} else if dir < 0 && s.cursor > 0 {
+		s.cursor--
+	}
+}
+
+func (s *ManageDownloadsScreen) processAutoRepeat() {
+	if s.heldDir == 0 {
+		return
+	}
+	now := time.Now()
+	elapsed := now.Sub(s.heldSince)
+	if elapsed < repeatDelay {
+		return
+	}
+	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
+		return
+	}
+	s.moveCursor(s.heldDir)
+	s.lastRepeat = now
+}
+
+func (s *ManageDownloadsScreen) NeedsRedraw() bool        { return s.heldDir != 0 }
 func (s *ManageDownloadsScreen) HasPendingAnimation() bool { return false }
 
 func hasFileType(files []inventory.DownloadedFile, ft string) bool {
@@ -57,6 +115,7 @@ func hasFileType(files []inventory.DownloadedFile, ft string) bool {
 }
 
 func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
+	s.processAutoRepeat()
 	entry, ok := s.inv.Lookup(s.gameURL)
 	if !ok {
 		r.Present()
@@ -83,13 +142,41 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 	contentTop := headerH + 10
 	rowH := fontH + 14
 	margin := int32(20)
+	bottomEdge := r.H - footerH
+
+	hasROM := hasFileType(entry.Files, inventory.FileTypeROM)
+	hasMusic := hasFileType(entry.Files, inventory.FileTypeMusic)
+	extraActions := 1
+	if hasROM && hasMusic {
+		extraActions = 3
+	}
+	rowCount := len(entry.Files) + extraActions + 1 // +1 for unified-naming toggle
+
+	// Compute how many rows fit and scroll so the cursor is always in view.
+	visibleRows := int((bottomEdge - contentTop) / rowH)
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	scrollOffset := s.cursor - visibleRows + 1
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	if max := rowCount - visibleRows; scrollOffset > max {
+		scrollOffset = max
+	}
+	pixelOffset := int32(scrollOffset) * rowH
+
+	inView := func(y int32) bool { return y < bottomEdge && y+rowH > contentTop }
 
 	lt := r.Theme.ListText
 	at := r.Theme.AccentText
 	arrowLabel := "→  "
 	arrowW, _ := r.SmallTextSize(arrowLabel)
 	for i, f := range entry.Files {
-		y := contentTop + int32(i)*rowH
+		y := contentTop + int32(i)*rowH - pixelOffset
+		if !inView(y) {
+			continue
+		}
 		selected := i == s.cursor && !s.confirmActive
 		if selected {
 			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
@@ -114,72 +201,78 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
-	sepY := contentTop + int32(len(entry.Files))*rowH
-	r.DrawRect(margin, sepY, r.W-margin*2, 1, 50, 50, 50)
+	sepY := contentTop + int32(len(entry.Files))*rowH - pixelOffset
+	if sepY >= contentTop && sepY < bottomEdge {
+		r.DrawRect(margin, sepY, r.W-margin*2, 1, 50, 50, 50)
+	}
 	actionY := sepY + 8
 	deleteAllIdx := len(entry.Files)
 
-	hasROM := hasFileType(entry.Files, inventory.FileTypeROM)
-	hasMusic := hasFileType(entry.Files, inventory.FileTypeMusic)
-
 	if hasROM && hasMusic {
-		if s.cursor == deleteAllIdx && !s.confirmActive {
-			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		if inView(actionY) {
+			if s.cursor == deleteAllIdx && !s.confirmActive {
+				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			}
+			r.DrawText("Delete ROM", margin, actionY, 200, 120, 80)
 		}
-		r.DrawText("Delete ROM", margin, actionY, 200, 120, 80)
 		actionY += rowH
-
-		if s.cursor == deleteAllIdx+1 && !s.confirmActive {
-			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		if inView(actionY) {
+			if s.cursor == deleteAllIdx+1 && !s.confirmActive {
+				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			}
+			r.DrawText("Delete Soundtrack", margin, actionY, 200, 120, 80)
 		}
-		r.DrawText("Delete Soundtrack", margin, actionY, 200, 120, 80)
 		actionY += rowH
-
-		if s.cursor == deleteAllIdx+2 && !s.confirmActive {
-			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		if inView(actionY) {
+			if s.cursor == deleteAllIdx+2 && !s.confirmActive {
+				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			}
+			r.DrawText("Delete all", margin, actionY, 200, 80, 80)
 		}
-		r.DrawText("Delete all", margin, actionY, 200, 80, 80)
 		actionY += rowH
 	} else {
-		if s.cursor == deleteAllIdx && !s.confirmActive {
-			r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		if inView(actionY) {
+			if s.cursor == deleteAllIdx && !s.confirmActive {
+				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			}
+			r.DrawText("Delete all", margin, actionY, 200, 80, 80)
 		}
-		r.DrawText("Delete all", margin, actionY, 200, 80, 80)
 		actionY += rowH
 	}
 
 	sep2Y := actionY + 4
-	r.DrawRect(margin, sep2Y, r.W-margin*2, 1, 50, 50, 50)
+	if sep2Y >= contentTop && sep2Y < bottomEdge {
+		r.DrawRect(margin, sep2Y, r.W-margin*2, 1, 50, 50, 50)
+	}
 	toggleY := sep2Y + 8
-	toggleIdx := len(entry.Files) + 1
-	if hasROM && hasMusic {
-		toggleIdx = len(entry.Files) + 3
-	}
-	unifiedDisabled := entry.UnifiedNamingDisabled
-	toggleLabel := "Use game title as filename"
-	toggleVal := "ON"
-	if unifiedDisabled {
-		toggleVal = "OFF"
-	}
-	if s.cursor == toggleIdx && !s.confirmActive {
-		r.DrawPill(4, toggleY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
-		r.DrawText(toggleLabel, margin, toggleY, at[0], at[1], at[2])
-		tw, _ := r.TextSize(toggleLabel)
-		r.DrawText(toggleVal, margin+tw+16, toggleY, at[0], at[1], at[2])
-	} else {
-		textColor := [3]uint8{lt[0], lt[1], lt[2]}
-		if !s.cfg.UnifiedNaming {
-			textColor = [3]uint8{80, 80, 80}
+	toggleIdx := len(entry.Files) + extraActions
+	if inView(toggleY) {
+		unifiedDisabled := entry.UnifiedNamingDisabled
+		toggleLabel := "Use game title as filename"
+		toggleVal := "ON"
+		if unifiedDisabled {
+			toggleVal = "OFF"
 		}
-		r.DrawText(toggleLabel, margin, toggleY, textColor[0], textColor[1], textColor[2])
-		tw, _ := r.TextSize(toggleLabel)
-		r.DrawText(toggleVal, margin+tw+16, toggleY, textColor[0], textColor[1], textColor[2])
+		if s.cursor == toggleIdx && !s.confirmActive {
+			r.DrawPill(4, toggleY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+			r.DrawText(toggleLabel, margin, toggleY, at[0], at[1], at[2])
+			tw, _ := r.TextSize(toggleLabel)
+			r.DrawText(toggleVal, margin+tw+16, toggleY, at[0], at[1], at[2])
+		} else {
+			textColor := [3]uint8{lt[0], lt[1], lt[2]}
+			if !s.cfg.UnifiedNaming {
+				textColor = [3]uint8{80, 80, 80}
+			}
+			r.DrawText(toggleLabel, margin, toggleY, textColor[0], textColor[1], textColor[2])
+			tw, _ := r.TextSize(toggleLabel)
+			r.DrawText(toggleVal, margin+tw+16, toggleY, textColor[0], textColor[1], textColor[2])
+		}
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints([]renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Select"},
-		{Kind: renderer.BadgeCircle, Label: "A", Text: "Back"},
+		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}, ftrY)
 
 	if s.confirmActive {
@@ -271,7 +364,6 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 	if hasROM && hasMusic {
 		extraActions = 3
 	}
-	rowCount := len(entry.Files) + extraActions + 1 // +1 for unified naming toggle
 	deleteAllIdx := len(entry.Files)
 
 	if s.confirmActive {
@@ -326,18 +418,26 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
+		switch ev.Keysym.Sym {
+		case sdl.K_DOWN:
+			if ev.Type == sdl.KEYDOWN {
+				s.startHold(1)
+			} else {
+				s.stopHold(1)
+			}
+			return s
+		case sdl.K_UP:
+			if ev.Type == sdl.KEYDOWN {
+				s.startHold(-1)
+			} else {
+				s.stopHold(-1)
+			}
+			return s
+		}
 		if ev.Type != sdl.KEYDOWN {
 			return s
 		}
 		switch ev.Keysym.Sym {
-		case sdl.K_DOWN:
-			if s.cursor < rowCount-1 {
-				s.cursor++
-			}
-		case sdl.K_UP:
-			if s.cursor > 0 {
-				s.cursor--
-			}
 		case sdl.K_RETURN:
 			switch {
 			case s.cursor < len(entry.Files):
@@ -361,18 +461,26 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s.prev
 		}
 	case *sdl.ControllerButtonEvent:
+		switch ev.Button {
+		case sdl.CONTROLLER_BUTTON_DPAD_DOWN:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startHold(1)
+			} else {
+				s.stopHold(1)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_DPAD_UP:
+			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+				s.startHold(-1)
+			} else {
+				s.stopHold(-1)
+			}
+			return s
+		}
 		if ev.Type != sdl.CONTROLLERBUTTONDOWN {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_DPAD_DOWN:
-			if s.cursor < rowCount-1 {
-				s.cursor++
-			}
-		case sdl.CONTROLLER_BUTTON_DPAD_UP:
-			if s.cursor > 0 {
-				s.cursor--
-			}
 		case sdl.CONTROLLER_BUTTON_B: // physical A = select
 			switch {
 			case s.cursor < len(entry.Files):
