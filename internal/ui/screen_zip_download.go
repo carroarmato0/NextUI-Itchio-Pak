@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -138,16 +140,38 @@ func (s *ZIPDownloadScreen) run() {
 		if err := s.inv.Save(s.invPath); err != nil {
 			logger.Warn("zip-download: save inventory: %v", err)
 		}
-		// Cover art: keyed to a synthetic path so NextUI's .media lookup works
-		// for the game directory (stem = sanitised title, placed in gameDir/.media/).
+		// Cover art and .m3u launcher for multi-file Pico-8 games.
 		if len(s.extracted) > 0 {
+			gameDir := strings.TrimSuffix(s.plan.Pico8GameDir, "/")
+
+			// Cover art: artRef is <gameDir>.p8 so CoverArtPath places the image
+			// in the PARENT directory's .media/ — where NextUI looks for directory art.
+			artRef := gameDir + ".p8"
+			if artErr := s.client.DownloadCoverArt(s.game.CoverURL, artRef); artErr != nil {
+				logger.Warn("zip-download: pico8 cover art: %v", artErr)
+			}
+
+			// .m3u launcher: collect .p8/.p8.png files, sort naturally, write
+			// <safe>.m3u inside the game directory so the emulator loads all carts.
 			safe := roms.SanitiseFilename(s.game.Title, "")
 			if safe == "" {
 				safe = "Unknown"
 			}
-			artRef := filepath.Join(strings.TrimSuffix(s.plan.Pico8GameDir, "/"), safe+".p8")
-			if artErr := s.client.DownloadCoverArt(s.game.CoverURL, artRef); artErr != nil {
-				logger.Warn("zip-download: pico8 cover art: %v", artErr)
+			var p8Files []string
+			for _, dest := range s.extracted {
+				ext := strings.ToLower(roms.ROMExt(filepath.Base(dest)))
+				if ext == ".p8" || ext == ".p8.png" {
+					p8Files = append(p8Files, filepath.Base(dest))
+				}
+			}
+			if len(p8Files) > 1 {
+				sort.Slice(p8Files, func(i, j int) bool { return naturalLess(p8Files[i], p8Files[j]) })
+				m3uPath := filepath.Join(gameDir, safe+".m3u")
+				if err := os.WriteFile(m3uPath, []byte(strings.Join(p8Files, "\n")+"\n"), 0644); err != nil {
+					logger.Warn("zip-download: pico8 m3u write: %v", err)
+				} else {
+					logger.Info("zip-download: pico8 m3u written %s (%d carts)", m3uPath, len(p8Files))
+				}
 			}
 		}
 		if len(s.extracted) == 0 {
@@ -635,4 +659,44 @@ func (s *ZIPDownloadScreen) HandleEvent(e sdl.Event) Screen {
 func (s *ZIPDownloadScreen) IsBusy() bool {
 	st := s.loadState()
 	return st == zipDLDownloading || st == zipDLExtracting
+}
+
+// naturalLess compares two strings using natural sort order so that numeric
+// substrings are compared as integers (poom_9.p8 < poom_10.p8).
+func naturalLess(a, b string) bool {
+	for len(a) > 0 && len(b) > 0 {
+		// Consume matching non-digit prefix.
+		i := 0
+		for i < len(a) && i < len(b) && (a[i] < '0' || a[i] > '9') && (b[i] < '0' || b[i] > '9') {
+			if a[i] != b[i] {
+				return a[i] < b[i]
+			}
+			i++
+		}
+		a, b = a[i:], b[i:]
+		if len(a) == 0 || len(b) == 0 {
+			break
+		}
+		// One or both strings are at a digit run.
+		aIsDigit := a[0] >= '0' && a[0] <= '9'
+		bIsDigit := b[0] >= '0' && b[0] <= '9'
+		if !aIsDigit || !bIsDigit {
+			return a[0] < b[0]
+		}
+		// Parse both numeric runs.
+		ai, bi := 0, 0
+		for ai < len(a) && a[ai] >= '0' && a[ai] <= '9' {
+			ai++
+		}
+		for bi < len(b) && b[bi] >= '0' && b[bi] <= '9' {
+			bi++
+		}
+		na, _ := strconv.Atoi(a[:ai])
+		nb, _ := strconv.Atoi(b[:bi])
+		if na != nb {
+			return na < nb
+		}
+		a, b = a[ai:], b[bi:]
+	}
+	return len(a) < len(b)
 }
