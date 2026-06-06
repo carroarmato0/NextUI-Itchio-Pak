@@ -455,18 +455,40 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
-	if s.cacheReady {
-		badge := itchio.SortModeBadge(s.sortMode)
-		bw, bh := r.TextSize(badge)
-		const hPad = int32(8)
-		pillW := bw + hPad*2
-		pillH := bh + 4
-		pillX := r.W - pillW - 12
+	// Filter pills — platform and sort — right-aligned in header.
+	{
+		pillH := smallFH + 6
 		pillY := headerTextY - 2
-		ac := r.Theme.Accent
+
+		// Sort pill
+		sortLabel := "● " + itchio.SortModeBadge(s.sortMode)
+		sw, _ := r.SmallTextSize(sortLabel)
+		sortPillW := sw + 12
+		sortPillX := r.W - sortPillW - 10
+		var sortBgR, sortBgG, sortBgB uint8
+		if s.sortMode == itchio.SortModeRSS {
+			sortBgR, sortBgG, sortBgB = 35, 50, 35
+		} else {
+			ac := r.Theme.Accent
+			sortBgR, sortBgG, sortBgB = ac[0]/2+18, ac[1]/2+18, ac[2]/2+18
+		}
 		aT := r.Theme.AccentText
-		r.DrawPill(pillX, pillY, pillW, pillH, ac[0], ac[1], ac[2])
-		r.DrawTextCenteredInRect(badge, pillX, pillY, pillW, pillH, aT[0], aT[1], aT[2])
+		r.DrawPill(sortPillX, pillY, sortPillW, pillH, sortBgR, sortBgG, sortBgB)
+		r.DrawSmallTextCenteredInRect(sortLabel, sortPillX, pillY, sortPillW, pillH, aT[0], aT[1], aT[2])
+
+		// Platform pill (to the left of sort pill)
+		platLabel := "● " + s.platformLabel()
+		pw, _ := r.SmallTextSize(platLabel)
+		platPillW := pw + 12
+		platPillX := sortPillX - platPillW - 6
+		var platBgR, platBgG, platBgB uint8
+		if s.platformFilter == "" {
+			platBgR, platBgG, platBgB = 30, 40, 55
+		} else {
+			platBgR, platBgG, platBgB = 30, 55, 80
+		}
+		r.DrawPill(platPillX, pillY, platPillW, pillH, platBgR, platBgG, platBgB)
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
 	}
 
 	contentTop := headerH + 4
@@ -875,12 +897,24 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 
 	footerHintsBuf = footerHintsBuf[:0]
-	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
-	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
-	if s.cacheReady {
-		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"})
-	}
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Open"})
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "Filter"})
+	if s.cacheReady {
+		if s.isAlphaJumpMode() {
+			if r.W <= narrowScreenW {
+				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "A→Z"})
+			} else {
+				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "A→Z"})
+			}
+		} else {
+			if r.W <= narrowScreenW {
+				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "Page"})
+			} else {
+				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Page"})
+			}
+		}
+	}
 	if r.W <= narrowScreenW {
 		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Set"})
 	} else {
@@ -1049,6 +1083,11 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+		case sdl.K_TAB: // SELECT → filter overlay
+			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
+				func(platform, sort, query string) {
+					s.SetFilter(platform, sort, query)
+				})
 		case sdl.K_x:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
@@ -1118,6 +1157,11 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+		case sdl.CONTROLLER_BUTTON_BACK: // SELECT → filter overlay
+			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
+				func(platform, sort, query string) {
+					s.SetFilter(platform, sort, query)
+				})
 		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 			if !s.cacheReady {
 				return s
@@ -1164,6 +1208,20 @@ func (s *ListScreen) badgePrice(url string, price float64) string {
 	v := "$" + strconv.FormatFloat(price, 'f', 2, 64)
 	s.badgePriceCache[url] = v
 	return v
+}
+
+// platformLabel returns the display label for the current platform filter.
+func (s *ListScreen) platformLabel() string {
+	if s.platformFilter == "" {
+		return "All"
+	}
+	return s.platformFilter
+}
+
+// isAlphaJumpMode reports whether the current sort mode uses alpha-jump for L1/R1.
+// Full implementation in screen_list.go — placeholder until Task 10.
+func (s *ListScreen) isAlphaJumpMode() bool {
+	return s.sortMode == itchio.SortModeAZ || s.sortMode == itchio.SortModeZA
 }
 
 // cachedTruncate returns a memoised truncated title, computing it only once per
