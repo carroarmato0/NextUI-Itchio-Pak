@@ -20,10 +20,6 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-// narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
-// are abbreviated at or below this width to prevent overflow.
-const narrowScreenW = int32(640)
-
 // Per-frame slice buffers reused across Draw calls to avoid per-frame heap escapes.
 var (
 	filteredTagsBuf []string

@@ -1,6 +1,8 @@
-//go:build !headless
-
 package ui
+
+// narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
+// are abbreviated at or below this width to prevent overflow.
+const narrowScreenW = int32(640)
 
 // Layout holds screen-size-dependent spacing constants derived at draw time.
 // Use LayoutFor(r.W, r.H) to obtain the appropriate layout for the current screen.
