@@ -510,3 +510,62 @@ func TestPico8CoreOldConfigDefaultsFakeo8(t *testing.T) {
 		t.Errorf("old config Pico8Core = %q, want %q", loaded.Pico8Core, "fakeo8")
 	}
 }
+
+func TestPlatformFilterRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{PlatformFilter: "GBC"}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.PlatformFilter != "GBC" {
+		t.Errorf("PlatformFilter = %q, want %q", loaded.PlatformFilter, "GBC")
+	}
+}
+
+func TestPlatformFilterDefaultsToEmpty(t *testing.T) {
+	cfg, err := settings.Load("/nonexistent/path.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PlatformFilter != "" {
+		t.Errorf("default PlatformFilter = %q, want %q", cfg.PlatformFilter, "")
+	}
+}
+
+func TestPlatformFilterOmittedWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	cfg := &settings.Config{}
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if bytes.Contains(data, []byte("platform_filter")) {
+		t.Errorf("platform_filter should be omitted when empty, found in JSON:\n%s", data)
+	}
+}
+
+func TestPlatformFilterBackwardsCompatible(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"unified_naming":true}`), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	loaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.PlatformFilter != "" {
+		t.Errorf("old config PlatformFilter = %q, want empty string", loaded.PlatformFilter)
+	}
+}
