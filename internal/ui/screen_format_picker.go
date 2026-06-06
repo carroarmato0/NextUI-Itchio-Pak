@@ -306,7 +306,7 @@ func (s *FormatPickerScreen) confirm() Screen {
 	if s.cfg.ROMLocation == "ask" {
 		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 	}
-	dest := roms.DestinationDir(chosenExt) + upload.Filename
+	dest := roms.DestinationDir(chosenExt, s.cfg.Pico8Core) + upload.Filename
 	if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
 		dest = existing
 	}

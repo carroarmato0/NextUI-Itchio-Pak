@@ -98,7 +98,7 @@ func resolveStartDir(cfg *settings.Config, ext, cfgPath string) string {
 			cfg.Save(cfgPath) //nolint:errcheck — best-effort cleanup
 		}
 	}
-	return roms.DestinationDir(ext)
+	return roms.DestinationDir(ext, cfg.Pico8Core)
 }
 
 // loadDir switches the browser to dir, rebuilds the row list, and resets the

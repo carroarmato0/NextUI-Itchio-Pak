@@ -144,7 +144,7 @@ func (s *ROMPickerScreen) chooseUpload(upload roms.Upload) Screen {
 		return NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 	}
 	ext := strings.ToLower(roms.ROMExt(upload.Filename))
-	dest := roms.DestinationDir(ext) + upload.Filename
+	dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + upload.Filename
 	if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
 		dest = existing
 	}

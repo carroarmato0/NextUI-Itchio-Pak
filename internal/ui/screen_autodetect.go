@@ -131,7 +131,7 @@ func (s *AutoDetectScreen) run() {
 		if strings.ToLower(roms.ROMExt(upload.Filename)) != ext {
 			upload.Filename = upload.Filename + ext
 		}
-		dest := roms.DestinationDir(ext) + upload.Filename
+		dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
 			dest = existing
 		}

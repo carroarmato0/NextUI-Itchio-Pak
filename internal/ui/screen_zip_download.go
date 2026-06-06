@@ -233,7 +233,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 	ext := strings.ToLower(roms.ROMExt(baseName))
 	destDir := s.plan.ROMDirs[ext]
 	if destDir == "" {
-		destDir = roms.DestinationDir(ext)
+		destDir = roms.DestinationDir(ext, s.cfg.Pico8Core)
 	}
 	stem := strings.TrimSuffix(baseName, roms.ROMExt(baseName))
 	safeName := roms.SanitiseFilename(stem, ext)

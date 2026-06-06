@@ -214,7 +214,7 @@ func (s *ZIPInspectScreen) route() Screen {
 		ext := strings.ToLower(roms.ROMExt(s.upload.Filename))
 		for _, e := range m.Entries {
 			if e.Kind == roms.KindROM {
-				if inner := strings.ToLower(roms.ROMExt(e.Name)); roms.DestinationDir(inner) != "" {
+				if inner := strings.ToLower(roms.ROMExt(e.Name)); roms.DestinationDir(inner, s.cfg.Pico8Core) != "" {
 					ext = inner
 				}
 				break
@@ -229,7 +229,7 @@ func (s *ZIPInspectScreen) route() Screen {
 		}
 
 		// Non-Pico-8: keep the ZIP on disk (most emulators support ZIP natively).
-		dest := roms.DestinationDir(ext) + s.upload.Filename
+		dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + s.upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
 			dest = existing
 		}
@@ -242,7 +242,7 @@ func (s *ZIPInspectScreen) route() Screen {
 	// subdirectory, preserving the ZIP's relative path structure.
 	p8Count := len(m.ROMsByExt()[".p8"]) + len(m.ROMsByExt()[".p8.png"])
 	if p8Count > 1 || (p8Count == 1 && m.HasLuaFiles()) {
-		gameDir := roms.Pico8GameDir(s.game.Title)
+		gameDir := roms.Pico8GameSubDir(s.cfg.Pico8Core, s.game.Title)
 		plan := s.plan
 		plan.DownloadROMs = true
 		plan.Pico8GameDir = gameDir
