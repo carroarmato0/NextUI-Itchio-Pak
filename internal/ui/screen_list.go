@@ -758,34 +758,38 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.warmPreloadWindow()
 	}
 
-	// Right panel: cover art (or placeholder) + metadata
+	// Right panel: cover art (smaller, LayoutFor-sized) + metadata below
 	if s.cursor < len(s.viewGames) {
 		g := s.viewGames[s.cursor]
-		metaY := contentTop
-		boxW := rightW
-		boxH := rightW * 3 / 4 // 4:3 aspect ratio box
+		lyt := LayoutFor(r.W, r.H)
+		_, fontH2 := r.TextSize("Ag")
+		_, smallFH2 := r.SmallTextSize("Ag")
 
-		// Draw the box background for all states
-		r.DrawRect(rightX, metaY, boxW, boxH, bg[0], bg[1], bg[2])
+		metaY := contentTop
+
+		// Cover art: CoverMaxW fraction of right panel width, centred, 4:3
+		artW := int32(float32(rightW) * lyt.CoverMaxW)
+		artH := artW * 3 / 4
+		artX := rightX + (rightW-artW)/2
+
+		r.DrawRect(artX, metaY, artW, artH, bg[0], bg[1], bg[2])
 
 		if g.CoverURL != "" {
 			tex := s.cache.Peek(r, g.CoverURL)
 			if tex != nil {
 				_, _, tw, th, _ := tex.Query()
-				// Fit image within box, maintaining aspect ratio
-				scaleW := float32(boxW) / float32(tw)
-				scaleH := float32(boxH) / float32(th)
+				scaleW := float32(artW) / float32(tw)
+				scaleH := float32(artH) / float32(th)
 				scale := scaleW
 				if scaleH < scaleW {
 					scale = scaleH
 				}
 				dw := int32(float32(tw) * scale)
 				dh := int32(float32(th) * scale)
-				// Center within box
-				imgX := rightX + (boxW-dw)/2
-				imgY := metaY + (boxH-dh)/2
+				imgX := artX + (artW-dw)/2
+				imgY := metaY + (artH-dh)/2
 				r.DrawTextureAt(tex, imgX, imgY, dw, dh)
-				// Pill badge overlay — drawn after texture so it appears above animated GIFs.
+				// Status badge overlay on cover
 				if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) || s.inv.IsPresent(g.URL) {
 					var pillLabel string
 					var pillR, pillG, pillB uint8
@@ -808,87 +812,105 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						textR, textG, textB = 20, 20, 20
 					}
 					lw, lh := r.SmallTextSize(pillLabel)
-					const pad = int32(5)
-					pillW := lw + pad*2
-					pillH := lh + 4
-					pillX := imgX + dw - pillW - 6
-					pillY := imgY + 6
-					// Draw a subtle shadow/border for the overlay badge
-					r.DrawPill(pillX+1, pillY+1, pillW, pillH, shadowR, shadowG, shadowB)
-					r.DrawPill(pillX, pillY, pillW, pillH, pillR, pillG, pillB)
-					r.DrawSmallTextCenteredInRect(pillLabel, pillX, pillY, pillW, pillH, textR, textG, textB)
+					const overlayPad = int32(5)
+					overlayPillW := lw + overlayPad*2
+					overlayPillH := lh + 4
+					overlayPillX := imgX + dw - overlayPillW - 6
+					overlayPillY := imgY + 6
+					r.DrawPill(overlayPillX+1, overlayPillY+1, overlayPillW, overlayPillH, shadowR, shadowG, shadowB)
+					r.DrawPill(overlayPillX, overlayPillY, overlayPillW, overlayPillH, pillR, pillG, pillB)
+					r.DrawSmallTextCenteredInRect(pillLabel, overlayPillX, overlayPillY, overlayPillW, overlayPillH, textR, textG, textB)
 				}
 			} else if s.cache.Failed(g.CoverURL) {
-				r.DrawTextCenteredInRect("No Image", rightX, metaY, boxW, boxH, 80, 80, 80)
+				r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, 80, 80, 80)
 			} else {
-				r.DrawTextCenteredInRect("Loading...", rightX, metaY, boxW, boxH, 80, 80, 80)
+				r.DrawTextCenteredInRect("Loading...", artX, metaY, artW, artH, 80, 80, 80)
 			}
 		} else {
-			// No cover URL — wireframe border
-			r.DrawRect(rightX+2, metaY+2, boxW-4, boxH-4, bg[0], bg[1], bg[2])
-			r.DrawRect(rightX+3, metaY+3, boxW-6, boxH-6, 35, 35, 35)
-			r.DrawTextCenteredInRect("No Image", rightX, metaY, boxW, boxH, 80, 80, 80)
+			r.DrawRect(artX+2, metaY+2, artW-4, artH-4, bg[0], bg[1], bg[2])
+			r.DrawRect(artX+3, metaY+3, artW-6, artH-6, 35, 35, 35)
+			r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, 80, 80, 80)
 		}
-		metaY += boxH + 12
+		metaY += artH + lyt.ContentGap
 
-		lineGap := fontH + 5
-
-		if g.Author != "" {
+		// Metadata below cover art (all static, no tag scrolling)
+		availMetaH := r.H - footerH - metaY
+		if availMetaH > 0 {
 			mt2 := r.Theme.MainText
-			r.DrawText("by "+g.Author, rightX, metaY, mt2[0], mt2[1], mt2[2])
-			metaY += lineGap
-		}
-		// Tags: filter and render as pill badges with vertical-scroll if overflow.
-		filteredTagsBuf = filteredTagsBuf[:0]
-		for _, tag := range g.Tags {
-			if strings.EqualFold(tag, "free") {
-				continue
+
+			// Title
+			if g.Title != "" && metaY < r.H-footerH {
+				titleMaxW := rightW - 4
+				if s.inv.IsPresent(g.URL) || s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
+					r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleMaxW), rightX, metaY, mt2[0], mt2[1], mt2[2])
+				} else {
+					r.DrawText(truncateToWidth(r, g.Title, titleMaxW), rightX, metaY, mt2[0], mt2[1], mt2[2])
+				}
+				metaY += fontH2 + 2
 			}
-			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
-				continue
+
+			// Author
+			if g.Author != "" && metaY < r.H-footerH {
+				ht2 := r.Theme.HintText
+				r.DrawSmallText("by "+g.Author, rightX, metaY, ht2[0], ht2[1], ht2[2])
+				metaY += smallFH2 + 4
 			}
-			filteredTagsBuf = append(filteredTagsBuf, tag)
-		}
-		if len(filteredTagsBuf) > 0 {
-			ac := r.Theme.Accent
-			aT := r.Theme.AccentText
-			// Measure total pill height to know whether scroll is needed.
-			totalTagH := r.MeasureTagPills(filteredTagsBuf, rightX, rightW, lineGap)
-			availH := r.H - footerH - metaY
-			if availH <= 0 {
-				availH = 0
+
+			// Tags as pills (clipped to available height minus status badge row)
+			filteredTagsBuf = filteredTagsBuf[:0]
+			for _, tag := range g.Tags {
+				if strings.EqualFold(tag, "free") {
+					continue
+				}
+				if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
+					continue
+				}
+				filteredTagsBuf = append(filteredTagsBuf, tag)
 			}
-			if totalTagH <= availH {
-				s.tagScrollY = 0
-				// Blend accent toward gray-35 at 50% so the pill is clearly visible against
-				// the black background while keeping the accent hue.
+			statusBadgeH := smallFH2 + 6 + 4 // pill height + gap
+			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH-statusBadgeH {
+				ac := r.Theme.Accent
+				aT2 := r.Theme.AccentText
 				bgPill := [3]uint8{
 					uint8((int(ac[0]) + 35) / 2),
 					uint8((int(ac[1]) + 35) / 2),
 					uint8((int(ac[2]) + 35) / 2),
 				}
-				r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
-					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
-				metaY += totalTagH
-			} else {
-				maxTagScroll := totalTagH - availH
-				if s.tagScrollY > maxTagScroll {
-					s.tagScrollY = maxTagScroll
+				tagAreaH := r.H - footerH - metaY - statusBadgeH
+				if tagAreaH > 0 {
+					r.SetClipRect(rightX, metaY, rightW, tagAreaH)
+					lineGap := smallFH2 + 4
+					r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
+						aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
+					r.ClearClipRect()
+					metaY += tagAreaH + 2
 				}
-				if s.tagScrollY == maxTagScroll &&
-					time.Since(s.tagScrollAt) > scrollDelay+time.Duration(maxTagScroll)*time.Second/time.Duration(tagScrollSpeed)+time.Second {
-					s.tagScrollY = 0
-					s.tagScrollAt = time.Now()
+			}
+
+			// Price / status badge
+			if metaY < r.H-footerH {
+				var priceLabel string
+				var priceR, priceG, priceB uint8
+				switch {
+				case s.inv.HasPendingUpdates(g.URL):
+					priceLabel, priceR, priceG, priceB = "UPDATE", 240, 160, 40
+				case s.inv.IsRemoved(g.URL):
+					priceLabel, priceR, priceG, priceB = "REMOVED", 200, 60, 60
+				case s.inv.IsPresent(g.URL):
+					priceLabel, priceR, priceG, priceB = "Downloaded", 80, 200, 220
+				case s.ownedURLs[g.URL]:
+					priceLabel, priceR, priceG, priceB = "Owned", 60, 200, 120
+				case g.IsFree:
+					priceLabel, priceR, priceG, priceB = "Free", 80, 200, 80
+				default:
+					priceLabel = s.badgePrice(g.URL, g.Price)
+					priceR, priceG, priceB = 220, 180, 60
 				}
-				r.SetClipRect(rightX, metaY, rightW, availH)
-				bgPill := [3]uint8{
-					uint8((int(ac[0]) + 35) / 2),
-					uint8((int(ac[1]) + 35) / 2),
-					uint8((int(ac[2]) + 35) / 2),
-				}
-				r.DrawTagPills(filteredTagsBuf, rightX, metaY-s.tagScrollY, rightW, lineGap,
-					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
-				r.ClearClipRect()
+				pw2, _ := r.SmallTextSize(priceLabel)
+				pillW2 := pw2 + 12
+				pillH2 := smallFH2 + 6
+				r.DrawPill(rightX, metaY, pillW2, pillH2, priceR, priceG, priceB)
+				r.DrawSmallTextCenteredInRect(priceLabel, rightX, metaY, pillW2, pillH2, 20, 20, 20)
 			}
 		}
 	}
