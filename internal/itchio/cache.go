@@ -51,5 +51,11 @@ func LoadGamesCache(path string) (*GameCache, error) {
 	if err := json.Unmarshal(data, &cache); err != nil {
 		return nil, fmt.Errorf("parse game cache: %w", err)
 	}
+	for i := range cache.Games {
+		g := &cache.Games[i]
+		if g.Title == "" || !hasLetter(g.Title) {
+			g.Title = SlugToTitle(g.URL)
+		}
+	}
 	return &cache, nil
 }

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
@@ -68,6 +69,36 @@ type rssItem struct {
 
 type rssFeed struct {
 	Items []rssItem `xml:"channel>item"`
+}
+
+// SlugToTitle derives a display title from the URL slug when the RSS title is
+// empty. It extracts the path segment after ".itch.io/", splits on hyphens and
+// underscores, and capitalises the first letter of each word.
+func SlugToTitle(gameURL string) string {
+	s := gameURL
+	if idx := strings.Index(s, ".itch.io/"); idx >= 0 {
+		s = s[idx+len(".itch.io/"):]
+	}
+	if idx := strings.Index(s, "/"); idx >= 0 {
+		s = s[:idx]
+	}
+	words := strings.FieldsFunc(s, func(r rune) bool { return r == '-' || r == '_' })
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+// hasLetter reports whether s contains at least one Unicode letter.
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseAuthor(gameURL string) string {
@@ -166,8 +197,13 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	games := make([]Game, 0, len(feed.Items))
 	for _, item := range feed.Items {
 		price := parsePrice(item.Price)
+		title := parseTitle(item.Title)
+		if title == "" || !hasLetter(title) {
+			title = SlugToTitle(item.Link)
+			logger.Warn("feed: item %s has no readable title %q, using slug fallback %q", item.Link, parseTitle(item.Title), title)
+		}
 		games = append(games, Game{
-			Title:       parseTitle(item.Title),
+			Title:       title,
 			Tags:        parseTags(item.Title),
 			Author:      parseAuthor(item.Link),
 			URL:         item.Link,

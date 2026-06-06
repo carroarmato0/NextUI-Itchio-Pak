@@ -65,6 +65,36 @@ func TestLoadGamesCache_CorruptFile(t *testing.T) {
 	}
 }
 
+func TestLoadGamesCache_repairsTitlesOnLoad(t *testing.T) {
+	// Caches written before the slug-fallback fix may contain games with empty
+	// or emoji-only titles. LoadGamesCache must repair them on load.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "games_cache.json")
+
+	stale := []itchio.Game{
+		{Title: "", URL: "https://soyouz.itch.io/spread"},
+		{Title: "🔴", URL: "https://iansundstrom.itch.io/redcircle"},
+		{Title: "Normal Game", URL: "https://dev.itch.io/normal-game"},
+	}
+	if err := itchio.SaveGamesCache(path, stale); err != nil {
+		t.Fatalf("SaveGamesCache: %v", err)
+	}
+
+	cache, err := itchio.LoadGamesCache(path)
+	if err != nil {
+		t.Fatalf("LoadGamesCache: %v", err)
+	}
+	if cache.Games[0].Title != "Spread" {
+		t.Errorf("empty title: got %q, want %q", cache.Games[0].Title, "Spread")
+	}
+	if cache.Games[1].Title != "Redcircle" {
+		t.Errorf("emoji title: got %q, want %q", cache.Games[1].Title, "Redcircle")
+	}
+	if cache.Games[2].Title != "Normal Game" {
+		t.Errorf("normal title: got %q, want %q", cache.Games[2].Title, "Normal Game")
+	}
+}
+
 func TestSaveGamesCache_AtomicWrite(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "games_cache.json")

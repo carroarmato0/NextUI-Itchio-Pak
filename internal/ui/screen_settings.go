@@ -73,7 +73,6 @@ type SettingsScreen struct {
 
 	showAPIKeyHelp bool
 	apiKeyHelpQR   *sdl.Texture
-	statusMsg      string
 }
 
 func NewSettingsScreen(
@@ -179,7 +178,6 @@ func (s *SettingsScreen) moveCursor(dir int) {
 			}
 		}
 	}
-	s.statusMsg = ""
 }
 
 func (s *SettingsScreen) NeedsRedraw() bool {
@@ -329,10 +327,6 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		}
 	}
 
-	if s.statusMsg != "" {
-		sm := r.Theme.MainText
-		r.DrawText(s.statusMsg, 20, r.H-footerH-rowH-4, sm[0], sm[1], sm[2])
-	}
 
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
@@ -516,13 +510,11 @@ func (s *SettingsScreen) activate() Screen {
 		if err := inventory.MigratePico8Files(s.inv, s.invPath, oldDir, newDir); err != nil {
 			logger.Warn("settings: pico8 core migration failed: %v", err)
 			s.cfg.Pico8Core = oldCore // revert
-			s.statusMsg = "Migration failed — check log"
 			return nil
 		}
 		if err := s.cfg.Save(s.cfgPath); err != nil {
 			logger.Warn("settings: save failed after pico8 core switch: %v", err)
 		}
-		s.statusMsg = "Pico-8 files moved to " + newDir
 		logger.Info("settings: pico8 core changed to %s", s.cfg.Pico8Core)
 	case sItemMusicDownload:
 		switch s.cfg.MusicDownload {

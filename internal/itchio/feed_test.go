@@ -13,6 +13,97 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 )
 
+func TestSlugToTitle(t *testing.T) {
+	cases := []struct {
+		url  string
+		want string
+	}{
+		{"https://arkicade.itch.io/dreamsearch", "Dreamsearch"},
+		{"https://voidgazerbon.itch.io/unnamed-radius", "Unnamed Radius"},
+		{"https://soyouz.itch.io/spread", "Spread"},
+		{"https://iansundstrom.itch.io/redcircle", "Redcircle"},
+		{"https://dev.itch.io/multi-word-slug-here", "Multi Word Slug Here"},
+	}
+	for _, tc := range cases {
+		got := itchio.SlugToTitle(tc.url)
+		if got != tc.want {
+			t.Errorf("SlugToTitle(%q) = %q, want %q", tc.url, got, tc.want)
+		}
+	}
+}
+
+func TestFetchGamesFromURL_bracketedTitleFallsBackToSlug(t *testing.T) {
+	// Pico-8 developers sometimes name their game with brackets, e.g. "[Spread]"
+	// or "[welcome to dreamsearch]". After parseTitle strips [Tag] patterns the
+	// title becomes empty — the parser must fall back to the URL slug.
+	rssXML := `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+<item>
+  <title>[Spread] [Free] [Platformer]</title>
+  <link>https://soyouz.itch.io/spread</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+<item>
+  <title>[welcome to dreamsearch] [Free]</title>
+  <link>https://arkicade.itch.io/dreamsearch</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+</channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(rssXML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	games, err := c.FetchGamesFromURL(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGamesFromURL: %v", err)
+	}
+	if len(games) != 2 {
+		t.Fatalf("want 2 games, got %d", len(games))
+	}
+	if games[0].Title != "Spread" {
+		t.Errorf("games[0].Title = %q, want %q", games[0].Title, "Spread")
+	}
+	if games[1].Title != "Dreamsearch" {
+		t.Errorf("games[1].Title = %q, want %q", games[1].Title, "Dreamsearch")
+	}
+}
+
+func TestFetchGamesFromURL_emojiOnlyTitleFallsBackToSlug(t *testing.T) {
+	// A developer named their game with only an emoji — no readable title.
+	// The parser should fall back to the URL slug.
+	rssXML := `<?xml version="1.0"?>
+<rss version="2.0"><channel>
+<item>
+  <title>🔴 [Free]</title>
+  <link>https://iansundstrom.itch.io/redcircle</link>
+  <description></description>
+  <price>0.0</price>
+</item>
+</channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(rssXML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	games, err := c.FetchGamesFromURL(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGamesFromURL: %v", err)
+	}
+	if len(games) != 1 {
+		t.Fatalf("want 1 game, got %d", len(games))
+	}
+	if games[0].Title != "Redcircle" {
+		t.Errorf("games[0].Title = %q, want %q", games[0].Title, "Redcircle")
+	}
+}
+
 func TestFetchGamesFromURL(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/rss_page1.xml")
 	if err != nil {
