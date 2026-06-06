@@ -325,7 +325,22 @@ func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry i
 	}
 
 	lineH := smallFH + 4
-	bodyLineCount := int32(strings.Count(body, "\n") + 1)
+	bodyLines := strings.Split(body, "\n")
+
+	// Cap lines so the box never overflows the screen (20 px margin top+bottom).
+	// fixedH accounts for title, separators, footer and all surrounding padding.
+	fixedH := pad + fontH + pad + 2 + pad + pad + 2 + pad + smallFH + pad
+	maxBodyLines := (r.H - 40 - fixedH) / lineH
+	if maxBodyLines < 1 {
+		maxBodyLines = 1
+	}
+	if int32(len(bodyLines)) > maxBodyLines {
+		overflow := len(bodyLines) - int(maxBodyLines) + 1
+		bodyLines = bodyLines[:maxBodyLines-1]
+		bodyLines = append(bodyLines, fmt.Sprintf("(+%d more)", overflow))
+	}
+
+	bodyLineCount := int32(len(bodyLines))
 	boxW := r.W * 2 / 3
 	boxH := pad + fontH + pad + 2 + pad + lineH*bodyLineCount + pad + 2 + pad + smallFH + pad
 	boxX := (r.W - boxW) / 2
@@ -342,7 +357,7 @@ func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry i
 	r.DrawRect(boxX+pad, y, innerW, 1, 60, 60, 60)
 	y += 1 + pad
 
-	for _, line := range strings.Split(body, "\n") {
+	for _, line := range bodyLines {
 		r.DrawSmallText(truncateSmallToWidth(r, line, innerW), boxX+pad, y, 200, 200, 200)
 		y += lineH
 	}
