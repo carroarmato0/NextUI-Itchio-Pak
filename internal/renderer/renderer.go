@@ -814,3 +814,46 @@ func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
 		}
 	}
 }
+
+// DrawModal draws a centred modal overlay with a title, wrapped body text, and
+// footer hints. Used for confirmations and informational dialogs across all screens.
+func (r *Renderer) DrawModal(title, body string, hints []FooterHint) {
+	_, fontH := r.TextSize("Ag")
+	lineH := fontH + 4
+
+	marginX := r.W / 8
+	pad := int32(20)
+	panelW := r.W - marginX*2
+	bodyMaxW := panelW - pad*2
+
+	bodyLines := r.WrapText(body, bodyMaxW)
+	bodyH := int32(len(bodyLines)) * lineH
+	hintsH := int32(44)
+	panelH := pad + fontH + pad/2 + bodyH + pad + hintsH
+	if panelH > r.H*4/5 {
+		panelH = r.H * 4 / 5
+	}
+
+	panelX := marginX
+	panelY := (r.H - panelH) / 2
+
+	bg := r.Theme.Background
+	// Fill
+	r.DrawRect(panelX, panelY, panelW, panelH, bg[0]+20, bg[1]+20, bg[2]+20)
+	// Border (1px on each edge)
+	r.DrawRect(panelX, panelY, panelW, 1, 70, 70, 100)
+	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, 70, 70, 100)
+	r.DrawRect(panelX, panelY, 1, panelH, 70, 70, 100)
+	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, 70, 70, 100)
+
+	// Title
+	mt := r.Theme.MainText
+	r.DrawTextCentered(title, panelX, panelY+pad, panelW, mt[0], mt[1], mt[2])
+
+	// Body
+	ht := r.Theme.HintText
+	r.DrawWrappedText(body, panelX+pad, panelY+pad+fontH+pad/2, bodyMaxW, lineH, ht[0], ht[1], ht[2])
+
+	// Hints
+	r.DrawFooterHints(hints, panelY+panelH-hintsH)
+}
