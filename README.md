@@ -7,8 +7,8 @@
 
 An unofficial community Pak for NextUI on TrimUI and Miyoo Flip handheld gaming
 devices. Browse, discover, and download homebrew ROM games for Game Boy, Game
-Boy Color, Game Boy Advance, NES/Famicom, and Sega Genesis directly from
-itch.io — all on-device, no PC required.
+Boy Color, Game Boy Advance, NES/Famicom, Sega Genesis, and Pico-8 directly
+from itch.io — all on-device, no PC required.
 
 > **Disclaimer:** This is an unofficial community project, not affiliated with
 > or endorsed by itch.io.
@@ -34,7 +34,7 @@ itch.io — all on-device, no PC required.
 ## Features
 
 ### Game browsing
-- Scrollable list of homebrew ROM games sourced from multiple itch.io tag feeds, merged and deduplicated into a single catalogue covering Game Boy, Game Boy Color, Game Boy Advance, NES/Famicom, and Sega Genesis
+- Scrollable list of homebrew ROM games sourced from multiple itch.io tag feeds, merged and deduplicated into a single catalogue covering Game Boy, Game Boy Color, Game Boy Advance, NES/Famicom, Sega Genesis, and Pico-8
 - Live cover art thumbnails alongside the list with support for animated GIF cover art
 - Pages of 36 games — D-pad automatically turns the page at the top or bottom of the list; D-pad Left/Right jumps pages directly
 - On first launch the list loads live from the network while a full cache is built in the background
@@ -81,6 +81,8 @@ The selected sort mode is saved automatically and restored on the next launch.
   - `.gba` → `Roms/Game Boy Advance (GBA)/`
   - `.nes` → `Roms/Nintendo Entertainment System (FC)/`
   - `.md` / `.gen` / `.smd` → `Roms/Sega Genesis (MD)/`
+  - `.p8` / `.p8.png` → `Roms/Pico-8 (P8)/` or `Roms/Pico-8 (PICO)/` depending on the configured **Pico-8 Core** (see Settings)
+- Multi-file Pico-8 games (games that ship as several `.p8` carts) are extracted into their own subdirectory inside the Pico-8 ROM folder, preserving the relative paths from the ZIP
 - When **ROM Location** is set to `ask`, a directory browser lets you choose the destination folder before each download; the last chosen path is remembered per file type
 - On download failure, a QR code is shown so you can try from a browser
 - **Bundle purchases** — if you own a game both individually and as part of one or more itch.io bundles, a purchase picker lists each transaction (labelled `Individual purchase` or `Bundle: <name>`) so you can choose which to download from
@@ -129,6 +131,11 @@ If a background task (ROM download, game list cache build, inventory check) is r
 - **API Key** — shows `WORKING` (green) when an itch.io API key is configured and working, enabling paid game downloads. Selecting the row when no key is set opens an in-app overlay with a QR code linking to the setup instructions
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
+- **Pico-8 Core** — selects which Pico-8 emulator downloaded `.p8` / `.p8.png` files are destined for:
+  - `FakeO8 (default)` — saves to `Roms/Pico-8 (P8)/`, used by NextUI's built-in FakeO8 core
+  - `Pico-8 (official)` — saves to `Roms/Pico-8 (PICO)/`, used by the [minui-pico-8-pak](https://github.com/josegonzalez/minui-pico-8-pak) which requires a paid copy of Pico-8
+
+  Switching cores instantly moves all previously downloaded Pico-8 files (ROMs and cover art) to the new folder — no manual file management needed. Switching back moves them back.
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
@@ -415,7 +422,7 @@ in the Settings screen on the device.
   visually distinct frames may still produce a poor thumbnail.
 
 - **`.pocket` and other non-ROM files** are filtered out — only `.gb`, `.gbc`,
-  `.gba`, `.nes`, `.md`, `.gen`, and `.smd` files are shown.
+  `.gba`, `.nes`, `.md`, `.gen`, `.smd`, `.p8`, and `.p8.png` files are shown.
 
 - **No search** — the game list is sourced from multiple itch.io tag feeds
   (one per platform) combined in itch.io's default sort order. There is no
