@@ -7,9 +7,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
@@ -28,6 +30,7 @@ type settingsItem int
 const (
 	sItemAPIKey settingsItem = iota
 	sItemROMLocation
+	sItemPico8Core // ← new
 	sItemMusicDownload
 	sItemMusicLocation
 	sItemUnifiedNaming
@@ -50,6 +53,8 @@ type SettingsScreen struct {
 	client         *itchio.Client
 	cfg            *settings.Config
 	cfgPath        string
+	inv            *inventory.Inventory
+	invPath        string
 	cache          *renderer.ImageCache
 	cursor         settingsItem
 	prev           Screen
@@ -68,12 +73,15 @@ type SettingsScreen struct {
 
 	showAPIKeyHelp bool
 	apiKeyHelpQR   *sdl.Texture
+	statusMsg      string
 }
 
 func NewSettingsScreen(
 	client *itchio.Client,
 	cfg *settings.Config,
 	cfgPath string,
+	inv *inventory.Inventory,
+	invPath string,
 	cache *renderer.ImageCache,
 	prev Screen,
 	onRefreshGames func(Screen) Screen,
@@ -88,6 +96,8 @@ func NewSettingsScreen(
 		client:         client,
 		cfg:            cfg,
 		cfgPath:        cfgPath,
+		inv:            inv,
+		invPath:        invPath,
 		cache:          cache,
 		prev:           prev,
 		onRefreshGames: onRefreshGames,
@@ -169,6 +179,7 @@ func (s *SettingsScreen) moveCursor(dir int) {
 			}
 		}
 	}
+	s.statusMsg = ""
 }
 
 func (s *SettingsScreen) NeedsRedraw() bool {
@@ -207,6 +218,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	var items []menuItem
 	items = append(items, menuItem{sItemAPIKey, "API Key: "})
 	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
+	pico8CoreLabel := "FakeO8 (default)"
+	if s.cfg.Pico8Core == "pico8" {
+		pico8CoreLabel = "Pico-8 (official)"
+	}
+	items = append(items, menuItem{sItemPico8Core, "Pico-8 Core: " + pico8CoreLabel})
 	items = append(items, menuItem{sItemMusicDownload, "Music Download: " + musicDownloadLabel(s.cfg.MusicDownload)})
 	if s.cfg.MusicDownload != "off" {
 		items = append(items, menuItem{sItemMusicLocation, "Music Location: " + s.cfg.MusicLocation})
@@ -311,6 +327,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			_, sh := r.SmallTextSize(annotation)
 			r.DrawSmallText(annotation, ax, y+(fh-sh)/2, aR, aG, aB)
 		}
+	}
+
+	if s.statusMsg != "" {
+		sm := r.Theme.MainText
+		r.DrawText(s.statusMsg, 20, r.H-footerH-rowH-4, sm[0], sm[1], sm[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
@@ -483,6 +504,26 @@ func (s *SettingsScreen) activate() Screen {
 			s.cfg.ROMLocation = "auto"
 		}
 		s.cfg.Save(s.cfgPath)
+	case sItemPico8Core:
+		oldCore := s.cfg.Pico8Core
+		if oldCore == "pico8" {
+			s.cfg.Pico8Core = "fakeo8"
+		} else {
+			s.cfg.Pico8Core = "pico8"
+		}
+		oldDir := roms.Pico8ROMDir(oldCore)
+		newDir := roms.Pico8ROMDir(s.cfg.Pico8Core)
+		if err := inventory.MigratePico8Files(s.inv, s.invPath, oldDir, newDir); err != nil {
+			logger.Warn("settings: pico8 core migration failed: %v", err)
+			s.cfg.Pico8Core = oldCore // revert
+			s.statusMsg = "Migration failed — check log"
+			return nil
+		}
+		if err := s.cfg.Save(s.cfgPath); err != nil {
+			logger.Warn("settings: save failed after pico8 core switch: %v", err)
+		}
+		s.statusMsg = "Pico-8 files moved to " + newDir
+		logger.Info("settings: pico8 core changed to %s", s.cfg.Pico8Core)
 	case sItemMusicDownload:
 		switch s.cfg.MusicDownload {
 		case "off":
