@@ -995,39 +995,6 @@ func (s *ListScreen) stopShoulderHold(dir int) {
 	}
 }
 
-func (s *ListScreen) nextSortMode() itchio.SortMode {
-	m := itchio.NextSortMode(s.sortMode)
-	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
-		m = itchio.NextSortMode(m)
-	}
-	return m
-}
-
-func (s *ListScreen) prevSortMode() itchio.SortMode {
-	m := itchio.PrevSortMode(s.sortMode)
-	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
-		m = itchio.PrevSortMode(m)
-	}
-	return m
-}
-
-// changeSortMode applies a new sort mode, resets the cursor to the top, and
-// persists the choice to config.
-func (s *ListScreen) changeSortMode(mode itchio.SortMode) {
-	s.sortMode = mode
-	logger.Info("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
-	s.rebuildView()
-	s.cursor = 0
-	s.titleScrollX = 0
-	s.titleScrollAt = time.Now()
-	s.tagScrollY = 0
-	s.tagScrollAt = time.Now()
-	s.lastCursorMove = time.Now()
-	s.warmedGameURL = ""
-	s.cfg.SortMode = string(s.sortMode)
-	go s.cfg.Save(s.cfgPath)
-}
-
 // SetFilter updates the active platform filter, sort mode, and search query,
 // rebuilds the view, and persists platform + sort to config.
 func (s *ListScreen) SetFilter(platform, sort, query string) {
@@ -1068,14 +1035,22 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		case sdl.K_RIGHT:
 			if ev.Type == sdl.KEYDOWN {
-				s.startShoulderHold(1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, 1) - s.cursor)
+				} else {
+					s.startShoulderHold(1)
+				}
 			} else {
 				s.stopShoulderHold(1)
 			}
 			return s
 		case sdl.K_LEFT:
 			if ev.Type == sdl.KEYDOWN {
-				s.startShoulderHold(-1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, -1) - s.cursor)
+				} else {
+					s.startShoulderHold(-1)
+				}
 			} else {
 				s.stopShoulderHold(-1)
 			}
@@ -1085,18 +1060,6 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Keysym.Sym {
-		case sdl.K_PAGEDOWN:
-			if !s.cacheReady {
-				return s
-			}
-			s.changeSortMode(s.nextSortMode())
-			return s
-		case sdl.K_PAGEUP:
-			if !s.cacheReady {
-				return s
-			}
-			s.changeSortMode(s.prevSortMode())
-			return s
 		case sdl.K_ESCAPE:
 			return nil
 		case sdl.K_RETURN:
@@ -1147,14 +1110,22 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		case sdl.CONTROLLER_BUTTON_DPAD_RIGHT:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.startShoulderHold(1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, 1) - s.cursor)
+				} else {
+					s.startShoulderHold(1)
+				}
 			} else {
 				s.stopShoulderHold(1)
 			}
 			return s
 		case sdl.CONTROLLER_BUTTON_DPAD_LEFT:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.startShoulderHold(-1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, -1) - s.cursor)
+				} else {
+					s.startShoulderHold(-1)
+				}
 			} else {
 				s.stopShoulderHold(-1)
 			}
@@ -1184,18 +1155,6 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				func(platform, sort, query string) {
 					s.SetFilter(platform, sort, query)
 				})
-		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
-			if !s.cacheReady {
-				return s
-			}
-			s.changeSortMode(s.nextSortMode())
-			return s
-		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
-			if !s.cacheReady {
-				return s
-			}
-			s.changeSortMode(s.prevSortMode())
-			return s
 		case sdl.CONTROLLER_BUTTON_X:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
