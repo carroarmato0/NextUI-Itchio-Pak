@@ -19,6 +19,9 @@ func TestLayoutForWideScreen(t *testing.T) {
 	if l.CoverMaxW != 0.75 {
 		t.Errorf("CoverMaxW = %v, want 0.75", l.CoverMaxW)
 	}
+	if l.OverlayMarginX != 1280*14/100 {
+		t.Errorf("OverlayMarginX = %d, want %d", l.OverlayMarginX, 1280*14/100)
+	}
 }
 
 func TestLayoutForSmallScreen(t *testing.T) {
@@ -37,6 +40,9 @@ func TestLayoutForSmallScreen(t *testing.T) {
 	}
 	if l.CoverMaxW != 1.0 {
 		t.Errorf("CoverMaxW = %v, want 1.0", l.CoverMaxW)
+	}
+	if l.OverlayMarginX != 640*3/100 {
+		t.Errorf("OverlayMarginX = %d, want %d", l.OverlayMarginX, 640*3/100)
 	}
 }
 
