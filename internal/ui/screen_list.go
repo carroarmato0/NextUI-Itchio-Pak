@@ -154,9 +154,11 @@ type ListScreen struct {
 	lastVisibleRows int
 
 	// Sort/filter state
-	sortMode     itchio.SortMode
-	viewGames    []itchio.Game // sorted/filtered view; paging operates on this
-	needsRebuild bool         // set by ScheduleRebuild; consumed at next Draw
+	sortMode       itchio.SortMode
+	platformFilter string          // "" = All; persisted to config.json
+	searchQuery    string          // "" = no filter; session-only, not persisted
+	viewGames      []itchio.Game   // sorted/filtered view; paging operates on this
+	needsRebuild   bool            // set by ScheduleRebuild; consumed at next Draw
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -257,6 +259,7 @@ func NewListScreen(
 	}
 
 	s.sortMode = itchio.SortMode(cfg.SortMode)
+	s.platformFilter = cfg.PlatformFilter
 
 	gameCache, err := itchio.LoadGamesCache(cachePath)
 	if err == nil && len(gameCache.Games) > 0 {
@@ -969,6 +972,26 @@ func (s *ListScreen) changeSortMode(mode itchio.SortMode) {
 	go s.cfg.Save(s.cfgPath)
 }
 
+// SetFilter updates the active platform filter, sort mode, and search query,
+// rebuilds the view, and persists platform + sort to config.
+func (s *ListScreen) SetFilter(platform, sort, query string) {
+	s.platformFilter = platform
+	s.sortMode = itchio.SortMode(sort)
+	s.searchQuery = query
+	s.rebuildView()
+	s.cursor = 0
+	s.titleScrollX = 0
+	s.titleScrollAt = time.Now()
+	s.tagScrollY = 0
+	s.tagScrollAt = time.Now()
+	s.lastCursorMove = time.Now()
+	s.warmedGameURL = ""
+	s.cfg.PlatformFilter = platform
+	s.cfg.SortMode = string(s.sortMode)
+	go s.cfg.Save(s.cfgPath)
+	logger.Info("filter: platform=%q sort=%q query=%q", platform, sort, query)
+}
+
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
@@ -1259,7 +1282,14 @@ func (s *ListScreen) rebuildView() {
 			removed[g.URL] = true
 		}
 	}
-	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
+	filtered := s.cachedGames
+	if s.platformFilter != "" {
+		filtered = applyPlatformFilter(filtered, s.platformFilter)
+	}
+	if s.searchQuery != "" {
+		filtered = applySearchFilter(filtered, s.searchQuery)
+	}
+	s.viewGames = itchio.ApplySort(filtered, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
 	n := len(s.viewGames)
 	s.totalGames.Store(int32(n))
 	s.totalPages.Store(int32((n + itchio.PerPage - 1) / itchio.PerPage))
