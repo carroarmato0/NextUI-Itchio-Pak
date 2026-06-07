@@ -847,9 +847,12 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						textR, textG, textB = 20, 20, 20
 					}
 					lw, lh := r.SmallTextSize(pillLabel)
-					const overlayPad = int32(5)
+					const overlayPad = int32(8)
 					overlayPillW := lw + overlayPad*2
 					overlayPillH := lh + 4
+					if overlayPillW < overlayPillH {
+						overlayPillW = overlayPillH
+					}
 					overlayPillX := imgX + dw - overlayPillW - 6
 					overlayPillY := imgY + 6
 					r.DrawPill(overlayPillX+1, overlayPillY+1, overlayPillW, overlayPillH, shadowR, shadowG, shadowB)
