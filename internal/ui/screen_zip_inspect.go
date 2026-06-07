@@ -3,9 +3,11 @@
 package ui
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -61,6 +63,11 @@ type ZIPInspectScreen struct {
 	state zipInspectState
 	plan  ZIPPlan
 	err   error
+
+	// Progress tracking for the loading animation (ZIP range-read path).
+	inspectFetched int64     // bytes fetched so far (atomic via sync/atomic)
+	inspectTotal   int64     // total file size in bytes (atomic)
+	inspectStart   time.Time // when inspection started
 }
 
 func (s *ZIPInspectScreen) loadState() zipInspectState {
@@ -89,6 +96,7 @@ func NewZIPInspectScreen(
 func (s *ZIPInspectScreen) runInspect() {
 	defer func() { sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT}) }()
 	logger.Info("zip-inspect: starting for %s", s.upload.Filename)
+	s.inspectStart = time.Now()
 
 	var cdnURL string
 	var err error
@@ -105,11 +113,16 @@ func (s *ZIPInspectScreen) runInspect() {
 		return
 	}
 
+	progress := func(fetched, total int64) {
+		atomic.StoreInt64(&s.inspectFetched, fetched)
+		atomic.StoreInt64(&s.inspectTotal, total)
+	}
+
 	var manifest roms.ZIPManifest
 	if strings.ToLower(filepath.Ext(s.upload.Filename)) == ".7z" {
 		manifest, err = roms.InspectRemote7z(s.client.HTTPClient(), cdnURL)
 	} else {
-		manifest, err = roms.InspectRemoteZIP(s.client.HTTPClient(), cdnURL)
+		manifest, err = roms.InspectRemoteZIP(s.client.HTTPClient(), cdnURL, progress)
 	}
 	if err != nil {
 		logger.Error("zip-inspect: inspect archive: %v", err)
@@ -150,7 +163,26 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 
 	switch s.loadState() {
 	case zipInspectLoading:
-		r.DrawTextCentered("Inspecting archive", 0, mid-mainFH-10, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Inspecting archive", 0, mid-mainFH-smallFH-14, r.W, mt[0], mt[1], mt[2])
+		// Show bytes fetched and throughput so the user can see progress is happening.
+		fetched := atomic.LoadInt64(&s.inspectFetched)
+		total := atomic.LoadInt64(&s.inspectTotal)
+		if fetched > 0 && !s.inspectStart.IsZero() {
+			elapsed := time.Since(s.inspectStart).Seconds()
+			var info string
+			if elapsed > 0.5 {
+				kbps := float64(fetched) / 1024 / elapsed
+				if total > 0 {
+					info = fmt.Sprintf("%s fetched at %.0f KB/s  (file: %s)",
+						formatKB(fetched), kbps, formatKB(total))
+				} else {
+					info = fmt.Sprintf("%s fetched at %.0f KB/s", formatKB(fetched), kbps)
+				}
+			} else {
+				info = fmt.Sprintf("%s fetched", formatKB(fetched))
+			}
+			r.DrawSmallTextCentered(info, 0, mid-smallFH-4, r.W, ht[0], ht[1], ht[2])
+		}
 		drawLoadingDots(r, mid+8)
 	case zipInspectError:
 		r.DrawText("Inspection failed:", 20, mid-mainFH-smallFH-8, 200, 60, 60)

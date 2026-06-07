@@ -13,14 +13,21 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
-// rangeReaderAt implements io.ReaderAt using HTTP Range requests with a
-// chunk cache to coalesce the reads zip.NewReader makes internally.
+// rangePrefetchSize is how many bytes are fetched per HTTP Range request.
+// zip.NewReader makes many tiny reads (30–100 bytes) per central directory
+// entry. Without prefetching, a ZIP with 500 entries would need 1000+
+// HTTP round trips. A 128 KB prefetch amortises that to ~10 requests.
+const rangePrefetchSize = int64(128 * 1024)
+
+// rangeReaderAt implements io.ReaderAt using HTTP Range requests with an
+// aggressive prefetch cache to reduce round trips to O(totalSize/prefetch).
 type rangeReaderAt struct {
-	url    string
-	client *http.Client
-	size   int64
-	mu     sync.Mutex
-	chunks []rangeChunk
+	url        string
+	client     *http.Client
+	size       int64
+	mu         sync.Mutex
+	chunks     []rangeChunk
+	onProgress func(fetched, totalFile int64) // called after each HTTP fetch; nil = no-op
 }
 
 type rangeChunk struct {
@@ -41,6 +48,7 @@ func (r *rangeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		return 0, io.EOF
 	}
 
+	// Serve from cache when available.
 	for _, chunk := range r.chunks {
 		chunkEnd := chunk.start + int64(len(chunk.data)) - 1
 		if off >= chunk.start && end <= chunkEnd {
@@ -53,12 +61,20 @@ func (r *rangeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 		}
 	}
 
-	logger.Debug("zip-inspect: range request bytes=%d-%d", off, end)
+	// Cache miss — fetch a prefetch-sized window starting at off so that
+	// subsequent sequential reads (central directory entries) are all served
+	// from cache, reducing HTTP round trips by ~100×.
+	fetchEnd := off + rangePrefetchSize - 1
+	if fetchEnd >= r.size {
+		fetchEnd = r.size - 1
+	}
+	logger.Debug("zip-inspect: range fetch bytes=%d-%d (%d KB)", off, fetchEnd, (fetchEnd-off+1)/1024)
+
 	req, err := http.NewRequest(http.MethodGet, r.url, nil)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, fetchEnd))
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return 0, err
@@ -71,8 +87,24 @@ func (r *rangeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	r.chunks = append(r.chunks, rangeChunk{start: off, data: data})
-	n := copy(p, data)
+	// Keep only the 4 most recent chunks (≤ 4×128 KB = 512 KB peak) so the
+	// reader doesn't accumulate memory across the full inspection.
+	if len(r.chunks) > 4 {
+		r.chunks = r.chunks[len(r.chunks)-4:]
+	}
+
+	if r.onProgress != nil {
+		// Sum bytes held across all current chunks as a proxy for total fetched.
+		var total int64
+		for _, c := range r.chunks {
+			total += int64(len(c.data))
+		}
+		r.onProgress(total, r.size)
+	}
+
+	n := copy(p, data[:need])
 	if int64(n) < need {
 		return n, io.EOF
 	}
@@ -86,10 +118,13 @@ func (r *rangeReaderAt) ReadAt(p []byte, off int64) (int, error) {
 //  2. Range GET probe (bytes=-1) — used when HEAD fails or is blocked (e.g.
 //     403); the 206 Content-Range header reveals the total file size.
 //  3. Full download — last resort for servers that reject Range entirely.
-func InspectRemoteZIP(client *http.Client, cdnURL string) (ZIPManifest, error) {
+//
+// onProgress is called after each HTTP fetch with (bytesRead, totalFileSize).
+// Pass nil to omit progress reporting.
+func InspectRemoteZIP(client *http.Client, cdnURL string, onProgress func(fetched, total int64)) (ZIPManifest, error) {
 	size, ok := probeSizeAndRange(client, cdnURL)
 	if ok {
-		m, err := inspectViaRange(client, cdnURL, size)
+		m, err := inspectViaRange(client, cdnURL, size, onProgress)
 		if err == nil {
 			return m, nil
 		}
@@ -153,8 +188,8 @@ func parseContentRangeTotal(cr string) int64 {
 	return total
 }
 
-func inspectViaRange(client *http.Client, cdnURL string, size int64) (ZIPManifest, error) {
-	rra := &rangeReaderAt{url: cdnURL, client: client, size: size}
+func inspectViaRange(client *http.Client, cdnURL string, size int64, onProgress func(int64, int64)) (ZIPManifest, error) {
+	rra := &rangeReaderAt{url: cdnURL, client: client, size: size, onProgress: onProgress}
 	r, err := zip.NewReader(rra, size)
 	if err != nil {
 		return ZIPManifest{}, fmt.Errorf("zip.NewReader: %w", err)

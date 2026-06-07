@@ -3,10 +3,19 @@
 package ui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 )
+
+// formatKB formats a byte count as a human-readable KB or MB string.
+func formatKB(n int64) string {
+	if n < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	}
+	return fmt.Sprintf("%.2f MB", float64(n)/1024/1024)
+}
 
 // drawLoadingDots renders a 4-dot chase animation centred horizontally at y.
 // One dot cycles through the accent colour every 250 ms; inactive dots use a
