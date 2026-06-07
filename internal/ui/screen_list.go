@@ -373,6 +373,10 @@ func (s *ListScreen) NeedsRedraw() bool {
 	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
 	}
+	// Keep redrawing while background activity spinner is visible.
+	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
+		return true
+	}
 	// Resume rendering 500ms before scrollDelay expires so the first
 	// animation frame is not missed when the cursor has been stationary.
 	return !s.titleScrollAt.IsZero() &&
@@ -455,6 +459,30 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
+
+	// Background-activity spinner — 3 small dots that cycle when the cache is
+	// building (RSS fetch) or the update service is running.
+	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
+		titleW, _ := r.TextSize("Itch.io")
+		ac := r.Theme.Accent
+		frame := int(time.Now().UnixMilli()/250) % 3
+		const dotSize = int32(6)
+		const dotStep = int32(10) // 6px dot + 4px gap
+		dotBaseX := int32(12) + titleW + 10
+		dotY := headerTextY + (fontH-dotSize)/2
+		for i := 0; i < 3; i++ {
+			var dR, dG, dB uint8
+			if i == frame {
+				dR, dG, dB = ac[0], ac[1], ac[2]
+			} else {
+				dR = uint8((int(ac[0]) + int(bg[0])*2) / 3)
+				dG = uint8((int(ac[1]) + int(bg[1])*2) / 3)
+				dB = uint8((int(ac[2]) + int(bg[2])*2) / 3)
+			}
+			r.DrawPill(dotBaseX+int32(i)*dotStep, dotY, dotSize, dotSize, dR, dG, dB)
+		}
+	}
+
 	// Filter pills — platform and sort — right-aligned in header, same font size as title.
 	{
 		pillH := fontH + 6
