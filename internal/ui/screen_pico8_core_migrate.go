@@ -95,32 +95,29 @@ func (s *Pico8CoreMigrateScreen) Draw(r *renderer.Renderer) {
 	switch s.loadState() {
 
 	case pico8StateConfirm:
-		// Destination core pill
+		// Destination core pill centred slightly above mid.
 		ac := r.Theme.Accent
 		aT := r.Theme.AccentText
 		label := coreLabel(s.newCore)
 		lw, _ := r.TextSize(label)
 		pillW := lw + 24
 		pillH := fontH + 6
-		r.DrawPill((r.W-pillW)/2, mid-fontH*2-16, pillW, pillH, ac[0], ac[1], ac[2])
-		r.DrawTextCenteredInRect(label, (r.W-pillW)/2, mid-fontH*2-16, pillW, pillH, aT[0], aT[1], aT[2])
+		pillY := mid - pillH - smallFH*3 - 12
+		r.DrawPill((r.W-pillW)/2, pillY, pillW, pillH, ac[0], ac[1], ac[2])
+		r.DrawTextCenteredInRect(label, (r.W-pillW)/2, pillY, pillW, pillH, aT[0], aT[1], aT[2])
 
-		// Warning text
+		// Warning text below the pill with enough room before the footer.
 		warning := fmt.Sprintf(
 			"Switching from %s to %s will move all your downloaded Pico-8 games to a new folder on the SD card.",
 			coreLabel(s.oldCore), coreLabel(s.newCore),
 		)
-		r.DrawWrappedText(warning, 24, mid-fontH-4, r.W-48, smallFH+4, ht[0], ht[1], ht[2])
-		r.DrawSmallTextCentered("Press A to confirm or B to cancel.", 0, mid+smallFH+8, r.W, ht[0], ht[1], ht[2])
+		warnY := pillY + pillH + 12
+		r.DrawWrappedText(warning, 24, warnY, r.W-48, smallFH+4, ht[0], ht[1], ht[2])
 
 	case pico8StateMigrating:
+		// Simple title + dots — progress counter omitted because the
+		// migration count is only known at completion, not per-game.
 		r.DrawTextCentered("Migrating Pico-8 games", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
-		migrated := atomic.LoadInt32(&s.migrated)
-		total := atomic.LoadInt32(&s.total)
-		if total > 0 {
-			info := fmt.Sprintf("%d / %d game(s) moved", migrated, total)
-			r.DrawSmallTextCentered(info, 0, mid-smallFH-4, r.W, ht[0], ht[1], ht[2])
-		}
 		drawLoadingDots(r, mid+8)
 
 	case pico8StateDone:
