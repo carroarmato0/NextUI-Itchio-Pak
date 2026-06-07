@@ -270,11 +270,44 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
 
 	mt := r.Theme.MainText
-	title := truncateToWidth(r, s.game.Title, r.W-24)
+	ht := r.Theme.HintText
+
+	// Right-side badges — platform and download status.
+	// Compute badge positions right-to-left so they never overlap with title.
+	badgeRightEdge := r.W - 10
+	badgePillH := smallFH + 4
+
+	if s.game.Platform != "" {
+		platLabel := s.game.Platform
+		pw, _ := r.SmallTextSize(platLabel)
+		platPillW := pw + 12
+		platPillX := badgeRightEdge - platPillW
+		platPillY := (headerH - badgePillH) / 2
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, 35, 45, 65)
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, 130, 170, 210)
+		badgeRightEdge = platPillX - 6
+	}
+
+	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
+		dlLabel := "● Downloaded"
+		if r.W <= narrowScreenW {
+			dlLabel = "● DL"
+		}
+		dw, _ := r.SmallTextSize(dlLabel)
+		dlPillW := dw + 12
+		dlPillX := badgeRightEdge - dlPillW
+		dlPillY := (headerH - badgePillH) / 2
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, 25, 50, 30)
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, 70, 190, 90)
+		badgeRightEdge = dlPillX - 6
+	}
+
+	// Title truncated to stay clear of badges.
+	maxTitleW := badgeRightEdge - 16
+	title := truncateToWidth(r, s.game.Title, maxTitleW)
 	blockH := mainFH + 4 + smallFH
 	titleY := (headerH - blockH) / 2
 	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
-	ht := r.Theme.HintText
 	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
@@ -546,6 +579,32 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// obscured by content that scrolled toward the top of the screen.
 	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	if s.game.Platform != "" {
+		platLabel := s.game.Platform
+		pw, _ := r.SmallTextSize(platLabel)
+		platPillW := pw + 12
+		platPillX := r.W - 10 - platPillW
+		platPillY := (headerH - badgePillH) / 2
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, 35, 45, 65)
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, 130, 170, 210)
+	}
+	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
+		dlLabel := "● Downloaded"
+		if r.W <= narrowScreenW {
+			dlLabel = "● DL"
+		}
+		dw, _ := r.SmallTextSize(dlLabel)
+		dlPillW := dw + 12
+		redrawBadgeRight := r.W - 10
+		if s.game.Platform != "" {
+			pw, _ := r.SmallTextSize(s.game.Platform)
+			redrawBadgeRight = redrawBadgeRight - (pw + 12) - 6
+		}
+		dlPillX := redrawBadgeRight - dlPillW
+		dlPillY := (headerH - badgePillH) / 2
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, 25, 50, 30)
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, 70, 190, 90)
+	}
 	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
 	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
