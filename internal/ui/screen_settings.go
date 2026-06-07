@@ -44,10 +44,6 @@ const (
 	sItemCount
 )
 
-const (
-	apiKeySetupURL  = "https://github.com/carroarmato0/NextUI-Itchio-Pak#adding-the-key-to-the-pak"
-	apiKeySetupBody = "Paid games require an Itch.io API key. Scan the QR code below for instructions on how to add it."
-)
 
 type SettingsScreen struct {
 	client         *itchio.Client
@@ -70,9 +66,6 @@ type SettingsScreen struct {
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
-
-	showAPIKeyHelp bool
-	apiKeyHelpQR   *sdl.Texture
 }
 
 func NewSettingsScreen(
@@ -330,20 +323,17 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
 	if s.cursor == sItemAPIKey {
 		if s.cfg.APIKey != "" {
-			hints[1].Text = "Test API key"
+			hints[0].Text = "Test API key"
 		} else {
-			hints[1].Text = "Setup guide"
+			hints[0].Text = "Enter API key"
 		}
 	}
 	r.DrawFooterHints(hints, ftrY)
-	if s.showAPIKeyHelp {
-		s.drawAPIKeyHelpOverlay(r)
-	}
 	r.Present()
 }
 
@@ -365,24 +355,6 @@ func (s *SettingsScreen) stopHold(dir int) {
 }
 
 func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
-	if s.showAPIKeyHelp {
-		dismiss := false
-		switch ev := e.(type) {
-		case *sdl.KeyboardEvent:
-			dismiss = ev.Type == sdl.KEYDOWN
-		case *sdl.ControllerButtonEvent:
-			dismiss = ev.Type == sdl.CONTROLLERBUTTONDOWN
-		}
-		if dismiss {
-			s.showAPIKeyHelp = false
-			if s.apiKeyHelpQR != nil {
-				s.apiKeyHelpQR.Destroy()
-				s.apiKeyHelpQR = nil
-			}
-			logger.Debug("settings: API key help overlay dismissed")
-		}
-		return s
-	}
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
@@ -488,8 +460,24 @@ func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
 	case sItemAPIKey:
 		if s.cfg.APIKey == "" {
-			s.showAPIKeyHelp = true
-			logger.Info("settings: API key help overlay shown")
+			return NewKeyboardScreen(s, "", func(value string) {
+				if value == "" {
+					return
+				}
+				s.cfg.APIKey = value
+				go s.cfg.Save(s.cfgPath)
+				logger.Info("settings: API key set via keyboard, len=%d", len(value))
+				if s.onOwnedReady != nil {
+					go func() {
+						_, owned, err := s.client.ValidateAPIKey(value)
+						if err != nil {
+							logger.Warn("settings: API key validation failed: %v", err)
+							return
+						}
+						s.onOwnedReady(owned)
+					}()
+				}
+			})
 		}
 	case sItemROMLocation:
 		if s.cfg.ROMLocation == "auto" {
@@ -580,67 +568,3 @@ func (s *SettingsScreen) activate() Screen {
 	return s
 }
 
-func (s *SettingsScreen) drawAPIKeyHelpOverlay(r *renderer.Renderer) {
-	_, fontH := r.TextSize("Ag")
-	_, smallFH := r.SmallTextSize("Ag")
-	lineH := fontH + 4
-
-	pad := int32(20)
-	panelW := r.W * 6 / 10
-	bodyMaxW := panelW - pad*2
-
-	// Pre-measure body text to correctly size the panel.
-	bodyLines := r.WrapText(apiKeySetupBody, bodyMaxW)
-	bodyH := int32(len(bodyLines)) * lineH
-
-	// QR size: 40% of panel width, clamped to [80, 160].
-	qrSize := panelW * 4 / 10
-	if qrSize > 160 {
-		qrSize = 160
-	}
-	if qrSize < 80 {
-		qrSize = 80
-	}
-
-	panelH := pad + fontH + 8 + bodyH + 12 + qrSize + 6 + smallFH + pad
-	panelX := (r.W - panelW) / 2
-	panelY := (r.H - panelH) / 2
-
-	// 2px accent-coloured border drawn as a slightly larger rect behind the panel.
-	ac := r.Theme.Accent
-	r.DrawRect(panelX-2, panelY-2, panelW+4, panelH+4, ac[0], ac[1], ac[2])
-
-	// Solid panel background.
-	bg := r.Theme.Background
-	r.DrawRect(panelX, panelY, panelW, panelH, bg[0], bg[1], bg[2])
-
-	// Title.
-	mt := r.Theme.MainText
-	y := panelY + pad
-	r.DrawTextCentered("API Key Setup", panelX, y, panelW, mt[0], mt[1], mt[2])
-	y += fontH + 8
-
-	// Body text.
-	ht := r.Theme.HintText
-	r.DrawWrappedText(apiKeySetupBody, panelX+pad, y, bodyMaxW, lineH, ht[0], ht[1], ht[2])
-	y += bodyH + 12
-
-	// QR code — lazily generated and cached for the lifetime of the overlay.
-	if s.apiKeyHelpQR == nil {
-		tex, err := r.QRTexture(apiKeySetupURL, int(qrSize))
-		if err != nil {
-			logger.Warn("settings: API key help QR generation failed: %v", err)
-		} else {
-			s.apiKeyHelpQR = tex
-			logger.Debug("settings: API key help QR texture generated")
-		}
-	}
-	if s.apiKeyHelpQR != nil {
-		qrX := panelX + (panelW-qrSize)/2
-		r.DrawTextureAt(s.apiKeyHelpQR, qrX, y, qrSize, qrSize)
-	}
-	y += qrSize + 6
-
-	// Caption.
-	r.DrawSmallTextCentered("Scan to open setup guide", panelX, y, panelW, 120, 120, 120)
-}
