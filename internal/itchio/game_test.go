@@ -199,6 +199,9 @@ func TestExtractDescriptionPreservesStructuralMarkup(t *testing.T) {
 	if !strings.Contains(desc, "<li>") {
 		t.Errorf("expected <li> tag, got: %q", desc)
 	}
+	if !strings.Contains(desc, "</li>") {
+		t.Errorf("expected </li> close tag, got: %q", desc)
+	}
 	if !strings.Contains(desc, "<p>") {
 		t.Errorf("expected <p> tag, got: %q", desc)
 	}
@@ -231,7 +234,10 @@ func TestExtractDescriptionOrderedList(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClient()
-	detail, _ := c.FetchGameDetail(srv.URL)
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
 	desc := detail.Description
 	if !strings.Contains(desc, "<ol>") {
 		t.Errorf("expected <ol> tag, got: %q", desc)
@@ -255,7 +261,10 @@ func TestExtractDescriptionStripsButtonsAndEmbeds(t *testing.T) {
 	defer srv.Close()
 
 	c := itchio.NewClient()
-	detail, _ := c.FetchGameDetail(srv.URL)
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
 	desc := detail.Description
 	if strings.Contains(desc, "Click me") {
 		t.Errorf("button text should be stripped, got: %q", desc)
