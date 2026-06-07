@@ -11,7 +11,6 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
-	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
@@ -507,22 +506,11 @@ func (s *SettingsScreen) activate() Screen {
 		s.cfg.Save(s.cfgPath)
 	case sItemPico8Core:
 		oldCore := s.cfg.Pico8Core
-		if oldCore == "pico8" {
-			s.cfg.Pico8Core = "fakeo8"
-		} else {
-			s.cfg.Pico8Core = "pico8"
+		newCore := "fakeo8"
+		if oldCore == "fakeo8" {
+			newCore = "pico8"
 		}
-		oldDir := roms.Pico8ROMDir(oldCore)
-		newDir := roms.Pico8ROMDir(s.cfg.Pico8Core)
-		if err := inventory.MigratePico8Files(s.inv, s.invPath, oldDir, newDir); err != nil {
-			logger.Warn("settings: pico8 core migration failed: %v", err)
-			s.cfg.Pico8Core = oldCore // revert
-			return nil
-		}
-		if err := s.cfg.Save(s.cfgPath); err != nil {
-			logger.Warn("settings: save failed after pico8 core switch: %v", err)
-		}
-		logger.Info("settings: pico8 core changed to %s", s.cfg.Pico8Core)
+		return NewPico8CoreMigrateScreen(s.cfg, s.cfgPath, s.inv, s.invPath, oldCore, newCore, s)
 	case sItemMusicDownload:
 		switch s.cfg.MusicDownload {
 		case "off":
