@@ -165,6 +165,106 @@ func TestFetchGameDetailExtractsDescriptionWithNestedDiv(t *testing.T) {
 	}
 }
 
+func TestExtractDescriptionPreservesStructuralMarkup(t *testing.T) {
+	const pageHTML = `<html><body>
+<div class="formatted_description user_formatted">
+<h2>Features</h2>
+<ul>
+  <li>Multiple episodes</li>
+  <li>Save states</li>
+</ul>
+<p>A paragraph with <strong>bold</strong> and <em>italic</em> text.</p>
+<p>Second paragraph.</p>
+</div>
+</body></html>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	desc := detail.Description
+
+	if !strings.Contains(desc, "<h2>") {
+		t.Errorf("expected <h2> tag, got: %q", desc)
+	}
+	if !strings.Contains(desc, "<ul>") {
+		t.Errorf("expected <ul> tag, got: %q", desc)
+	}
+	if !strings.Contains(desc, "<li>") {
+		t.Errorf("expected <li> tag, got: %q", desc)
+	}
+	if !strings.Contains(desc, "<p>") {
+		t.Errorf("expected <p> tag, got: %q", desc)
+	}
+	if !strings.Contains(desc, "<b>") {
+		t.Errorf("expected <b> tag (from strong/em), got: %q", desc)
+	}
+	if !strings.Contains(desc, "Features") {
+		t.Errorf("missing heading text in: %q", desc)
+	}
+	if !strings.Contains(desc, "Multiple episodes") {
+		t.Errorf("missing list item text in: %q", desc)
+	}
+	if !strings.Contains(desc, "bold") {
+		t.Errorf("missing bold text in: %q", desc)
+	}
+	if strings.Contains(desc, "<a") || strings.Contains(desc, "<div") || strings.Contains(desc, "<span") {
+		t.Errorf("disallowed tags present in: %q", desc)
+	}
+}
+
+func TestExtractDescriptionOrderedList(t *testing.T) {
+	const pageHTML = `<html><body>
+<div class="formatted_description">
+<ol><li>First</li><li>Second</li></ol>
+</div></body></html>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, _ := c.FetchGameDetail(srv.URL)
+	desc := detail.Description
+	if !strings.Contains(desc, "<ol>") {
+		t.Errorf("expected <ol> tag, got: %q", desc)
+	}
+	if !strings.Contains(desc, "First") || !strings.Contains(desc, "Second") {
+		t.Errorf("missing list text in: %q", desc)
+	}
+}
+
+func TestExtractDescriptionStripsButtonsAndEmbeds(t *testing.T) {
+	const pageHTML = `<html><body>
+<div class="formatted_description">
+<button>Click me</button>
+<iframe src="https://youtube.com/embed/xxx"></iframe>
+<p>Real content here.</p>
+</div></body></html>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, _ := c.FetchGameDetail(srv.URL)
+	desc := detail.Description
+	if strings.Contains(desc, "Click me") {
+		t.Errorf("button text should be stripped, got: %q", desc)
+	}
+	if !strings.Contains(desc, "Real content") {
+		t.Errorf("missing paragraph content in: %q", desc)
+	}
+}
+
 func TestFetchGameDetailExtractsBundleNames(t *testing.T) {
 	// Alpha appears twice (page renders it in purchase banner AND related-items section).
 	// Beta appears once. Result should be: [Alpha Bundle, Beta Bundle] — deduplicated.
