@@ -203,7 +203,7 @@ func (s *ZIPDownloadScreen) run() {
 		if strings.HasPrefix(baseName, "._") {
 			continue
 		}
-		kind := roms.ClassifyEntry(baseName)
+		kind, baseName := classifyWithMagic(baseName, f.Open)
 
 		switch kind {
 		case roms.KindROM:
@@ -283,7 +283,7 @@ func (s *ZIPDownloadScreen) run7z(tmpPath string) {
 		if strings.HasPrefix(baseName, "._") {
 			continue
 		}
-		kind := roms.ClassifyEntry(baseName)
+		kind, baseName := classifyWithMagic(baseName, f.Open)
 		switch kind {
 		case roms.KindROM:
 			if !s.shouldExtractROM(baseName) {
@@ -502,6 +502,33 @@ func (s *ZIPDownloadScreen) findIdenticalFromOpener(open func() (io.ReadCloser, 
 		}
 	}
 	return ""
+}
+
+// classifyWithMagic calls ClassifyEntry on baseName; if the extension is
+// unrecognised (KindOther) it reads the first roms.DetectBufSize bytes via
+// open() and retries with magic-byte detection. Returns the resolved
+// FileKind and the (possibly extension-corrected) baseName.
+// This handles archive entries whose filename uses a generic extension such
+// as ".bin" for a Sega Genesis ROM — extension lookup fails but the ROM
+// header signature at 0x100 reliably identifies the format.
+func classifyWithMagic(baseName string, open func() (io.ReadCloser, error)) (roms.FileKind, string) {
+	kind := roms.ClassifyEntry(baseName)
+	if kind != roms.KindOther {
+		return kind, baseName
+	}
+	rc, err := open()
+	if err != nil {
+		return kind, baseName
+	}
+	buf := make([]byte, roms.DetectBufSize)
+	n, _ := io.ReadFull(rc, buf)
+	rc.Close()
+	detected := roms.DetectROMExt(buf[:n])
+	if detected == "" {
+		return kind, baseName
+	}
+	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	return roms.KindROM, stem + detected
 }
 
 func (s *ZIPDownloadScreen) shouldExtractROM(name string) bool {
