@@ -402,6 +402,7 @@ func (s *ZIPDownloadScreen) extractROMFromOpener(open func() (io.ReadCloser, err
 	// Skip when an identical ROM already exists.
 	if existing := s.findIdenticalFromOpener(open, size, ext); existing != "" {
 		logger.Info("7z-download: ROM %s: identical file at %s, skipping", baseName, existing)
+		s.backfillSourceArchive(existing)
 		return existing, nil
 	}
 
@@ -475,6 +476,29 @@ func (s *ZIPDownloadScreen) extractMusicFromOpener(open func() (io.ReadCloser, e
 		FileType:     inventory.FileTypeMusic,
 	})
 	return dest, nil
+}
+
+// backfillSourceArchive patches SourceArchive into an existing inventory entry
+// whose DestPath matches. Called when extraction is skipped because an identical
+// file already exists — pre-fix entries have SourceArchive="" which causes the
+// update service to incorrectly mark the game as removed.
+func (s *ZIPDownloadScreen) backfillSourceArchive(destPath string) {
+	if s.plan.Upload.Filename == "" {
+		return
+	}
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok {
+		return
+	}
+	for _, f := range entry.Files {
+		if f.DestPath == destPath && f.SourceArchive == "" {
+			f.SourceArchive = s.plan.Upload.Filename
+			s.inv.UpdateFile(s.game.URL, destPath, f)
+			logger.Debug("zip-download: backfilled SourceArchive=%q for %s",
+				s.plan.Upload.Filename, filepath.Base(destPath))
+			return
+		}
+	}
 }
 
 // findIdenticalFromOpener checks the inventory for a ROM matching the given
@@ -564,6 +588,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 	// Skip extraction when the game already has an identical ROM on disk.
 	if existing := s.findIdenticalROMInInventory(f, ext); existing != "" {
 		logger.Info("zip-download: ROM %s: identical file already at %s, skipping", baseName, existing)
+		s.backfillSourceArchive(existing)
 		return existing, nil
 	}
 
