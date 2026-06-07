@@ -528,22 +528,14 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	if len(s.viewGames) == 0 && s.cacheReady {
 		ht := r.Theme.HintText
-		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
-		r.DrawTextCentered("Press L1/R1 to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
+		r.DrawTextCentered("No games match the active filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
+		r.DrawTextCentered("Press SELECT to change filters.", 0, r.H/2+4, leftW, 80, 160, 180)
 		ftrY := r.DrawFooterBar(footerH)
-		if r.W <= narrowScreenW {
-			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"},
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
-				{Kind: renderer.BadgePill, Label: "START", Text: "Set"},
-			}, ftrY)
-		} else {
-			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"},
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
-				{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
-			}, ftrY)
-		}
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
+			{Kind: renderer.BadgePill, Label: "SELECT", Text: "Filter"},
+			{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
+		}, ftrY)
 		r.Present()
 		return
 	}
