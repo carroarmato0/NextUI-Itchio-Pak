@@ -121,12 +121,18 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 	r.DrawTextCentered("Filter & Search", panelX, panelY+pad, panelW, mt[0], mt[1], mt[2])
 	y := panelY + pad + fontH + pad
 
-	// drawLabel renders a section label with accent colour when focused.
+	// drawLabel renders a section label. Focused labels use the main text colour
+	// (always readable against the dark panel) with a left accent bar for
+	// visibility; unfocused labels use a muted blue-grey.
 	drawLabel := func(label string, focused bool) {
 		var lr, lg, lb uint8
 		if focused {
+			mt2 := r.Theme.MainText
+			lr, lg, lb = mt2[0], mt2[1], mt2[2]
+			// Draw a small accent bar to the left of the label so the active
+			// section is clearly indicated without relying on colour alone.
 			ac := r.Theme.Accent
-			lr, lg, lb = ac[0], ac[1], ac[2]
+			r.DrawRect(panelX, y, 3, smallFH, ac[0], ac[1], ac[2])
 		} else {
 			lr, lg, lb = 160, 175, 200
 		}
