@@ -455,15 +455,31 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 
 	if isPresent {
+		// Row 2: action button LEFT + status card RIGHT on the same line.
+		rowY := y
+		rowH := fontH + 14
+		aT := r.Theme.AccentText
+
+		// Determine action label.
+		var actionLabel string
+		var actionR, actionG, actionB uint8
 		if s.game.IsFree {
-			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], 0)
+			actionLabel, actionR, actionG, actionB = "Download again", 80, 200, 80
 		} else if s.cfg.APIKey == "" {
-			drawActionRow("A", "Purchase required", 220, 180, 60, 100, 80, 20, s.game.Price)
+			actionLabel, actionR, actionG, actionB = "Purchase required", 220, 180, 60
 		} else {
-			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], s.game.Price)
+			actionLabel, actionR, actionG, actionB = "Download again", 80, 200, 80
 		}
 
-		// Status card: [DL] scrolling-path [X] Delete — groups on-device info + action.
+		// Draw action badge + label.
+		d := fontH + 4
+		r.DrawCircleBadge(margin+d/2, rowY+d/2, d, ac[0], ac[1], ac[2])
+		r.DrawSmallTextCenteredInRect("A", margin, rowY, d, d, aT[0], aT[1], aT[2])
+		r.DrawText(actionLabel, margin+d+8, rowY, actionR, actionG, actionB)
+		alW, _ := r.TextSize(actionLabel)
+		actionEndX := margin + d + 8 + alW
+
+		// Status card occupies the remaining width on the same row.
 		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
 			f := entry.Files[0]
 			pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
@@ -471,8 +487,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				pathText += " (+" + strconv.Itoa(len(entry.Files)-1) + " more)"
 			}
 
-			const cp = int32(8)  // card inner padding
-			const dlBp = int32(5) // DL pill horizontal padding
+			const cp = int32(8)
+			const dlBp = int32(5)
 
 			dlW, _ := r.SmallTextSize("DL")
 			dlPillW := dlW + dlBp*2
@@ -482,43 +498,48 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			delLabelW, _ := r.SmallTextSize("Delete")
 			delBlockW := delCircleD + 6 + delLabelW
 
+			cardX := actionEndX + 12
+			cardW := r.W - margin - cardX
 			cardH := dlPillH + cp*2
-			cardW := r.W - margin*2
 
-			// Thin border + dark fill
-			r.DrawRect(margin, y, cardW, cardH, 42, 42, 58)
-			r.DrawRect(margin+1, y+1, cardW-2, cardH-2, 10, 10, 18)
+			// Align card vertically with the action button.
+			cardY := rowY + (rowH-cardH)/2
+			if cardY < rowY {
+				cardY = rowY
+			}
 
-			// DL pill (left)
-			r.DrawPill(margin+cp, y+cp, dlPillW, dlPillH, 80, 200, 220)
-			r.DrawSmallTextCenteredInRect("DL", margin+cp, y+cp, dlPillW, dlPillH, 20, 20, 20)
+			r.DrawRect(cardX, cardY, cardW, cardH, 42, 42, 58)
+			r.DrawRect(cardX+1, cardY+1, cardW-2, cardH-2, 10, 10, 18)
 
-			// [X] Delete (right, vertically centered)
-			delCircleX := margin + cardW - cp - delBlockW
+			r.DrawPill(cardX+cp, cardY+cp, dlPillW, dlPillH, 80, 200, 220)
+			r.DrawSmallTextCenteredInRect("DL", cardX+cp, cardY+cp, dlPillW, dlPillH, 20, 20, 20)
+
+			delCircleX := cardX + cardW - cp - delBlockW
 			delCircleCX := delCircleX + delCircleD/2
-			delCircleCY := y + cardH/2
-			aT := r.Theme.AccentText
+			delCircleCY := cardY + cardH/2
 			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, 160, 50, 50)
-			r.DrawSmallTextCenteredInRect("X", delCircleX, y+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
-			r.DrawSmallText("Delete", delCircleX+delCircleD+6, y+cp+2, 200, 80, 80)
+			r.DrawSmallTextCenteredInRect("X", delCircleX, cardY+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
+			r.DrawSmallText("Delete", delCircleX+delCircleD+6, cardY+cp+2, 200, 80, 80)
 
-			// Scrolling path text (clipped between DL pill and delete block)
-			textX := margin + cp + dlPillW + 6
+			textX := cardX + cp + dlPillW + 6
 			textMaxW := delCircleX - textX - 4
 			pathW, _ := r.SmallTextSize(pathText)
 
-			r.SetClipRect(textX, y, textMaxW, cardH)
+			r.SetClipRect(textX, cardY, textMaxW, cardH)
 			if pathW <= textMaxW {
 				s.pathScrollX = 0
-				r.DrawSmallText(pathText, textX, y+cp+2, 100, 100, 120)
+				r.DrawSmallText(pathText, textX, cardY+cp+2, 100, 100, 120)
+			} else if r.W <= narrowScreenW {
+				// On small screens truncate the path rather than scrolling.
+				truncated := truncateSmallToWidth(r, pathText, textMaxW)
+				r.DrawSmallText(truncated, textX, cardY+cp+2, 100, 100, 120)
 			} else {
 				maxScrollX := pathW - textMaxW
 				scrollX := s.pathScrollX
 				if scrollX > maxScrollX {
 					scrollX = maxScrollX
 				}
-				r.DrawSmallText(pathText, textX-scrollX, y+cp+2, 100, 100, 120)
-				// Reset scroll once we've paused at the end long enough
+				r.DrawSmallText(pathText, textX-scrollX, cardY+cp+2, 100, 100, 120)
 				if s.pathScrollX >= maxScrollX {
 					totalDur := pathScrollDelay +
 						time.Duration(maxScrollX)*time.Second/time.Duration(pathScrollSpeed) +
@@ -529,11 +550,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 					}
 				}
 			}
-			// Restore outer content clip (don't fully clear — that would unclip the header area)
 			r.SetClipRect(0, contentTop, r.W, contentH)
 
-			y += cardH + 10
-
+			// Unified naming toggle (below the combined row, if applicable)
+			y = rowY + rowH + 4
 			if s.cfg.UnifiedNaming {
 				toggleLabel := "Disable title filename"
 				if entry.UnifiedNamingDisabled {
@@ -541,6 +561,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				}
 				drawActionRow("Y", toggleLabel, mt[0], mt[1], mt[2], ac[0], ac[1], ac[2], 0)
 			}
+		} else {
+			y = rowY + rowH + 4
 		}
 	} else {
 		if s.game.IsFree {
