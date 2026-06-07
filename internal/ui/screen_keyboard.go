@@ -190,7 +190,7 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Type/Confirm"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
 		{Kind: renderer.BadgeCircle, Label: "X", Text: "Delete"},
-		{Kind: renderer.BadgePill, Label: "L1R1", Text: "Page"},
+		{Kind: renderer.BadgePill, Label: "L1R1", Text: "Shift"},
 	}, ftrY)
 	r.Present()
 }
