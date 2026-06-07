@@ -40,10 +40,12 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen, 
 		if err != nil {
 			s.err = err
 			s.state = keyTestFail
+			client.StoreAPIKeyStatus(itchio.APIKeyStatusRejected)
 		} else {
 			s.username = username
 			s.ownedCount = len(owned)
 			s.state = keyTestOK
+			client.StoreAPIKeyStatus(itchio.APIKeyStatusWorking)
 			if s.onOwnedReady != nil {
 				s.onOwnedReady(owned)
 			}

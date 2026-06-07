@@ -463,7 +463,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Sort pill
 		sortLabel := "● " + itchio.SortModeBadge(s.sortMode)
 		sw, _ := r.TextSize(sortLabel)
-		sortPillW := sw + 14
+		sortPillW := sw + 24
 		sortPillX := r.W - sortPillW - 10
 		var sortBgR, sortBgG, sortBgB uint8
 		if s.sortMode == itchio.SortModeRSS {
@@ -479,7 +479,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Platform pill (to the left of sort pill)
 		platLabel := "● " + s.platformLabel()
 		pw, _ := r.TextSize(platLabel)
-		platPillW := pw + 14
+		platPillW := pw + 24
 		platPillX := sortPillX - platPillW - 6
 		var platBgR, platBgG, platBgB uint8
 		if s.platformFilter == "" {

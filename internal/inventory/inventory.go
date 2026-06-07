@@ -18,11 +18,12 @@ const (
 )
 
 type DownloadedFile struct {
-	Filename     string    `json:"filename"`
-	DestPath     string    `json:"dest_path"`
-	DownloadedAt time.Time `json:"downloaded_at"`
-	UnifiedName  bool      `json:"unified_name,omitempty"`
-	FileType     string    `json:"file_type,omitempty"` // "rom" | "music"; empty == "rom"
+	Filename      string    `json:"filename"`
+	DestPath      string    `json:"dest_path"`
+	DownloadedAt  time.Time `json:"downloaded_at"`
+	UnifiedName   bool      `json:"unified_name,omitempty"`
+	FileType      string    `json:"file_type,omitempty"`      // "rom" | "music"; empty == "rom"
+	SourceArchive string    `json:"source_archive,omitempty"` // upload filename when extracted from ZIP/7z
 }
 
 type UpstreamFile struct {
@@ -267,7 +268,7 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 	if !ok {
 		return false
 	}
-	downloaded := make(map[string]bool, len(e.Files)*2)
+	downloaded := make(map[string]bool, len(e.Files)*3)
 	for _, f := range e.Files {
 		downloaded[f.Filename] = true
 		// Format-picker appends an extension the upload name doesn't carry (e.g.
@@ -275,6 +276,15 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 		// stem so the already-downloaded file isn't treated as a new upload.
 		if stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename)); stem != f.Filename {
 			downloaded[stem] = true
+		}
+		// For files extracted from archives (ZIP/7z), also index the source archive
+		// filename so an upstream re-upload of the same archive is correctly detected
+		// rather than treated as a missing file.
+		if f.SourceArchive != "" {
+			downloaded[f.SourceArchive] = true
+			if stem := strings.TrimSuffix(f.SourceArchive, filepath.Ext(f.SourceArchive)); stem != f.SourceArchive {
+				downloaded[stem] = true
+			}
 		}
 	}
 	for _, u := range e.KnownUpstreamFiles {

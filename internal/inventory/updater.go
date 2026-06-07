@@ -210,10 +210,17 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 		if f.FileType == FileTypeMusic {
 			continue
 		}
-		stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename))
-		if !upstreamNames[f.Filename] && !upstreamNames[stem] {
+		// For files extracted from archives (ZIP/7z), check the source archive
+		// name against upstream rather than the extracted ROM's renamed filename
+		// (which may be entirely different due to unified naming).
+		checkName := f.Filename
+		if f.SourceArchive != "" {
+			checkName = f.SourceArchive
+		}
+		stem := strings.TrimSuffix(checkName, filepath.Ext(checkName))
+		if !upstreamNames[checkName] && !upstreamNames[stem] {
 			s.inv.MarkRemoved(gameURL)
-			logger.Warn("update-svc: downloaded file %q no longer available upstream for %s", f.Filename, gameURL)
+			logger.Warn("update-svc: downloaded file %q no longer available upstream for %s", checkName, gameURL)
 			return upstreamFiles
 		}
 	}

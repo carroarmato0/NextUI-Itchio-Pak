@@ -375,10 +375,11 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 			GameURL: s.game.URL, Title: s.game.Title,
 			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 		}, inventory.DownloadedFile{
-			Filename:     base,
-			DestPath:     dest,
-			DownloadedAt: now,
-			FileType:     inventory.FileTypeROM,
+			Filename:      base,
+			DestPath:      dest,
+			DownloadedAt:  now,
+			FileType:      inventory.FileTypeROM,
+			SourceArchive: s.plan.Upload.Filename,
 		})
 	}
 }
@@ -439,7 +440,8 @@ func (s *ZIPDownloadScreen) extractROMFromOpener(open func() (io.ReadCloser, err
 		DestPath:      finalDest,
 		DownloadedAt:  now,
 		FileType:      inventory.FileTypeROM,
-		UnifiedName:  unifiedName,
+		UnifiedName:   unifiedName,
+		SourceArchive: s.plan.Upload.Filename,
 	})
 	if artErr := s.client.DownloadCoverArt(s.game.CoverURL, finalDest); artErr != nil {
 		logger.Warn("7z-download: cover art: %v", artErr)
@@ -603,11 +605,12 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 		GameURL: s.game.URL, Title: s.game.Title,
 		Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 	}, inventory.DownloadedFile{
-		Filename:     filepath.Base(finalDest),
-		DestPath:     finalDest,
-		DownloadedAt: now,
-		UnifiedName:  unifiedName,
-		FileType:     inventory.FileTypeROM,
+		Filename:      filepath.Base(finalDest),
+		DestPath:      finalDest,
+		DownloadedAt:  now,
+		UnifiedName:   unifiedName,
+		FileType:      inventory.FileTypeROM,
+		SourceArchive: s.plan.Upload.Filename,
 	})
 	return finalDest, nil
 }
@@ -704,10 +707,11 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 			GameURL: s.game.URL, Title: s.game.Title,
 			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 		}, inventory.DownloadedFile{
-			Filename:     base,
-			DestPath:     dest,
-			DownloadedAt: now,
-			FileType:     inventory.FileTypeROM,
+			Filename:      base,
+			DestPath:      dest,
+			DownloadedAt:  now,
+			FileType:      inventory.FileTypeROM,
+			SourceArchive: s.plan.Upload.Filename,
 		})
 	}
 }
