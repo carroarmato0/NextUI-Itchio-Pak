@@ -195,23 +195,23 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 		r.DrawTextCentered("Finding available files...", 0, mid-mainFH/2, r.W, mt[0], mt[1], mt[2])
 
 	case fetchError:
-		r.DrawText("Could not fetch files:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
-		msg := s.err.Error()
-		r.DrawWrappedText(msg, 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
+		if s.err != nil && s.err.Error() == "no downloadable files found for this game" {
+			r.DrawTextCentered("No downloads available", 0, mid-mainFH-smallFH-8, r.W, 200, 160, 60)
+			r.DrawWrappedText("This game does not have any downloadable files — it may be browser-only. Press B to return and scan the QR code to open the game page.", 20, mid-smallFH, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
+		} else {
+			r.DrawText("Could not fetch files:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
+			msg := s.err.Error()
+			r.DrawWrappedText(msg, 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
+		}
 
 	case fetchDone, fetchNeedsPurchasePick:
 		// Handled by transitioning in HandleEvent / next Draw cycle below
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.loadState() {
-	case fetchLoading:
-		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
-	default:
-		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
-		}, ftrY)
-	}
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+	}, ftrY)
 	r.Present()
 }
 
@@ -242,7 +242,9 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Keysym.Sym {
-		case sdl.K_ESCAPE, sdl.K_RETURN:
+		case sdl.K_ESCAPE: // B — cancel at any time
+			return s.prev
+		case sdl.K_RETURN: // A — dismiss error
 			if s.loadState() == fetchError {
 				return s.prev
 			}
@@ -252,7 +254,9 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+		case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
+			return s.prev
+		case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
 			if s.loadState() == fetchError {
 				return s.prev
 			}

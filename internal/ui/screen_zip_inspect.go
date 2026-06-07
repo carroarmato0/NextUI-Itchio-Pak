@@ -157,14 +157,9 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.loadState() {
-	case zipInspectLoading:
-		r.DrawSmallText("Please wait…", 10, ftrY, ht[0], ht[1], ht[2])
-	default:
-		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
-		}, ftrY)
-	}
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+	}, ftrY)
 	r.Present()
 }
 
@@ -179,17 +174,25 @@ func (s *ZIPInspectScreen) HandleEvent(e sdl.Event) Screen {
 			return s.route()
 		}
 	case *sdl.KeyboardEvent:
-		if ev.Type == sdl.KEYDOWN && s.loadState() == zipInspectError {
+		if ev.Type == sdl.KEYDOWN {
 			switch ev.Keysym.Sym {
-			case sdl.K_ESCAPE, sdl.K_RETURN:
+			case sdl.K_ESCAPE: // B — cancel at any time
 				return s.prev
+			case sdl.K_RETURN: // A — dismiss error
+				if s.loadState() == zipInspectError {
+					return s.prev
+				}
 			}
 		}
 	case *sdl.ControllerButtonEvent:
-		if ev.Type == sdl.CONTROLLERBUTTONDOWN && s.loadState() == zipInspectError {
+		if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+			case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
 				return s.prev
+			case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
+				if s.loadState() == zipInspectError {
+					return s.prev
+				}
 			}
 		}
 	}
