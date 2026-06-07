@@ -337,8 +337,12 @@ func (s *FilterScreen) movePillRight() {
 func (s *FilterScreen) activate() Screen {
 	switch s.section {
 	case filterSectionSearch:
-		return NewKeyboardScreen(s, s.query, func(result string) {
+		// Return to the list screen directly when OK is pressed — apply immediately.
+		return NewKeyboardScreen(s.prev, s.query, func(result string) {
 			s.query = result
+			if s.onApply != nil {
+				s.onApply(s.platform, s.sort, s.query)
+			}
 		})
 	case filterSectionPlatform:
 		s.platform = filterPlatforms[s.platCol]

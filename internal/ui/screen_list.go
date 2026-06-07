@@ -870,7 +870,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				tagAreaH := r.H - footerH - metaY
 				if tagAreaH > 0 {
 					r.SetClipRect(rightX, metaY, rightW, tagAreaH)
-					lineGap := smallFH2 + 4
+					lineGap := smallFH2 + 10 // pill height + gap between rows
 					r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
 						aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
 					r.ClearClipRect()

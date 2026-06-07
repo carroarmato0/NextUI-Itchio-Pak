@@ -13,25 +13,25 @@ import (
 
 // kbGrid defines the 4×8 character grid for each keyboard page.
 // 0=lowercase, 1=uppercase, 2=digits+symbols.
-// Empty strings are non-interactive spacers; the cursor skips them.
+// No empty spacer cells — every position is interactive.
 var kbGrid = [3][4][8]string{
-	{ // page 0: lowercase a–z
+	{ // page 0: lowercase a–z + common chars
 		{"a", "b", "c", "d", "e", "f", "g", "h"},
 		{"i", "j", "k", "l", "m", "n", "o", "p"},
 		{"q", "r", "s", "t", "u", "v", "w", "x"},
-		{"y", "z", "", "", "", "SPC", "DEL", "OK"},
+		{"y", "z", ".", "@", ",", "SPC", "DEL", "OK"},
 	},
-	{ // page 1: uppercase A–Z
+	{ // page 1: uppercase A–Z + common chars
 		{"A", "B", "C", "D", "E", "F", "G", "H"},
 		{"I", "J", "K", "L", "M", "N", "O", "P"},
 		{"Q", "R", "S", "T", "U", "V", "W", "X"},
-		{"Y", "Z", "", "", "", "SPC", "⌫", "✓"},
+		{"Y", "Z", ".", "@", ",", "SPC", "DEL", "OK"},
 	},
-	{ // page 2: digits + common symbols
+	{ // page 2: digits + symbols
 		{"0", "1", "2", "3", "4", "5", "6", "7"},
 		{"8", "9", ".", "-", "_", "'", "!", "?"},
 		{"@", "#", ":", ";", "(", ")", "+", "="},
-		{"", "", "", "", "", "SPC", "DEL", "OK"},
+		{"*", "/", "&", "%", "$", "SPC", "DEL", "OK"},
 	},
 }
 
@@ -57,11 +57,16 @@ type KeyboardScreen struct {
 // NewKeyboardScreen returns a KeyboardScreen pre-filled with seed.
 // onConfirm is called with the result when the user confirms or cancels.
 func NewKeyboardScreen(prev Screen, seed string, onConfirm func(string)) *KeyboardScreen {
+	page := 0
+	if len(seed) == 0 {
+		page = 1 // start on uppercase when typing from scratch
+	}
 	return &KeyboardScreen{
 		prev:      prev,
 		value:     []rune(seed),
 		seed:      seed,
 		onConfirm: onConfirm,
+		page:      page,
 		row:       0,
 		col:       0,
 		blinkOn:   true,
@@ -293,6 +298,11 @@ func (s *KeyboardScreen) activate() Screen {
 		r, size := utf8.DecodeRuneInString(ch)
 		if size > 0 && r != utf8.RuneError {
 			s.value = append(s.value, r)
+			// Auto-switch from uppercase to lowercase after the first character.
+			if s.page == 1 {
+				s.page = 0
+				s.clampCol()
+			}
 		}
 	}
 	return s
