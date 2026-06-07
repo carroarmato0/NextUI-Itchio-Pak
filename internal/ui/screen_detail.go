@@ -320,10 +320,20 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// ── Loading state ───────────────────────────────────────
 	// Use the same column geometry as the loaded layout so the image
 	// doesn't jump in size once the QR code and detail data arrive.
-	qrColW := r.W / 4
+	// QR column narrower than before — screenshot gets more horizontal space.
+	qrColW := r.W / 5
+	if r.W <= narrowScreenW {
+		qrColW = r.W / 6
+	}
 	imgAreaW := r.W - qrColW - margin - 10
 	imgBoxW := imgAreaW - margin
-	imgBoxH := contentH * 2 / 3
+	// Screenshot height: ~40% of content area. Cap so it doesn't exceed
+	// a 16:9 ratio on very wide screens (avoids tall letterboxed images).
+	imgBoxH := contentH * 40 / 100
+	maxByWidth := imgBoxW * 9 / 16
+	if imgBoxH > maxByWidth {
+		imgBoxH = maxByWidth
+	}
 
 	if s.loading {
 		r.DrawRect(margin, contentTop, imgBoxW, imgBoxH, bg[0], bg[1], bg[2])
