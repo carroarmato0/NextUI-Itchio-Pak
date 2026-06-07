@@ -131,11 +131,18 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 
 	case refreshCacheError:
 		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
-			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-8, r.W, 200, 100, 50)
-			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then retry the refresh.", 20, mid, r.W-40, fontH+4, 200, 160, 100)
+			const cfMsg = "Visit itch.io in a browser on the same WiFi, then retry the refresh."
+			cfLines := r.WrapText(cfMsg, r.W-40)
+			cfH := int32(len(cfLines)) * (fontH + 4)
+			startY := mid - (fontH+10+cfH)/2
+			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, startY, r.W, 200, 100, 50)
+			r.DrawWrappedText(cfMsg, 20, startY+fontH+10, r.W-40, fontH+4, 200, 160, 100)
 		} else {
-			r.DrawTextCentered("Refresh failed:", 0, mid-fontH-8, r.W, 200, 60, 60)
-			r.DrawWrappedText(s.err.Error(), 20, mid, r.W-40, fontH+4, 200, 100, 100)
+			errLines := r.WrapText(s.err.Error(), r.W-40)
+			errH := int32(len(errLines)) * (fontH + 4)
+			startY := mid - (fontH+10+errH)/2
+			r.DrawTextCentered("Refresh failed:", 0, startY, r.W, 200, 60, 60)
+			r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, fontH+4, 200, 100, 100)
 		}
 
 	case refreshCacheCancelled:

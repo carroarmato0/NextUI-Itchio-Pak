@@ -185,8 +185,11 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 		}
 		drawLoadingDots(r, mid+8)
 	case zipInspectError:
-		r.DrawText("Inspection failed:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
+		errLines := r.WrapText(s.err.Error(), r.W-40)
+		errH := int32(len(errLines)) * (smallFH + 4)
+		startY := mid - (mainFH+10+errH)/2
+		r.DrawText("Inspection failed:", 20, startY, 200, 60, 60)
+		r.DrawWrappedText(s.err.Error(), 20, startY+mainFH+10, r.W-40, smallFH+4, 200, 100, 100)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

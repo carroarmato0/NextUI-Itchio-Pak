@@ -88,8 +88,12 @@ func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 		r.DrawSmallTextCentered("(full list written to debug log)", 0, mid+smallFH*2+8, r.W, 100, 100, 100)
 
 	case keyTestFail:
-		r.DrawTextCentered("API key invalid", 0, mid-fontH-smallFH-8, r.W, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, mid, r.W-40, smallFH+4, 200, 100, 100)
+		errLines := r.WrapText(s.err.Error(), r.W-40)
+		errH := int32(len(errLines)) * (smallFH + 4)
+		totalH := fontH + 10 + errH
+		startY := mid - totalH/2
+		r.DrawTextCentered("API key invalid", 0, startY, r.W, 200, 60, 60)
+		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, smallFH+4, 200, 100, 100)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

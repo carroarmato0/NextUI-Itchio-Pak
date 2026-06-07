@@ -197,12 +197,19 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 
 	case fetchError:
 		if s.err != nil && s.err.Error() == "no downloadable files found for this game" {
-			r.DrawTextCentered("No downloads available", 0, mid-mainFH-smallFH-8, r.W, 200, 160, 60)
-			r.DrawWrappedText("This game does not have any downloadable files — it may be browser-only. Press B to return and scan the QR code to open the game page.", 20, mid-smallFH, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
+			const noDownloadMsg = "This game does not have any downloadable files — it may be browser-only. Press B to return and scan the QR code to open the game page."
+			ndLines := r.WrapText(noDownloadMsg, r.W-40)
+			ndH := int32(len(ndLines)) * (smallFH + 4)
+			startY := mid - (mainFH+10+ndH)/2
+			r.DrawTextCentered("No downloads available", 0, startY, r.W, 200, 160, 60)
+			r.DrawWrappedText(noDownloadMsg, 20, startY+mainFH+10, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
 		} else {
-			r.DrawText("Could not fetch files:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
 			msg := s.err.Error()
-			r.DrawWrappedText(msg, 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
+			errLines := r.WrapText(msg, r.W-40)
+			errH := int32(len(errLines)) * (smallFH + 4)
+			startY := mid - (mainFH+10+errH)/2
+			r.DrawText("Could not fetch files:", 20, startY, 200, 60, 60)
+			r.DrawWrappedText(msg, 20, startY+mainFH+10, r.W-40, smallFH+4, 200, 100, 100)
 		}
 
 	case fetchDone, fetchNeedsPurchasePick:
