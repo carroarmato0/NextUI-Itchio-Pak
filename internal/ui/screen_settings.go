@@ -66,6 +66,10 @@ type SettingsScreen struct {
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
+
+	// pendingKeyTest is set by the keyboard callback to trigger a KeyTestScreen
+	// transition on the next event cycle (after the keyboard closes).
+	pendingKeyTest bool
 }
 
 func NewSettingsScreen(
@@ -328,9 +332,10 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 	if s.cursor == sItemAPIKey {
 		if s.cfg.APIKey != "" {
-			hints[0].Text = "Test API key"
+			hints[0].Text = "Test"
+			hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "Y", Text: "Edit key"})
 		} else {
-			hints[0].Text = "Enter API key"
+			hints[0].Text = "Enter key"
 		}
 	}
 	r.DrawFooterHints(hints, ftrY)
@@ -354,7 +359,30 @@ func (s *SettingsScreen) stopHold(dir int) {
 	}
 }
 
+// openKeyboardForAPIKey opens the virtual keyboard for entering or editing the
+// API key. seed is pre-filled (use s.cfg.APIKey to edit an existing key, or ""
+// to enter a new one). On confirm, the key is saved and a KeyTestScreen is
+// shown so the user sees the validation result immediately.
+func (s *SettingsScreen) openKeyboardForAPIKey() Screen {
+	seed := s.cfg.APIKey
+	return NewKeyboardScreen(s, seed, func(value string) {
+		if value == "" || value == seed {
+			return // no change
+		}
+		s.cfg.APIKey = value
+		go s.cfg.Save(s.cfgPath)
+		logger.Info("settings: API key updated via keyboard, len=%d", len(value))
+		s.pendingKeyTest = true
+	})
+}
+
 func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
+	// Keyboard confirmed a new API key — transition to KeyTestScreen now that
+	// the keyboard has closed and we are back on the event loop.
+	if s.pendingKeyTest {
+		s.pendingKeyTest = false
+		return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
+	}
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
@@ -382,6 +410,10 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
+		case sdl.K_y: // physical Y — edit API key when one is already set
+			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+				return s.openKeyboardForAPIKey()
+			}
 		case sdl.K_ESCAPE:
 			return s.prev
 		case sdl.K_s:
@@ -413,6 +445,10 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
+		case sdl.CONTROLLER_BUTTON_X: // physical Y — edit API key when one is already set
+			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+				return s.openKeyboardForAPIKey()
+			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
 		case sdl.CONTROLLER_BUTTON_START:
@@ -460,24 +496,7 @@ func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
 	case sItemAPIKey:
 		if s.cfg.APIKey == "" {
-			return NewKeyboardScreen(s, "", func(value string) {
-				if value == "" {
-					return
-				}
-				s.cfg.APIKey = value
-				go s.cfg.Save(s.cfgPath)
-				logger.Info("settings: API key set via keyboard, len=%d", len(value))
-				if s.onOwnedReady != nil {
-					go func() {
-						_, owned, err := s.client.ValidateAPIKey(value)
-						if err != nil {
-							logger.Warn("settings: API key validation failed: %v", err)
-							return
-						}
-						s.onOwnedReady(owned)
-					}()
-				}
-			})
+			return s.openKeyboardForAPIKey()
 		}
 	case sItemROMLocation:
 		if s.cfg.ROMLocation == "auto" {
