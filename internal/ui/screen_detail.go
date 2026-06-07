@@ -594,11 +594,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += tagsH + 10
 	}
 
-	// ── Description (full width) ────────────────────────────
+	// ── Description (full width, HTML-formatted) ─────────────
 	if s.detail != nil && s.detail.Description != "" {
-		r.DrawRect(margin, y, usableW, 1, 50, 50, 50) // separator
+		r.DrawRect(margin, y, usableW, 1, 50, 50, 50)
 		y += 11
-		descH := r.DrawWrappedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
+		descH := r.DrawFormattedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
 		y += descH
 	}
 
