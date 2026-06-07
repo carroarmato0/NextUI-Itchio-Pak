@@ -189,6 +189,7 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 	r.DrawFooterHints([]renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Type/Confirm"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+		{Kind: renderer.BadgeCircle, Label: "X", Text: "Delete"},
 		{Kind: renderer.BadgePill, Label: "L1R1", Text: "Page"},
 	}, ftrY)
 	r.Present()
@@ -237,6 +238,10 @@ func (s *KeyboardScreen) handleKey(sym sdl.Keycode) Screen {
 	case sdl.K_PAGEDOWN: // R1 — next page
 		s.page = (s.page + 1) % 3
 		s.clampCol()
+	case sdl.K_x: // X — delete last character
+		if len(s.value) > 0 {
+			s.value = s.value[:len(s.value)-1]
+		}
 	}
 	return s
 }
@@ -268,6 +273,10 @@ func (s *KeyboardScreen) handleButton(btn uint8) Screen {
 	case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 		s.page = (s.page + 1) % 3
 		s.clampCol()
+	case sdl.CONTROLLER_BUTTON_X: // X — delete last character
+		if len(s.value) > 0 {
+			s.value = s.value[:len(s.value)-1]
+		}
 	}
 	return s
 }
