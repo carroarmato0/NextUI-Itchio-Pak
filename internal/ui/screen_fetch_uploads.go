@@ -192,7 +192,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 
 	switch s.loadState() {
 	case fetchLoading:
-		r.DrawTextCentered("Finding available files…", 0, mid-mainFH-10, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Finding available files", 0, mid-mainFH-10, r.W, mt[0], mt[1], mt[2])
 		drawLoadingDots(r, mid+8)
 
 	case fetchError:

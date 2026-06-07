@@ -150,7 +150,7 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 
 	switch s.loadState() {
 	case zipInspectLoading:
-		r.DrawTextCentered("Inspecting archive…", 0, mid-mainFH-10, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Inspecting archive", 0, mid-mainFH-10, r.W, mt[0], mt[1], mt[2])
 		drawLoadingDots(r, mid+8)
 	case zipInspectError:
 		r.DrawText("Inspection failed:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
