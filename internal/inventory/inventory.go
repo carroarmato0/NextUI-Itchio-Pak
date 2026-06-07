@@ -17,6 +17,17 @@ const (
 	FileTypeMusic = "music"
 )
 
+// romFileExt returns the effective file extension for a ROM filename, treating
+// ".p8.png" as a single compound extension rather than just ".png".
+// filepath.Ext alone would give ".png" for "game.p8.png", producing a wrong
+// stem ("game.p8") that fails upstream filename matching in the update service.
+func romFileExt(filename string) string {
+	if strings.HasSuffix(strings.ToLower(filename), ".p8.png") {
+		return ".p8.png"
+	}
+	return filepath.Ext(filename)
+}
+
 type DownloadedFile struct {
 	Filename      string    `json:"filename"`
 	DestPath      string    `json:"dest_path"`
@@ -274,7 +285,7 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 		// Format-picker appends an extension the upload name doesn't carry (e.g.
 		// "Game Boy ROM.gbc" stored vs "Game Boy ROM" upstream). Also index the
 		// stem so the already-downloaded file isn't treated as a new upload.
-		if stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename)); stem != f.Filename {
+		if stem := strings.TrimSuffix(f.Filename, romFileExt(f.Filename)); stem != f.Filename {
 			downloaded[stem] = true
 		}
 		// For files extracted from archives (ZIP/7z), also index the source archive

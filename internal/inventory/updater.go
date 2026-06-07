@@ -3,7 +3,6 @@ package inventory
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -198,7 +197,7 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 			SeenAt:   time.Now(), // preserved for known files by SetUpstreamFiles
 		})
 		upstreamNames[u.Filename] = true
-		if stem := strings.TrimSuffix(u.Filename, filepath.Ext(u.Filename)); stem != u.Filename {
+		if stem := strings.TrimSuffix(u.Filename, romFileExt(u.Filename)); stem != u.Filename {
 			upstreamNames[stem] = true
 		}
 	}
@@ -217,7 +216,7 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 		if f.SourceArchive != "" {
 			checkName = f.SourceArchive
 		}
-		stem := strings.TrimSuffix(checkName, filepath.Ext(checkName))
+		stem := strings.TrimSuffix(checkName, romFileExt(checkName))
 		if !upstreamNames[checkName] && !upstreamNames[stem] {
 			s.inv.MarkRemoved(gameURL)
 			logger.Warn("update-svc: downloaded file %q no longer available upstream for %s", checkName, gameURL)
