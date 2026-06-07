@@ -906,7 +906,8 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		}
 
 	case zipDLExtracting:
-		r.DrawTextCentered("Extracting…", 0, mid-fontH/2, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Extracting", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+8)
 
 	case zipDLDone:
 		r.DrawTextCentered("Extraction complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
