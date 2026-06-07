@@ -298,8 +298,8 @@ func (s *KeyboardScreen) activate() Screen {
 		r, size := utf8.DecodeRuneInString(ch)
 		if size > 0 && r != utf8.RuneError {
 			s.value = append(s.value, r)
-			// Auto-switch from uppercase to lowercase after the first character.
-			if s.page == 1 {
+			// Auto-switch from uppercase to lowercase after the very first character.
+			if s.page == 1 && len(s.value) == 1 {
 				s.page = 0
 				s.clampCol()
 			}

@@ -455,15 +455,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
-	// Filter pills — platform and sort — right-aligned in header.
+	// Filter pills — platform and sort — right-aligned in header, same font size as title.
 	{
-		pillH := smallFH + 6
-		pillY := headerTextY - 2
+		pillH := fontH + 6
+		pillY := headerTextY - 3
 
 		// Sort pill
 		sortLabel := "● " + itchio.SortModeBadge(s.sortMode)
-		sw, _ := r.SmallTextSize(sortLabel)
-		sortPillW := sw + 12
+		sw, _ := r.TextSize(sortLabel)
+		sortPillW := sw + 14
 		sortPillX := r.W - sortPillW - 10
 		var sortBgR, sortBgG, sortBgB uint8
 		if s.sortMode == itchio.SortModeRSS {
@@ -474,12 +474,12 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 		aT := r.Theme.AccentText
 		r.DrawPill(sortPillX, pillY, sortPillW, pillH, sortBgR, sortBgG, sortBgB)
-		r.DrawSmallTextCenteredInRect(sortLabel, sortPillX, pillY, sortPillW, pillH, aT[0], aT[1], aT[2])
+		r.DrawTextCenteredInRect(sortLabel, sortPillX, pillY, sortPillW, pillH, aT[0], aT[1], aT[2])
 
 		// Platform pill (to the left of sort pill)
 		platLabel := "● " + s.platformLabel()
-		pw, _ := r.SmallTextSize(platLabel)
-		platPillW := pw + 12
+		pw, _ := r.TextSize(platLabel)
+		platPillW := pw + 14
 		platPillX := sortPillX - platPillW - 6
 		var platBgR, platBgG, platBgB uint8
 		if s.platformFilter == "" {
@@ -488,7 +488,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			platBgR, platBgG, platBgB = 30, 55, 80
 		}
 		r.DrawPill(platPillX, pillY, platPillW, pillH, platBgR, platBgG, platBgB)
-		r.DrawSmallTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
+		r.DrawTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
 	}
 
 	contentTop := headerH + 4
@@ -750,19 +750,56 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.warmPreloadWindow()
 	}
 
-	// Right panel: cover art (smaller, LayoutFor-sized) + metadata below
+	// Right panel: cover art + metadata below.
+	// Cover art is sized dynamically: it expands to fill available space, shrinking
+	// only when the metadata (title + author + tags) would otherwise overflow.
 	if s.cursor < len(s.viewGames) {
 		g := s.viewGames[s.cursor]
 		lyt := LayoutFor(r.W, r.H)
 		_, fontH2 := r.TextSize("Ag")
 		_, smallFH2 := r.SmallTextSize("Ag")
 
-		metaY := contentTop
+		// Filter tags first so we can measure them before sizing the art.
+		filteredTagsBuf = filteredTagsBuf[:0]
+		for _, tag := range g.Tags {
+			if strings.EqualFold(tag, "free") {
+				continue
+			}
+			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
+				continue
+			}
+			filteredTagsBuf = append(filteredTagsBuf, tag)
+		}
 
-		// Cover art: CoverMaxW fraction of right panel width, centred, 4:3
-		artW := int32(float32(rightW) * lyt.CoverMaxW)
-		artH := artW * 3 / 4
+		// Measure how much vertical space the metadata below the art will need.
+		lineGap := smallFH2 + 10
+		metaH := lyt.ContentGap
+		if g.Title != "" {
+			metaH += fontH2 + 2
+		}
+		if g.Author != "" {
+			metaH += smallFH2 + 4
+		}
+		if len(filteredTagsBuf) > 0 {
+			metaH += r.MeasureTagPills(filteredTagsBuf, rightX, rightW, lineGap)
+		}
+
+		// Art fills the remainder, capped at 95% of panel width, minimum 40% of available height.
+		totalAvailH := r.H - footerH - contentTop
+		artH := totalAvailH - metaH
+		minArtH := totalAvailH * 2 / 5
+		if artH < minArtH {
+			artH = minArtH
+		}
+		artW := artH * 4 / 3
+		maxArtW := int32(float32(rightW) * 0.95)
+		if artW > maxArtW {
+			artW = maxArtW
+			artH = artW * 3 / 4
+		}
 		artX := rightX + (rightW-artW)/2
+
+		metaY := contentTop
 
 		r.DrawRect(artX, metaY, artW, artH, bg[0], bg[1], bg[2])
 
@@ -848,17 +885,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				metaY += smallFH2 + 4
 			}
 
-			// Tags as pills (clipped to available height minus status badge row)
-			filteredTagsBuf = filteredTagsBuf[:0]
-			for _, tag := range g.Tags {
-				if strings.EqualFold(tag, "free") {
-					continue
-				}
-				if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
-					continue
-				}
-				filteredTagsBuf = append(filteredTagsBuf, tag)
-			}
+			// Tags as pills (filteredTagsBuf already populated above).
 			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH {
 				ac := r.Theme.Accent
 				aT2 := r.Theme.AccentText
@@ -870,7 +897,6 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				tagAreaH := r.H - footerH - metaY
 				if tagAreaH > 0 {
 					r.SetClipRect(rightX, metaY, rightW, tagAreaH)
-					lineGap := smallFH2 + 10 // pill height + gap between rows
 					r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
 						aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
 					r.ClearClipRect()
