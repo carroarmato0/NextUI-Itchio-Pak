@@ -322,7 +322,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 				ext := strings.ToLower(roms.ROMExt(u.Filename))
 				if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".nes" ||
 					ext == ".md" || ext == ".gen" || ext == ".smd" ||
-					ext == ".p8" || ext == ".p8.png" || ext == ".zip" {
+					ext == ".p8" || ext == ".p8.png" || ext == ".zip" || ext == ".7z" {
 					logger.Debug("download-page: found ROM %s id=%s", u.Filename, u.UploadID)
 					result.Uploads = append(result.Uploads, u)
 				} else if !isSkippableExt(ext) {

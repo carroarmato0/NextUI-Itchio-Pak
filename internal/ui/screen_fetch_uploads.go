@@ -274,8 +274,8 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 	if len(known) > 0 {
 		if len(known) == 1 {
 			upload := known[0]
-			// Route ZIP uploads through ZIPInspectScreen for smart handling.
-			if strings.ToLower(filepath.Ext(upload.Filename)) == ".zip" {
+			// Route ZIP and 7z uploads through ZIPInspectScreen for smart handling.
+			if ext := strings.ToLower(filepath.Ext(upload.Filename)); ext == ".zip" || ext == ".7z" {
 				return NewZIPInspectScreen(s.client, s.cfg, s.cfgPath, s.cache,
 					s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 			}
@@ -289,16 +289,16 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 			}
 			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 		}
-		// Multiple known uploads — check if any are ZIPs.
-		hasZIP := false
+		// Multiple known uploads — check if any are archives (ZIP or 7z).
+		hasArchive := false
 		for _, u := range known {
-			if strings.ToLower(filepath.Ext(u.Filename)) == ".zip" {
-				hasZIP = true
+			if ext := strings.ToLower(filepath.Ext(u.Filename)); ext == ".zip" || ext == ".7z" {
+				hasArchive = true
 				break
 			}
 		}
-		if hasZIP {
-			// Mixed set with ZIPs — let the user pick which file to download.
+		if hasArchive {
+			// Mixed set with archives — let the user pick which file to download.
 			return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
 		}
 		// All known uploads are direct ROM files — download all automatically.

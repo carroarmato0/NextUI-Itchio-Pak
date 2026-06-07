@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 
@@ -104,9 +105,14 @@ func (s *ZIPInspectScreen) runInspect() {
 		return
 	}
 
-	manifest, err := roms.InspectRemoteZIP(s.client.HTTPClient(), cdnURL)
+	var manifest roms.ZIPManifest
+	if strings.ToLower(filepath.Ext(s.upload.Filename)) == ".7z" {
+		manifest, err = roms.InspectRemote7z(s.client.HTTPClient(), cdnURL)
+	} else {
+		manifest, err = roms.InspectRemoteZIP(s.client.HTTPClient(), cdnURL)
+	}
 	if err != nil {
-		logger.Error("zip-inspect: inspect ZIP: %v", err)
+		logger.Error("zip-inspect: inspect archive: %v", err)
 		s.err = err
 		s.storeState(zipInspectError)
 		return
