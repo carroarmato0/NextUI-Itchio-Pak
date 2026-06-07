@@ -608,11 +608,15 @@ func (r *Renderer) createPillTexture(w, h int32, red, green, blue uint8) *sdl.Te
 	if radius < 1 {
 		radius = 1
 	}
+	// Draw end caps first. Their inner fringe pixels (alpha=128, BLENDMODE_NONE)
+	// may land inside the future body rectangle at rows near the top and bottom
+	// of the caps. Drawing the body AFTER overwrites those inner fringe pixels
+	// with full opacity, preventing semi-transparent holes inside the pill.
 	r.Renderer.SetDrawColor(red, green, blue, 255)
-	pillBodyBuf = sdl.Rect{X: radius, Y: 0, W: w - radius*2, H: h}
-	r.Renderer.FillRect(&pillBodyBuf)
 	drawFilledCircleRawAlpha(r.Renderer, radius, radius, radius, red, green, blue)
 	drawFilledCircleRawAlpha(r.Renderer, w-radius, radius, radius, red, green, blue)
+	pillBodyBuf = sdl.Rect{X: radius, Y: 0, W: w - radius*2, H: h}
+	r.Renderer.FillRect(&pillBodyBuf)
 
 	r.Renderer.SetClipRect(nil) // restore before switching render target
 	r.Renderer.SetRenderTarget(prev)
