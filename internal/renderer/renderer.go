@@ -528,6 +528,166 @@ func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red
 	return int32(len(lines)) * lineH
 }
 
+// descStripInlineTags removes all HTML tags from s, returning plain text.
+// Used by DrawFormattedText to extract readable text from inline-tagged markup.
+func descStripInlineTags(s string) string {
+	var buf strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '<' {
+			end := strings.IndexByte(s[i:], '>')
+			if end < 0 {
+				break
+			}
+			i += end + 1
+			continue
+		}
+		buf.WriteByte(s[i])
+		i++
+	}
+	return strings.Join(strings.Fields(buf.String()), " ")
+}
+
+// descClampU8 clamps an int value to [0, 255].
+func descClampU8(v int) uint8 {
+	if v > 255 {
+		return 255
+	}
+	if v < 0 {
+		return 0
+	}
+	return uint8(v)
+}
+
+// DrawFormattedText renders a description string containing a limited subset
+// of HTML markup produced by extractDescription: <p>, <br>, <h2>, <b>,
+// <ul>, <ol>, <li>. Block-level structure (paragraphs, headings, list items)
+// is honoured; inline <b> content is rendered in a slightly brighter colour.
+// Returns the total pixel height consumed.
+func (r *Renderer) DrawFormattedText(markup string, x, y, maxW, lineH int32,
+	baseR, baseG, baseB uint8) int32 {
+	startY := y
+	_, fontH := r.TextSize("Ag")
+
+	// Brightened colour for headings and bold text.
+	boldR := descClampU8(int(baseR) + 55)
+	boldG := descClampU8(int(baseG) + 55)
+	boldB := descClampU8(int(baseB) + 55)
+
+	listType := "" // "ul" or "ol"
+	listCounter := 0
+
+	lower := strings.ToLower
+
+	i := 0
+	for i < len(markup) {
+		if markup[i] != '<' {
+			// Bare text — find next tag
+			end := strings.IndexByte(markup[i:], '<')
+			var text string
+			if end < 0 {
+				text = strings.TrimSpace(markup[i:])
+				i = len(markup)
+			} else {
+				text = strings.TrimSpace(markup[i : i+end])
+				i += end
+			}
+			if text != "" {
+				y += r.DrawWrappedText(text, x, y, maxW, lineH, baseR, baseG, baseB)
+			}
+			continue
+		}
+
+		// Parse tag
+		end := strings.IndexByte(markup[i:], '>')
+		if end < 0 {
+			break
+		}
+		tag := strings.TrimSpace(lower(markup[i+1 : i+end]))
+		i += end + 1
+
+		switch tag {
+		case "p":
+			closeIdx := strings.Index(lower(markup[i:]), "</p>")
+			if closeIdx < 0 {
+				closeIdx = len(markup) - i
+			}
+			pText := descStripInlineTags(markup[i : i+closeIdx])
+			if pText != "" {
+				if y > startY {
+					y += fontH / 3
+				}
+				y += r.DrawWrappedText(pText, x, y, maxW, lineH, baseR, baseG, baseB)
+				y += fontH / 3
+			}
+			if closeIdx < len(markup)-i {
+				i += closeIdx + 4
+			} else {
+				i = len(markup)
+			}
+
+		case "h2":
+			closeIdx := strings.Index(lower(markup[i:]), "</h2>")
+			if closeIdx < 0 {
+				closeIdx = len(markup) - i
+			}
+			hText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
+			if hText != "" {
+				if y > startY {
+					y += fontH / 2
+				}
+				r.DrawBoldText(hText, x, y, boldR, boldG, boldB)
+				y += lineH + fontH/4
+			}
+			if closeIdx < len(markup)-i {
+				i += closeIdx + 5
+			} else {
+				i = len(markup)
+			}
+
+		case "ul":
+			listType = "ul"
+		case "ol":
+			listType = "ol"
+			listCounter = 0
+		case "/ul", "/ol":
+			listType = ""
+			listCounter = 0
+			y += fontH / 4
+
+		case "li":
+			closeIdx := strings.Index(lower(markup[i:]), "</li>")
+			if closeIdx < 0 {
+				closeIdx = len(markup) - i
+			}
+			liText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
+			if liText != "" {
+				var prefix string
+				if listType == "ol" {
+					listCounter++
+					prefix = fmt.Sprintf("%d.  ", listCounter)
+				} else {
+					prefix = "•  "
+				}
+				_, smallFH := r.SmallTextSize("Ag")
+				pw, _ := r.SmallTextSize(prefix)
+				r.DrawSmallText(prefix, x, y+(lineH-smallFH)/2, baseR, baseG, baseB)
+				y += r.DrawWrappedText(liText, x+pw, y, maxW-pw, lineH, baseR, baseG, baseB)
+				y += fontH / 6
+			}
+			if closeIdx < len(markup)-i {
+				i += closeIdx + 5
+			} else {
+				i = len(markup)
+			}
+
+		case "br":
+			y += lineH / 2
+		}
+	}
+	return y - startY
+}
+
 // DrawPill draws a filled pill (capsule) shape.
 // On first call for a given (w, h, colour) the shape is pre-rendered into an
 // SDL_Texture; subsequent calls blit that texture with a single Copy call,
