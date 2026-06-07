@@ -55,7 +55,7 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen, 
 	return s
 }
 
-func (s *KeyTestScreen) NeedsRedraw() bool { return false }
+func (s *KeyTestScreen) NeedsRedraw() bool { return s.state == keyTestRunning }
 func (s *KeyTestScreen) HasPendingAnimation() bool { return false }
 
 func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
@@ -78,7 +78,8 @@ func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 	ht := r.Theme.HintText
 	switch s.state {
 	case keyTestRunning:
-		r.DrawTextCentered("Testing API key...", 0, mid-fontH/2, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Testing API key", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+8)
 
 	case keyTestOK:
 		r.DrawTextCentered("API key valid", 0, mid-fontH-smallFH*2-12, r.W, 80, 200, 80)
@@ -92,9 +93,7 @@ func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	if s.state == keyTestRunning {
-		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
-	} else {
+	if s.state != keyTestRunning {
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
 		}, ftrY)

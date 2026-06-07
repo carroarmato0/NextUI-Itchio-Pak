@@ -96,7 +96,7 @@ func NewCacheRefreshScreen(
 }
 
 func (s *CacheRefreshScreen) NeedsRedraw() bool {
-	return false // redraws are driven by UserEvent pushes from the goroutine
+	return refreshCacheState(atomic.LoadInt32((*int32)(&s.state))) == refreshCacheLoading
 }
 func (s *CacheRefreshScreen) HasPendingAnimation() bool { return false }
 
@@ -121,8 +121,9 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	switch state {
 	case refreshCacheLoading:
 		fetched := atomic.LoadInt64(&s.fetched)
-		r.DrawTextCentered("Fetching games...", 0, mid-fontH-4, r.W, mt[0], mt[1], mt[2])
-		r.DrawTextCentered(fmt.Sprintf("%d fetched", fetched), 0, mid+4, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Fetching games", 0, mid-fontH-smallFH-14, r.W, mt[0], mt[1], mt[2])
+		r.DrawSmallTextCentered(fmt.Sprintf("%d fetched", fetched), 0, mid-smallFH/2, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+smallFH+8)
 
 	case refreshCacheDone:
 		r.DrawTextCentered("Done!", 0, mid-fontH-4, r.W, 80, 200, 80)
