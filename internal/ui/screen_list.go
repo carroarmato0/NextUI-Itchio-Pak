@@ -661,6 +661,12 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
 		pillW := badgeW + 10 // 5px horizontal padding per side
+		// Enforce a minimum width so narrow labels (e.g. "!") always produce a
+		// pill shape rather than a rectangle. Making pillW ≥ pillH gives a circle
+		// for single-character badges and a proper pill for wider ones.
+		if minW := smallFH + 4; pillW < minW {
+			pillW = minW
+		}
 		// Increased margin from the right edge of the list (leftW) from 8 to 16.
 		badgeX := leftW - pillW - 16
 
@@ -723,7 +729,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		pillH := smallFH + 4
 		pillY := y + (fontH-pillH)/2
 		r.DrawPill(badgeX, pillY, pillW, pillH, badgeR, badgeG, badgeB)
-		r.DrawSmallText(badgeLabel, badgeX+5, pillY+2, 20, 20, 20)
+		r.DrawSmallTextCenteredInRect(badgeLabel, badgeX, pillY, pillW, pillH, 20, 20, 20)
 	}
 
 	// Draw the DL-mode group separator AFTER all row content so it renders
