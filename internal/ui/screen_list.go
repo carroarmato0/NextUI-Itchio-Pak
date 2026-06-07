@@ -660,7 +660,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			badgeR, badgeG, badgeB = 220, 180, 60
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
-		pillW := badgeW + 10 // 5px horizontal padding per side
+		pillW := badgeW + 16 // 8px horizontal padding per side
 		// Enforce a minimum width so narrow labels (e.g. "!") always produce a
 		// pill shape rather than a rectangle. Making pillW ≥ pillH gives a circle
 		// for single-character badges and a proper pill for wider ones.
