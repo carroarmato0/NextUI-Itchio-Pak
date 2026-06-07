@@ -704,10 +704,12 @@ func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue 
 	}
 }
 
-// drawFilledCircleRawAlpha is identical to drawFilledCircle but always uses
-// BLENDMODE_NONE, writing literal alpha values into the target. Used when
-// rendering into a texture so that fringe pixels are stored as (r,g,b,128)
-// rather than blended against the transparent clear colour.
+// drawFilledCircleRawAlpha renders a filled circle into a texture target using
+// BLENDMODE_NONE (raw alpha write). Fringe pixels are intentionally omitted:
+// with BLENDMODE_NONE, fringe pixels (alpha=128) overwrite already-drawn solid
+// pixels (alpha=255), producing semi-transparent holes when two circles overlap
+// (short pill) or when the body rect subsequently covers the same area. At
+// pill heights of 28–41 px the 1-px aliased edge is imperceptible.
 func drawFilledCircleRawAlpha(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	if radius > maxCircleRadius {
 		radius = maxCircleRadius
@@ -717,15 +719,9 @@ func drawFilledCircleRawAlpha(ren *sdl.Renderer, cx, cy, radius int32, red, gree
 	for i, dxi := range ext {
 		iy := cy + int32(i) - radius
 		circleRectBuf[i] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
-		circleRectBuf[n+i*2] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
-		circleRectBuf[n+i*2+1] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
 	}
 	ren.SetDrawColor(red, green, blue, 255)
 	ren.FillRects(circleRectBuf[:n])
-	if radius >= 4 {
-		ren.SetDrawColor(red, green, blue, 128)
-		ren.FillRects(circleRectBuf[n : n+n*2])
-	}
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume
