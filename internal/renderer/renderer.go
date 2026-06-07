@@ -615,6 +615,9 @@ func (r *Renderer) createPillTexture(w, h int32, red, green, blue uint8) *sdl.Te
 	r.Renderer.SetDrawColor(red, green, blue, 255)
 	drawFilledCircleRawAlpha(r.Renderer, radius, radius, radius, red, green, blue)
 	drawFilledCircleRawAlpha(r.Renderer, w-radius, radius, radius, red, green, blue)
+	// drawFilledCircleRawAlpha leaves the draw color at alpha=128 (fringe).
+	// Reset to fully opaque before drawing the body so FillRect uses alpha=255.
+	r.Renderer.SetDrawColor(red, green, blue, 255)
 	pillBodyBuf = sdl.Rect{X: radius, Y: 0, W: w - radius*2, H: h}
 	r.Renderer.FillRect(&pillBodyBuf)
 
