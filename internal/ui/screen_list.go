@@ -859,8 +859,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				}
 				filteredTagsBuf = append(filteredTagsBuf, tag)
 			}
-			statusBadgeH := smallFH2 + 6 + 4 // pill height + gap
-			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH-statusBadgeH {
+			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH {
 				ac := r.Theme.Accent
 				aT2 := r.Theme.AccentText
 				bgPill := [3]uint8{
@@ -868,41 +867,14 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					uint8((int(ac[1]) + 35) / 2),
 					uint8((int(ac[2]) + 35) / 2),
 				}
-				tagAreaH := r.H - footerH - metaY - statusBadgeH
+				tagAreaH := r.H - footerH - metaY
 				if tagAreaH > 0 {
 					r.SetClipRect(rightX, metaY, rightW, tagAreaH)
 					lineGap := smallFH2 + 4
 					r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
 						aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
 					r.ClearClipRect()
-					metaY += tagAreaH + 2
 				}
-			}
-
-			// Price / status badge
-			if metaY < r.H-footerH {
-				var priceLabel string
-				var priceR, priceG, priceB uint8
-				switch {
-				case s.inv.HasPendingUpdates(g.URL):
-					priceLabel, priceR, priceG, priceB = "UPDATE", 240, 160, 40
-				case s.inv.IsRemoved(g.URL):
-					priceLabel, priceR, priceG, priceB = "REMOVED", 200, 60, 60
-				case s.inv.IsPresent(g.URL):
-					priceLabel, priceR, priceG, priceB = "Downloaded", 80, 200, 220
-				case s.ownedURLs[g.URL]:
-					priceLabel, priceR, priceG, priceB = "Owned", 60, 200, 120
-				case g.IsFree:
-					priceLabel, priceR, priceG, priceB = "Free", 80, 200, 80
-				default:
-					priceLabel = s.badgePrice(g.URL, g.Price)
-					priceR, priceG, priceB = 220, 180, 60
-				}
-				pw2, _ := r.SmallTextSize(priceLabel)
-				pillW2 := pw2 + 12
-				pillH2 := smallFH2 + 6
-				r.DrawPill(rightX, metaY, pillW2, pillH2, priceR, priceG, priceB)
-				r.DrawSmallTextCenteredInRect(priceLabel, rightX, metaY, pillW2, pillH2, 20, 20, 20)
 			}
 		}
 	}
@@ -915,18 +887,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "Filter"})
 	if s.cacheReady {
-		if s.isAlphaJumpMode() {
-			if r.W <= narrowScreenW {
-				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "A→Z"})
-			} else {
-				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "A→Z"})
-			}
+		if r.W <= narrowScreenW {
+			footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "Sort"})
 		} else {
-			if r.W <= narrowScreenW {
-				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "Page"})
-			} else {
-				footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Page"})
-			}
+			footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"})
 		}
 	}
 	if r.W <= narrowScreenW {
@@ -1065,6 +1029,16 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				func(platform, sort, query string) {
 					s.SetFilter(platform, sort, query)
 				})
+		case sdl.K_PAGEDOWN: // R shoulder — cycle sort forward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.nextSortModeSimple()), s.searchQuery)
+			}
+			return s
+		case sdl.K_PAGEUP: // L shoulder — cycle sort backward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.prevSortModeSimple()), s.searchQuery)
+			}
+			return s
 		case sdl.K_x:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
@@ -1147,6 +1121,16 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				func(platform, sort, query string) {
 					s.SetFilter(platform, sort, query)
 				})
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER: // R1 — cycle sort forward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.nextSortModeSimple()), s.searchQuery)
+			}
+			return s
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER: // L1 — cycle sort backward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.prevSortModeSimple()), s.searchQuery)
+			}
+			return s
 		case sdl.CONTROLLER_BUTTON_X:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
@@ -1191,10 +1175,30 @@ func (s *ListScreen) platformLabel() string {
 	return s.platformFilter
 }
 
-// isAlphaJumpMode reports whether the current sort mode uses alpha-jump for L1/R1.
-// Full implementation in screen_list.go — placeholder until Task 10.
+// isAlphaJumpMode reports whether the current sort mode uses alpha-jump navigation
+// for D-pad left/right.
 func (s *ListScreen) isAlphaJumpMode() bool {
 	return s.sortMode == itchio.SortModeAZ || s.sortMode == itchio.SortModeZA
+}
+
+// nextSortModeSimple returns the next sort mode in the cycle, skipping Owned
+// when no owned games are loaded.
+func (s *ListScreen) nextSortModeSimple() itchio.SortMode {
+	m := itchio.NextSortMode(s.sortMode)
+	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
+		m = itchio.NextSortMode(m)
+	}
+	return m
+}
+
+// prevSortModeSimple returns the previous sort mode in the cycle, skipping Owned
+// when no owned games are loaded.
+func (s *ListScreen) prevSortModeSimple() itchio.SortMode {
+	m := itchio.PrevSortMode(s.sortMode)
+	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
+		m = itchio.PrevSortMode(m)
+	}
+	return m
 }
 
 // cachedTruncate returns a memoised truncated title, computing it only once per

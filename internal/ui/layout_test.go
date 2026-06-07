@@ -16,8 +16,8 @@ func TestLayoutForWideScreen(t *testing.T) {
 	if l.ContentGap != 6 {
 		t.Errorf("ContentGap = %d, want 6", l.ContentGap)
 	}
-	if l.CoverMaxW != 0.75 {
-		t.Errorf("CoverMaxW = %v, want 0.75", l.CoverMaxW)
+	if l.CoverMaxW != 0.90 {
+		t.Errorf("CoverMaxW = %v, want 0.90", l.CoverMaxW)
 	}
 	if l.OverlayMarginX != 1280*14/100 {
 		t.Errorf("OverlayMarginX = %d, want %d", l.OverlayMarginX, 1280*14/100)

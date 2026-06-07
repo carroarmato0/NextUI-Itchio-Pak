@@ -128,7 +128,7 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 			ac := r.Theme.Accent
 			lr, lg, lb = ac[0], ac[1], ac[2]
 		} else {
-			lr, lg, lb = 100, 110, 130
+			lr, lg, lb = 160, 175, 200
 		}
 		r.DrawSmallText(label, panelX+pad, y, lr, lg, lb)
 		y += labelH

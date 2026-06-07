@@ -33,7 +33,7 @@ func LayoutFor(w, h int32) Layout {
 		RowPad:         4,
 		FooterPad:      5,
 		ContentGap:     6,
-		CoverMaxW:      0.75,
+		CoverMaxW:      0.90,
 		OverlayMarginX: w * 14 / 100,
 	}
 }

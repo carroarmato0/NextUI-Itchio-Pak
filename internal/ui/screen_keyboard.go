@@ -19,7 +19,7 @@ var kbGrid = [3][4][8]string{
 		{"a", "b", "c", "d", "e", "f", "g", "h"},
 		{"i", "j", "k", "l", "m", "n", "o", "p"},
 		{"q", "r", "s", "t", "u", "v", "w", "x"},
-		{"y", "z", "", "", "", "SPC", "⌫", "✓"},
+		{"y", "z", "", "", "", "SPC", "DEL", "OK"},
 	},
 	{ // page 1: uppercase A–Z
 		{"A", "B", "C", "D", "E", "F", "G", "H"},
@@ -31,14 +31,14 @@ var kbGrid = [3][4][8]string{
 		{"0", "1", "2", "3", "4", "5", "6", "7"},
 		{"8", "9", ".", "-", "_", "'", "!", "?"},
 		{"@", "#", ":", ";", "(", ")", "+", "="},
-		{"", "", "", "", "", "SPC", "⌫", "✓"},
+		{"", "", "", "", "", "SPC", "DEL", "OK"},
 	},
 }
 
 var kbPageLabels = [3]string{"abc", "ABC", "0-9"}
 
 // KeyboardScreen is a full-screen virtual keyboard.
-// Pressing ✓ fires onConfirm(typed value) and returns prev.
+// Pressing "OK" fires onConfirm(typed value) and returns prev.
 // Pressing B fires onConfirm(seed) (cancel, unchanged value) and returns prev.
 type KeyboardScreen struct {
 	prev      Screen
@@ -167,7 +167,7 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 			} else {
 				cellR, cellG, cellB = 28, 28, 42
 			}
-			r.DrawPill(cx+1, cy+1, cellW-2, cellH-2, cellR, cellG, cellB)
+			r.DrawRect(cx+1, cy+1, cellW-2, cellH-2, cellR, cellG, cellB)
 
 			var fR, fG, fB uint8
 			if isSelected {
@@ -277,13 +277,13 @@ func (s *KeyboardScreen) activate() Screen {
 	}
 	ch := kbGrid[s.page][s.row][s.col]
 	switch ch {
-	case "✓":
+	case "OK":
 		logger.Debug("keyboard: confirmed value len=%d", len(s.value))
 		if s.onConfirm != nil {
 			s.onConfirm(string(s.value))
 		}
 		return s.prev
-	case "⌫":
+	case "DEL":
 		if len(s.value) > 0 {
 			s.value = s.value[:len(s.value)-1]
 		}
