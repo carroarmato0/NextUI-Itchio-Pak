@@ -234,7 +234,14 @@ func (s *ZIPInspectScreen) route() Screen {
 			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
 		}
 
-		// Non-Pico-8: keep the ZIP on disk (most emulators support ZIP natively).
+		// 7z archives must always be extracted — emulators do not support 7z natively.
+		if strings.ToLower(filepath.Ext(s.upload.Filename)) == ".7z" {
+			plan := s.plan
+			plan.DownloadROMs = true
+			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+		}
+
+		// Non-Pico-8 ZIP: keep on disk (most emulators support ZIP natively).
 		dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + s.upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
 			dest = existing
