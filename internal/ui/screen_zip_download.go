@@ -910,13 +910,17 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		drawLoadingDots(r, mid+8)
 
 	case zipDLDone:
-		r.DrawTextCentered("Extraction complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
+		// Centre the title + count block, then list filenames below.
+		const doneGap = int32(8)
+		blockH := fontH + doneGap + smallFH
+		blockY := mid - blockH/2
+		r.DrawTextCentered("Extraction complete!", 0, blockY, r.W, 80, 200, 80)
 		count := fmt.Sprintf("%d file(s) extracted", len(s.extracted))
-		r.DrawSmallTextCentered(count, 0, mid+4, r.W, ht[0], ht[1], ht[2])
+		r.DrawSmallTextCentered(count, 0, blockY+fontH+doneGap, r.W, ht[0], ht[1], ht[2])
 
 		// List filenames, capped to available space so they never overflow the footer.
 		rowH := smallFH + 4
-		y := mid + 4 + smallFH + 12
+		y := blockY + blockH + 12
 		bottomLimit := r.H - footerH - 8
 		if s.musicFailed {
 			bottomLimit -= rowH // reserve a row for the warning

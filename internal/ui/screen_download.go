@@ -183,15 +183,23 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 
 	case dlDone:
 		mid := headerH + contentH/2
-		r.DrawTextCentered("Download complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
-		r.DrawSmallTextCentered(s.upload.Filename, 0, mid+4, r.W, ht[0], ht[1], ht[2])
 		const pathMargin = int32(20)
 		maxPathW := r.W - pathMargin*2
-		r.DrawSmallTextCentered("Saved to:", 0, mid+4+smallFH+8, r.W, 120, 120, 120)
+		const rowGap = int32(6)
+		// Total height: title + filename + "Saved to:" + dir + file
+		totalH := fontH + rowGap + smallFH + rowGap*2 + smallFH + rowGap + smallFH + rowGap + smallFH
+		y := mid - totalH/2
+		r.DrawTextCentered("Download complete!", 0, y, r.W, 80, 200, 80)
+		y += fontH + rowGap
+		r.DrawSmallTextCentered(s.upload.Filename, 0, y, r.W, ht[0], ht[1], ht[2])
+		y += smallFH + rowGap*2
+		r.DrawSmallTextCentered("Saved to:", 0, y, r.W, 120, 120, 120)
+		y += smallFH + rowGap
 		dir := truncateSmallToWidth(r, filepath.Dir(s.dest)+"/", maxPathW)
-		r.DrawSmallTextCentered(dir, 0, mid+4+smallFH*2+10, r.W, 80, 80, 80)
+		r.DrawSmallTextCentered(dir, 0, y, r.W, 80, 80, 80)
+		y += smallFH + rowGap
 		file := truncateSmallToWidth(r, filepath.Base(s.dest), maxPathW)
-		r.DrawSmallTextCentered(file, 0, mid+4+smallFH*3+12, r.W, 120, 120, 120)
+		r.DrawSmallTextCentered(file, 0, y, r.W, 120, 120, 120)
 
 	case dlError:
 		// Layout from top of content area: error title, message, then QR centered
