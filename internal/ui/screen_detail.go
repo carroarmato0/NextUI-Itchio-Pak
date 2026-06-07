@@ -327,13 +327,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	imgAreaW := r.W - qrColW - margin - 10
 	imgBoxW := imgAreaW - margin
-	// Screenshot height: ~40% of content area. Cap so it doesn't exceed
-	// a 16:9 ratio on very wide screens (avoids tall letterboxed images).
-	imgBoxH := contentH * 40 / 100
-	maxByWidth := imgBoxW * 9 / 16
-	if imgBoxH > maxByWidth {
-		imgBoxH = maxByWidth
-	}
+	imgBoxH := contentH * 2 / 3
 
 	if s.loading {
 		r.DrawRect(margin, contentTop, imgBoxW, imgBoxH, bg[0], bg[1], bg[2])
