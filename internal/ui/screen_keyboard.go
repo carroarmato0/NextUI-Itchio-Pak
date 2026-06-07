@@ -15,17 +15,17 @@ import (
 // 0=lowercase, 1=uppercase, 2=digits+symbols.
 // No empty spacer cells — every position is interactive.
 var kbGrid = [3][4][8]string{
-	{ // page 0: lowercase a–z + common chars
-		{"a", "b", "c", "d", "e", "f", "g", "h"},
-		{"i", "j", "k", "l", "m", "n", "o", "p"},
-		{"q", "r", "s", "t", "u", "v", "w", "x"},
-		{"y", "z", ".", "@", ",", "SPC", "DEL", "OK"},
-	},
-	{ // page 1: uppercase A–Z + common chars
+	{ // page 0: uppercase A–Z + common chars (default page)
 		{"A", "B", "C", "D", "E", "F", "G", "H"},
 		{"I", "J", "K", "L", "M", "N", "O", "P"},
 		{"Q", "R", "S", "T", "U", "V", "W", "X"},
 		{"Y", "Z", ".", "@", ",", "SPC", "DEL", "OK"},
+	},
+	{ // page 1: lowercase a–z + common chars
+		{"a", "b", "c", "d", "e", "f", "g", "h"},
+		{"i", "j", "k", "l", "m", "n", "o", "p"},
+		{"q", "r", "s", "t", "u", "v", "w", "x"},
+		{"y", "z", ".", "@", ",", "SPC", "DEL", "OK"},
 	},
 	{ // page 2: digits + symbols
 		{"0", "1", "2", "3", "4", "5", "6", "7"},
@@ -35,7 +35,7 @@ var kbGrid = [3][4][8]string{
 	},
 }
 
-var kbPageLabels = [3]string{"abc", "ABC", "0-9"}
+var kbPageLabels = [3]string{"ABC", "abc", "0-9"}
 
 // KeyboardScreen is a full-screen virtual keyboard.
 // Pressing "OK" fires onConfirm(typed value) and returns prev.
@@ -57,9 +57,9 @@ type KeyboardScreen struct {
 // NewKeyboardScreen returns a KeyboardScreen pre-filled with seed.
 // onConfirm is called with the result when the user confirms or cancels.
 func NewKeyboardScreen(prev Screen, seed string, onConfirm func(string)) *KeyboardScreen {
-	page := 0
-	if len(seed) == 0 {
-		page = 1 // start on uppercase when typing from scratch
+	page := 0 // page 0 is now uppercase — always start there for new input
+	if len(seed) != 0 {
+		page = 1 // seed present: start on lowercase for continuation
 	}
 	return &KeyboardScreen{
 		prev:      prev,
@@ -87,21 +87,20 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 	mt := r.Theme.MainText
 	r.DrawText("Enter text", 12, textY, mt[0], mt[1], mt[2])
 
-	// Page indicator right-aligned in header
+	// Page indicator right-aligned in header, vertically centred with the title text.
 	pageLabel := kbPageLabels[s.page]
 	ht := r.Theme.HintText
+	_, fontH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
 	pw, _ := r.SmallTextSize(pageLabel)
-	r.DrawSmallText(pageLabel, r.W-pw-12, textY, ht[0], ht[1], ht[2])
+	pageLabelY := textY + (fontH-smallFH)/2
+	r.DrawSmallText(pageLabel, r.W-pw-12, pageLabelY, ht[0], ht[1], ht[2])
 
 	// Blink update
 	if time.Since(s.lastBlink) > 500*time.Millisecond {
 		s.blinkOn = !s.blinkOn
 		s.lastBlink = time.Now()
 	}
-
-	_, fontH := r.TextSize("Ag")
-	_, smallFH := r.SmallTextSize("Ag")
-
 	contentY := headerH + 6
 
 	// Text input field
@@ -189,7 +188,7 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 	r.DrawFooterHints([]renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Type/Confirm"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
-		{Kind: renderer.BadgeCircle, Label: "X", Text: "Delete"},
+		{Kind: renderer.BadgeCircle, Label: "Y", Text: "Delete"},
 		{Kind: renderer.BadgePill, Label: "L1R1", Text: "Shift"},
 	}, ftrY)
 	r.Present()
@@ -238,7 +237,7 @@ func (s *KeyboardScreen) handleKey(sym sdl.Keycode) Screen {
 	case sdl.K_PAGEDOWN: // R1 — next page
 		s.page = (s.page + 1) % 3
 		s.clampCol()
-	case sdl.K_y: // physical X — delete last character
+	case sdl.K_x: // physical Y — delete last character
 		if len(s.value) > 0 {
 			s.value = s.value[:len(s.value)-1]
 		}
@@ -273,7 +272,7 @@ func (s *KeyboardScreen) handleButton(btn uint8) Screen {
 	case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 		s.page = (s.page + 1) % 3
 		s.clampCol()
-	case sdl.CONTROLLER_BUTTON_Y: // physical X — delete last character
+	case sdl.CONTROLLER_BUTTON_X: // physical Y — delete last character
 		if len(s.value) > 0 {
 			s.value = s.value[:len(s.value)-1]
 		}
@@ -307,9 +306,10 @@ func (s *KeyboardScreen) activate() Screen {
 		r, size := utf8.DecodeRuneInString(ch)
 		if size > 0 && r != utf8.RuneError {
 			s.value = append(s.value, r)
-			// Auto-switch from uppercase to lowercase after the very first character.
-			if s.page == 1 && len(s.value) == 1 {
-				s.page = 0
+			// Auto-switch from uppercase (page 0) to lowercase (page 1) after
+			// the very first character is typed.
+			if s.page == 0 && len(s.value) == 1 {
+				s.page = 1
 				s.clampCol()
 			}
 		}

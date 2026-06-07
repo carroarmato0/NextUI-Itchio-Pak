@@ -597,6 +597,13 @@ func (r *Renderer) createPillTexture(w, h int32, red, green, blue uint8) *sdl.Te
 	r.Renderer.SetDrawColor(0, 0, 0, 0)
 	r.Renderer.Clear()
 
+	// Clip to texture bounds. drawFilledCircleRawAlpha renders 1-px fringe
+	// pixels at cx±(radius+1) which can land outside the texture. On some GPU
+	// implementations out-of-bounds writes wrap modulo the texture width,
+	// producing a misplaced half-alpha pixel inside the pill (visible artifact).
+	clipRect := sdl.Rect{X: 0, Y: 0, W: w, H: h}
+	r.Renderer.SetClipRect(&clipRect)
+
 	radius := h / 2
 	if radius < 1 {
 		radius = 1
@@ -607,6 +614,7 @@ func (r *Renderer) createPillTexture(w, h int32, red, green, blue uint8) *sdl.Te
 	drawFilledCircleRawAlpha(r.Renderer, radius, radius, radius, red, green, blue)
 	drawFilledCircleRawAlpha(r.Renderer, w-radius, radius, radius, red, green, blue)
 
+	r.Renderer.SetClipRect(nil) // restore before switching render target
 	r.Renderer.SetRenderTarget(prev)
 	r.Renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 	return tex
