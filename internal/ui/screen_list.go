@@ -460,26 +460,29 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
 
-	// Background-activity spinner — 3 small dots that cycle when the cache is
-	// building (RSS fetch) or the update service is running.
+	// Background-activity spinner — a dashed ring that rotates clockwise when
+	// the cache is building (RSS fetch) or the update service is running.
+	// 12 dot positions around a circle with 3 evenly-spaced gaps (every 4th),
+	// coloured to match the "Itch.io" title text for visual consistency.
 	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
 		titleW, _ := r.TextSize("Itch.io")
-		ac := r.Theme.Accent
-		frame := int(time.Now().UnixMilli()/250) % 3
-		const dotSize = int32(6)
-		const dotStep = int32(10) // 6px dot + 4px gap
-		dotBaseX := int32(12) + titleW + 10
-		dotY := headerTextY + (fontH-dotSize)/2
-		for i := 0; i < 3; i++ {
-			var dR, dG, dB uint8
-			if i == frame {
-				dR, dG, dB = ac[0], ac[1], ac[2]
-			} else {
-				dR = uint8((int(ac[0]) + int(bg[0])*2) / 3)
-				dG = uint8((int(ac[1]) + int(bg[1])*2) / 3)
-				dB = uint8((int(ac[2]) + int(bg[2])*2) / 3)
+		const (
+			nPos   = 12
+			orbitR = 9.0 // orbit radius in pixels
+			dotD   = int32(3)
+		)
+		// Advance one position every 80 ms → full rotation ≈ 960 ms.
+		frame := int(time.Now().UnixMilli()/80) % nPos
+		cx := float64(int32(12)+titleW+14) + orbitR
+		cy := float64(headerTextY) + float64(fontH)*0.5
+		for i := 0; i < nPos; i++ {
+			if (i-frame+nPos)%4 == 0 { // gap every 4th position = 3 gaps at 120°
+				continue
 			}
-			r.DrawPill(dotBaseX+int32(i)*dotStep, dotY, dotSize, dotSize, dR, dG, dB)
+			angle := 2.0 * math.Pi * float64(i) / nPos
+			dx := int32(math.Round(cx+orbitR*math.Cos(angle))) - dotD/2
+			dy := int32(math.Round(cy+orbitR*math.Sin(angle))) - dotD/2
+			r.DrawPill(dx, dy, dotD, dotD, mt[0], mt[1], mt[2])
 		}
 	}
 
