@@ -956,7 +956,6 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 	return s
 }
 
-
 func (s *DetailScreen) startDownload() Screen {
 	if s.loading {
 		return s
