@@ -20,6 +20,7 @@ cmd/itchio-pak/itchio-pak
 # Local tooling
 .superpowers/
 .go_cache/
+.remember/
 tmp/
 
 # ADB debug output
