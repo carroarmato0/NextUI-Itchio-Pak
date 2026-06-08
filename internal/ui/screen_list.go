@@ -467,7 +467,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	//      cut through the ring, producing three symmetric holes.
 	// This is 3 draw calls, far cheaper than the previous 36-dot approach.
 	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
-		titleW, _ := r.TextSize("Itch.io")
+		titleW, _ := r.BoldTextSize("Itch.io")
 		outerR := fontH * 2 / 5       // diameter ≈ 80% of font height
 		innerR := outerR * 7 / 10     // ~3px ring at typical sizes
 		cx := int32(12) + titleW + 10 + outerR
