@@ -69,6 +69,7 @@ func NewFetchUploadsScreen(
 	}
 	go func() {
 		if detail != nil && detail.BrowserOnly {
+			logger.Debug("fetch: skipping network call — game is browser-only")
 			s.err = fmt.Errorf("no downloadable files found for this game")
 			s.storeState(fetchError)
 			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
