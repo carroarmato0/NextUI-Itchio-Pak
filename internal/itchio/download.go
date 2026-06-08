@@ -20,7 +20,7 @@ import (
 // suffixes like ".0", and ".zip") is returned with NeedsFormat=true so the
 // user can classify it manually.
 var knownNonROMExts = map[string]bool{
-	".7z": true, ".tar": true, ".gz": true, ".rar": true, ".bz2": true,
+	".tar": true, ".gz": true, ".rar": true, ".bz2": true,
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".bmp": true, ".webp": true,
 	".mp3": true, ".ogg": true, ".wav": true, ".flac": true, ".aac": true,
 	".pdf": true, ".txt": true, ".md": true, ".epub": true, ".mobi": true,

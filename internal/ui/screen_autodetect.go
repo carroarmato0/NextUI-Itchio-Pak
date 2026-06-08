@@ -143,7 +143,7 @@ func (s *AutoDetectScreen) run() {
 	atomic.StoreInt32(&s.state, int32(autoDetectDone))
 }
 
-func (s *AutoDetectScreen) NeedsRedraw() bool        { return false }
+func (s *AutoDetectScreen) NeedsRedraw() bool        { return s.loadState() == autoDetectLoading }
 func (s *AutoDetectScreen) HasPendingAnimation() bool { return false }
 
 func (s *AutoDetectScreen) Draw(r *renderer.Renderer) {
@@ -169,16 +169,23 @@ func (s *AutoDetectScreen) Draw(r *renderer.Renderer) {
 
 	switch s.loadState() {
 	case autoDetectLoading:
-		r.DrawTextCentered("Detecting file type…", 0, mid-fontH/2, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Detecting file type", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+8)
 	case autoDetectError:
-		r.DrawText("Detection failed:", 20, mid-fontH-4, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, mid+4, r.W-40, fontH+4, 200, 100, 100)
+		errLines := r.WrapText(s.err.Error(), r.W-40)
+		errH := int32(len(errLines)) * (fontH + 4)
+		totalH := fontH + 10 + errH
+		startY := mid - totalH/2
+		r.DrawText("Detection failed:", 20, startY, 200, 60, 60)
+		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, fontH+4, 200, 100, 100)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
 	switch s.loadState() {
 	case autoDetectLoading:
-		r.DrawSmallText("Please wait…", 10, ftrY, ht[0], ht[1], ht[2])
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+		}, ftrY)
 	default:
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
@@ -198,15 +205,25 @@ func (s *AutoDetectScreen) HandleEvent(e sdl.Event) Screen {
 			return s.next
 		}
 	case *sdl.KeyboardEvent:
-		if ev.Type == sdl.KEYDOWN && s.loadState() == autoDetectError {
-			if ev.Keysym.Sym == sdl.K_ESCAPE || ev.Keysym.Sym == sdl.K_RETURN {
+		if ev.Type == sdl.KEYDOWN {
+			switch ev.Keysym.Sym {
+			case sdl.K_ESCAPE: // B — cancel at any time
 				return s.prev
+			case sdl.K_RETURN: // A — dismiss error
+				if s.loadState() == autoDetectError {
+					return s.prev
+				}
 			}
 		}
 	case *sdl.ControllerButtonEvent:
-		if ev.Type == sdl.CONTROLLERBUTTONDOWN && s.loadState() == autoDetectError {
-			if ev.Button == sdl.CONTROLLER_BUTTON_A || ev.Button == sdl.CONTROLLER_BUTTON_B {
+		if ev.Type == sdl.CONTROLLERBUTTONDOWN {
+			switch ev.Button {
+			case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
 				return s.prev
+			case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
+				if s.loadState() == autoDetectError {
+					return s.prev
+				}
 			}
 		}
 	}

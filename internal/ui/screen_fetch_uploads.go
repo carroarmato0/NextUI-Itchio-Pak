@@ -192,26 +192,34 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 
 	switch s.loadState() {
 	case fetchLoading:
-		r.DrawTextCentered("Finding available files...", 0, mid-mainFH/2, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Finding available files", 0, mid-mainFH-10, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+8)
 
 	case fetchError:
-		r.DrawText("Could not fetch files:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
-		msg := s.err.Error()
-		r.DrawWrappedText(msg, 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
+		if s.err != nil && s.err.Error() == "no downloadable files found for this game" {
+			const noDownloadMsg = "This game does not have any downloadable files — it may be browser-only. Press B to return and scan the QR code to open the game page."
+			ndLines := r.WrapText(noDownloadMsg, r.W-40)
+			ndH := int32(len(ndLines)) * (smallFH + 4)
+			startY := mid - (mainFH+10+ndH)/2
+			r.DrawTextCentered("No downloads available", 0, startY, r.W, 200, 160, 60)
+			r.DrawWrappedText(noDownloadMsg, 20, startY+mainFH+10, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
+		} else {
+			msg := s.err.Error()
+			errLines := r.WrapText(msg, r.W-40)
+			errH := int32(len(errLines)) * (smallFH + 4)
+			startY := mid - (mainFH+10+errH)/2
+			r.DrawText("Could not fetch files:", 20, startY, 200, 60, 60)
+			r.DrawWrappedText(msg, 20, startY+mainFH+10, r.W-40, smallFH+4, 200, 100, 100)
+		}
 
 	case fetchDone, fetchNeedsPurchasePick:
 		// Handled by transitioning in HandleEvent / next Draw cycle below
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.loadState() {
-	case fetchLoading:
-		r.DrawSmallText("Please wait...", 10, ftrY, ht[0], ht[1], ht[2])
-	default:
-		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
-		}, ftrY)
-	}
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+	}, ftrY)
 	r.Present()
 }
 
@@ -242,7 +250,9 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Keysym.Sym {
-		case sdl.K_ESCAPE, sdl.K_RETURN:
+		case sdl.K_ESCAPE: // B — cancel at any time
+			return s.prev
+		case sdl.K_RETURN: // A — dismiss error
 			if s.loadState() == fetchError {
 				return s.prev
 			}
@@ -252,7 +262,9 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+		case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
+			return s.prev
+		case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
 			if s.loadState() == fetchError {
 				return s.prev
 			}
@@ -274,8 +286,8 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 	if len(known) > 0 {
 		if len(known) == 1 {
 			upload := known[0]
-			// Route ZIP uploads through ZIPInspectScreen for smart handling.
-			if strings.ToLower(filepath.Ext(upload.Filename)) == ".zip" {
+			// Route ZIP and 7z uploads through ZIPInspectScreen for smart handling.
+			if ext := strings.ToLower(filepath.Ext(upload.Filename)); ext == ".zip" || ext == ".7z" {
 				return NewZIPInspectScreen(s.client, s.cfg, s.cfgPath, s.cache,
 					s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 			}
@@ -289,16 +301,16 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 			}
 			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, upload, dest, s.inv, s.inventoryPath, s.prev)
 		}
-		// Multiple known uploads — check if any are ZIPs.
-		hasZIP := false
+		// Multiple known uploads — check if any are archives (ZIP or 7z).
+		hasArchive := false
 		for _, u := range known {
-			if strings.ToLower(filepath.Ext(u.Filename)) == ".zip" {
-				hasZIP = true
+			if ext := strings.ToLower(filepath.Ext(u.Filename)); ext == ".zip" || ext == ".7z" {
+				hasArchive = true
 				break
 			}
 		}
-		if hasZIP {
-			// Mixed set with ZIPs — let the user pick which file to download.
+		if hasArchive {
+			// Mixed set with archives — let the user pick which file to download.
 			return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
 		}
 		// All known uploads are direct ROM files — download all automatically.

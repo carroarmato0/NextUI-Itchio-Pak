@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bodgit/sevenzip"
+
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -124,6 +126,12 @@ func (s *ZIPDownloadScreen) run() {
 	s.storeState(zipDLExtracting)
 	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 
+	// 7z archives are extracted via sevenzip; everything else uses archive/zip.
+	if strings.ToLower(filepath.Ext(s.plan.Upload.Filename)) == ".7z" {
+		s.run7z(tmpPath)
+		return
+	}
+
 	r, err := zip.OpenReader(tmpPath)
 	if err != nil {
 		logger.Error("zip-download: open ZIP: %v", err)
@@ -195,7 +203,7 @@ func (s *ZIPDownloadScreen) run() {
 		if strings.HasPrefix(baseName, "._") {
 			continue
 		}
-		kind := roms.ClassifyEntry(baseName)
+		kind, baseName := classifyWithMagic(baseName, f.Open)
 
 		switch kind {
 		case roms.KindROM:
@@ -238,6 +246,317 @@ func (s *ZIPDownloadScreen) run() {
 	s.storeState(zipDLDone)
 }
 
+// run7z handles extraction for 7z archives using the same plan logic as run().
+func (s *ZIPDownloadScreen) run7z(tmpPath string) {
+	r, err := sevenzip.OpenReader(tmpPath)
+	if err != nil {
+		logger.Error("7z-download: open archive: %v", err)
+		s.err = fmt.Errorf("open 7z: %w", err)
+		s.storeState(zipDLError)
+		return
+	}
+	defer r.Close()
+
+	if s.plan.Pico8GameDir != "" {
+		now := time.Now()
+		s.extractPico8_7z(r, now)
+		if err := s.inv.Save(s.invPath); err != nil {
+			logger.Warn("7z-download: save inventory: %v", err)
+		}
+		if len(s.extracted) == 0 {
+			logger.Error("7z-download: pico8: no files extracted (skipped=%d)", len(s.skipped))
+			s.err = fmt.Errorf("no Pico-8 files could be extracted from 7z")
+			s.storeState(zipDLError)
+			return
+		}
+		logger.Info("7z-download: pico8 done, extracted %d file(s)", len(s.extracted))
+		s.storeState(zipDLDone)
+		return
+	}
+
+	now := time.Now()
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		baseName := filepath.Base(strings.ReplaceAll(f.Name, "\\", "/"))
+		if strings.HasPrefix(baseName, "._") {
+			continue
+		}
+		kind, baseName := classifyWithMagic(baseName, f.Open)
+		switch kind {
+		case roms.KindROM:
+			if !s.shouldExtractROM(baseName) {
+				continue
+			}
+			dest, err := s.extractROMFromOpener(f.Open, f.FileInfo().Size(), baseName, now)
+			if err != nil {
+				logger.Warn("7z-download: ROM %s: %v", baseName, err)
+				s.skipped = append(s.skipped, baseName)
+				continue
+			}
+			s.extracted = append(s.extracted, dest)
+		case roms.KindMusic:
+			if !s.plan.DownloadMusic || s.plan.MusicDir == "" {
+				continue
+			}
+			dest, err := s.extractMusicFromOpener(f.Open, baseName, now)
+			if err != nil {
+				logger.Warn("7z-download: music %s: %v", baseName, err)
+				s.skipped = append(s.skipped, baseName)
+				continue
+			}
+			s.extracted = append(s.extracted, dest)
+		}
+	}
+
+	if err := s.inv.Save(s.invPath); err != nil {
+		logger.Warn("7z-download: save inventory: %v", err)
+	}
+	if len(s.extracted) == 0 {
+		logger.Error("7z-download: no files extracted (skipped=%d)", len(s.skipped))
+		s.err = fmt.Errorf("no files could be extracted from 7z")
+		s.storeState(zipDLError)
+		return
+	}
+	logger.Info("7z-download: done, extracted %d file(s)", len(s.extracted))
+	s.storeState(zipDLDone)
+}
+
+// extractPico8_7z extracts .p8, .p8.png, and .lua files from a 7z archive,
+// preserving relative paths into s.plan.Pico8GameDir.
+func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Time) {
+	gameDir := strings.TrimSuffix(s.plan.Pico8GameDir, "/")
+	var relevantPaths []string
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(strings.ReplaceAll(f.Name, "\\", "/"))
+		base := filepath.Base(name)
+		if strings.HasPrefix(base, "._") {
+			continue
+		}
+		lower := strings.ToLower(base)
+		ext := strings.ToLower(roms.ROMExt(base))
+		if ext == ".p8" || ext == ".p8.png" || strings.HasSuffix(lower, ".lua") {
+			relevantPaths = append(relevantPaths, name)
+		}
+	}
+	prefix := topLevelDirPrefix(relevantPaths)
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.ToSlash(strings.ReplaceAll(f.Name, "\\", "/"))
+		base := filepath.Base(name)
+		if strings.HasPrefix(base, "._") {
+			continue
+		}
+		lower := strings.ToLower(base)
+		ext := strings.ToLower(roms.ROMExt(base))
+		if ext != ".p8" && ext != ".p8.png" && !strings.HasSuffix(lower, ".lua") {
+			continue
+		}
+		relPath := strings.TrimPrefix(name, prefix)
+		dest := filepath.Join(gameDir, filepath.FromSlash(relPath))
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			s.skipped = append(s.skipped, base)
+			continue
+		}
+		if err := extractEntry(f.Open, dest); err != nil {
+			logger.Warn("7z-download: pico8 extract %s: %v", base, err)
+			s.skipped = append(s.skipped, base)
+			continue
+		}
+		logger.Info("7z-download: pico8 extracted %s → %s", base, dest)
+		s.extracted = append(s.extracted, dest)
+		s.inv.Add(s.game.URL, inventory.Entry{
+			GameURL: s.game.URL, Title: s.game.Title,
+			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
+		}, inventory.DownloadedFile{
+			Filename:      base,
+			DestPath:      dest,
+			DownloadedAt:  now,
+			FileType:      inventory.FileTypeROM,
+			SourceArchive: s.plan.Upload.Filename,
+		})
+	}
+}
+
+// extractROMFromOpener is like extractROM but takes an opener func instead of *zip.File.
+// Used by run7z so the same inventory/naming logic applies to 7z entries.
+func (s *ZIPDownloadScreen) extractROMFromOpener(open func() (io.ReadCloser, error), size int64, baseName string, now time.Time) (string, error) {
+	ext := strings.ToLower(roms.ROMExt(baseName))
+	destDir := s.plan.ROMDirs[ext]
+	if destDir == "" {
+		destDir = roms.DestinationDir(ext, s.cfg.Pico8Core)
+	}
+	stem := strings.TrimSuffix(baseName, roms.ROMExt(baseName))
+	safeName := roms.SanitiseFilename(stem, ext)
+	if safeName == "" {
+		safeName = baseName
+	}
+	dest := destDir + safeName
+
+	// Skip when an identical ROM already exists.
+	if existing := s.findIdenticalFromOpener(open, size, ext); existing != "" {
+		logger.Info("7z-download: ROM %s: identical file at %s, skipping", baseName, existing)
+		s.backfillSourceArchive(existing)
+		return existing, nil
+	}
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdirall %s: %w", destDir, err)
+	}
+	if err := extractEntry(open, dest); err != nil {
+		return "", err
+	}
+
+	finalDest := dest
+	unifiedName := false
+	if s.cfg.UnifiedNaming {
+		entry, entryExists := s.inv.Lookup(s.game.URL)
+		disabled := entryExists && entry.UnifiedNamingDisabled
+		if !disabled {
+			newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true)
+			if didRename {
+				if err := os.Rename(dest, newDest); err != nil {
+					logger.Warn("7z-download: unified rename: %v", err)
+				} else {
+					finalDest = newDest
+					unifiedName = true
+				}
+			} else {
+				unifiedName = true
+			}
+		}
+	}
+	logger.Info("7z-download: ROM extracted → %s (unified=%v)", finalDest, unifiedName)
+	s.inv.Add(s.game.URL, inventory.Entry{
+		GameURL: s.game.URL, Title: s.game.Title,
+		Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
+	}, inventory.DownloadedFile{
+		Filename:      filepath.Base(finalDest),
+		DestPath:      finalDest,
+		DownloadedAt:  now,
+		FileType:      inventory.FileTypeROM,
+		UnifiedName:   unifiedName,
+		SourceArchive: s.plan.Upload.Filename,
+	})
+	if artErr := s.client.DownloadCoverArt(s.game.CoverURL, finalDest); artErr != nil {
+		logger.Warn("7z-download: cover art: %v", artErr)
+	}
+	return finalDest, nil
+}
+
+// extractMusicFromOpener is like extractMusic but takes an opener func.
+func (s *ZIPDownloadScreen) extractMusicFromOpener(open func() (io.ReadCloser, error), baseName string, now time.Time) (string, error) {
+	if err := os.MkdirAll(s.plan.MusicDir, 0755); err != nil {
+		s.musicFailed = true
+		return "", fmt.Errorf("mkdirall music dir %s: %w", s.plan.MusicDir, err)
+	}
+	ext := filepath.Ext(baseName)
+	stem := strings.TrimSuffix(baseName, ext)
+	safeName := roms.SanitiseFilename(stem, ext)
+	if safeName == "" {
+		safeName = baseName
+	}
+	dest := s.plan.MusicDir + safeName
+	if err := extractEntry(open, dest); err != nil {
+		return "", err
+	}
+	s.inv.Add(s.game.URL, inventory.Entry{
+		GameURL: s.game.URL, Title: s.game.Title,
+		Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
+	}, inventory.DownloadedFile{
+		Filename:     filepath.Base(dest),
+		DestPath:     dest,
+		DownloadedAt: now,
+		FileType:     inventory.FileTypeMusic,
+	})
+	return dest, nil
+}
+
+// backfillSourceArchive patches SourceArchive into an existing inventory entry
+// whose DestPath matches. Called when extraction is skipped because an identical
+// file already exists — pre-fix entries have SourceArchive="" which causes the
+// update service to incorrectly mark the game as removed.
+func (s *ZIPDownloadScreen) backfillSourceArchive(destPath string) {
+	if s.plan.Upload.Filename == "" {
+		return
+	}
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok {
+		return
+	}
+	for _, f := range entry.Files {
+		if f.DestPath == destPath && f.SourceArchive == "" {
+			f.SourceArchive = s.plan.Upload.Filename
+			s.inv.UpdateFile(s.game.URL, destPath, f)
+			logger.Debug("zip-download: backfilled SourceArchive=%q for %s",
+				s.plan.Upload.Filename, filepath.Base(destPath))
+			return
+		}
+	}
+}
+
+// findIdenticalFromOpener checks the inventory for a ROM matching the given
+// opener's content. Used by the 7z extraction path.
+func (s *ZIPDownloadScreen) findIdenticalFromOpener(open func() (io.ReadCloser, error), size int64, ext string) string {
+	entry, ok := s.inv.Lookup(s.game.URL)
+	if !ok {
+		return ""
+	}
+	wantHash, err := entryMD5(open)
+	if err != nil {
+		return ""
+	}
+	for _, df := range entry.Files {
+		if df.FileType != inventory.FileTypeROM {
+			continue
+		}
+		if strings.ToLower(roms.ROMExt(df.DestPath)) != ext {
+			continue
+		}
+		fi, err := os.Stat(df.DestPath)
+		if err != nil || fi.Size() != size {
+			continue
+		}
+		if hash, err := fileMD5(df.DestPath); err == nil && hash == wantHash {
+			return df.DestPath
+		}
+	}
+	return ""
+}
+
+// classifyWithMagic calls ClassifyEntry on baseName; if the extension is
+// unrecognised (KindOther) it reads the first roms.DetectBufSize bytes via
+// open() and retries with magic-byte detection. Returns the resolved
+// FileKind and the (possibly extension-corrected) baseName.
+// This handles archive entries whose filename uses a generic extension such
+// as ".bin" for a Sega Genesis ROM — extension lookup fails but the ROM
+// header signature at 0x100 reliably identifies the format.
+func classifyWithMagic(baseName string, open func() (io.ReadCloser, error)) (roms.FileKind, string) {
+	kind := roms.ClassifyEntry(baseName)
+	if kind != roms.KindOther {
+		return kind, baseName
+	}
+	rc, err := open()
+	if err != nil {
+		return kind, baseName
+	}
+	buf := make([]byte, roms.DetectBufSize)
+	n, _ := io.ReadFull(rc, buf)
+	rc.Close()
+	detected := roms.DetectROMExt(buf[:n])
+	if detected == "" {
+		return kind, baseName
+	}
+	stem := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	return roms.KindROM, stem + detected
+}
+
 func (s *ZIPDownloadScreen) shouldExtractROM(name string) bool {
 	if !s.plan.DownloadROMs {
 		return false
@@ -269,6 +588,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 	// Skip extraction when the game already has an identical ROM on disk.
 	if existing := s.findIdenticalROMInInventory(f, ext); existing != "" {
 		logger.Info("zip-download: ROM %s: identical file already at %s, skipping", baseName, existing)
+		s.backfillSourceArchive(existing)
 		return existing, nil
 	}
 
@@ -310,11 +630,12 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 		GameURL: s.game.URL, Title: s.game.Title,
 		Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 	}, inventory.DownloadedFile{
-		Filename:     filepath.Base(finalDest),
-		DestPath:     finalDest,
-		DownloadedAt: now,
-		UnifiedName:  unifiedName,
-		FileType:     inventory.FileTypeROM,
+		Filename:      filepath.Base(finalDest),
+		DestPath:      finalDest,
+		DownloadedAt:  now,
+		UnifiedName:   unifiedName,
+		FileType:      inventory.FileTypeROM,
+		SourceArchive: s.plan.Upload.Filename,
 	})
 	return finalDest, nil
 }
@@ -411,10 +732,11 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 			GameURL: s.game.URL, Title: s.game.Title,
 			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 		}, inventory.DownloadedFile{
-			Filename:     base,
-			DestPath:     dest,
-			DownloadedAt: now,
-			FileType:     inventory.FileTypeROM,
+			Filename:      base,
+			DestPath:      dest,
+			DownloadedAt:  now,
+			FileType:      inventory.FileTypeROM,
+			SourceArchive: s.plan.Upload.Filename,
 		})
 	}
 }
@@ -456,9 +778,9 @@ func (s *ZIPDownloadScreen) findIdenticalROMInInventory(f *zip.File, ext string)
 	return ""
 }
 
-// zipEntryMD5 reads the uncompressed content of a ZIP entry and returns its MD5 hex digest.
-func zipEntryMD5(f *zip.File) (string, error) {
-	rc, err := f.Open()
+// entryMD5 reads the uncompressed content via open() and returns its MD5 hex digest.
+func entryMD5(open func() (io.ReadCloser, error)) (string, error) {
+	rc, err := open()
 	if err != nil {
 		return "", err
 	}
@@ -469,6 +791,9 @@ func zipEntryMD5(f *zip.File) (string, error) {
 	}
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
+
+// zipEntryMD5 is a convenience wrapper around entryMD5 for zip.File.
+func zipEntryMD5(f *zip.File) (string, error) { return entryMD5(f.Open) }
 
 // fileMD5 returns the MD5 hex digest of the file at path.
 func fileMD5(path string) (string, error) {
@@ -484,9 +809,10 @@ func fileMD5(path string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-// extractZIPEntry copies a single ZIP file entry to dest on disk.
-func extractZIPEntry(f *zip.File, dest string) error {
-	rc, err := f.Open()
+// extractEntry copies the content returned by open() to dest on disk.
+// Used for both ZIP and 7z entries.
+func extractEntry(open func() (io.ReadCloser, error), dest string) error {
+	rc, err := open()
 	if err != nil {
 		return err
 	}
@@ -498,6 +824,11 @@ func extractZIPEntry(f *zip.File, dest string) error {
 	defer out.Close()
 	_, err = io.Copy(out, rc)
 	return err
+}
+
+// extractZIPEntry is a convenience wrapper around extractEntry for zip.File.
+func extractZIPEntry(f *zip.File, dest string) error {
+	return extractEntry(f.Open, dest)
 }
 
 // topLevelDirPrefix returns the common top-level directory prefix shared by
@@ -575,16 +906,21 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		}
 
 	case zipDLExtracting:
-		r.DrawTextCentered("Extracting…", 0, mid-fontH/2, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Extracting", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+8)
 
 	case zipDLDone:
-		r.DrawTextCentered("Extraction complete!", 0, mid-fontH-8, r.W, 80, 200, 80)
+		// Centre the title + count block, then list filenames below.
+		const doneGap = int32(8)
+		blockH := fontH + doneGap + smallFH
+		blockY := mid - blockH/2
+		r.DrawTextCentered("Extraction complete!", 0, blockY, r.W, 80, 200, 80)
 		count := fmt.Sprintf("%d file(s) extracted", len(s.extracted))
-		r.DrawSmallTextCentered(count, 0, mid+4, r.W, ht[0], ht[1], ht[2])
+		r.DrawSmallTextCentered(count, 0, blockY+fontH+doneGap, r.W, ht[0], ht[1], ht[2])
 
 		// List filenames, capped to available space so they never overflow the footer.
 		rowH := smallFH + 4
-		y := mid + 4 + smallFH + 12
+		y := blockY + blockH + 12
 		bottomLimit := r.H - footerH - 8
 		if s.musicFailed {
 			bottomLimit -= rowH // reserve a row for the warning
@@ -597,7 +933,7 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 			if y+rowH > bottomLimit || (remaining > 1 && y+rowH*2 > bottomLimit) {
 				break
 			}
-			r.DrawSmallScrollingText(filepath.Base(p), 20, y, r.W-40, 120, 120, 120)
+			r.DrawSmallTextCentered(truncateSmallToWidth(r, filepath.Base(p), r.W-40), 0, y, r.W, 120, 120, 120)
 			y += rowH
 			shown++
 		}

@@ -135,8 +135,8 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 }
 
 func (s *ROMPickerScreen) chooseUpload(upload roms.Upload) Screen {
-	// ZIP uploads go through ZIPInspectScreen for smart content handling.
-	if strings.ToLower(filepath.Ext(upload.Filename)) == ".zip" {
+	// ZIP and 7z uploads go through ZIPInspectScreen for smart content handling.
+	if ext := strings.ToLower(filepath.Ext(upload.Filename)); ext == ".zip" || ext == ".7z" {
 		return NewZIPInspectScreen(s.client, s.cfg, s.cfgPath, s.cache,
 			s.game, s.detail, upload, s.inv, s.inventoryPath, s.prev)
 	}

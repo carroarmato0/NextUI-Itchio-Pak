@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -146,9 +148,9 @@ func extractScreenshotURLs(rawHTML []byte) []string {
 }
 
 // extractDescription pulls the game description from the page HTML and
-// converts it from HTML to plain text. It walks the parsed HTML tree to find
-// the formatted_description div, so nested elements (e.g. YouTube embeds) do
-// not truncate the result the way a regex approach would.
+// returns a lightweight markup string preserving paragraph, heading, and
+// list structure while stripping scripts, embeds, links, and unknown tags.
+// Inline <strong>/<b>/<em>/<i> are normalised to <b>; headings to <h2>.
 func extractDescription(pageHTML string) string {
 	doc, err := html.Parse(strings.NewReader(pageHTML))
 	if err != nil {
@@ -179,93 +181,65 @@ func extractDescription(pageHTML string) string {
 		return ""
 	}
 
-	// Extract plain text from the subtree, skipping media embeds.
-	var buf bytes.Buffer
-	var extractText func(*html.Node)
-	extractText = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "button", "iframe", "video", "audio", "script", "style":
-				return // skip non-text embeds entirely
-			case "br":
-				buf.WriteString("\n")
-			case "p", "h1", "h2", "h3", "h4", "h5", "h6":
-				if buf.Len() > 0 {
-					buf.WriteString("\n\n")
-				}
-			case "li":
-				buf.WriteString("\n• ")
-			case "tr":
-				buf.WriteString("\n")
-			case "td", "th":
-				if buf.Len() > 0 && buf.Bytes()[buf.Len()-1] != '\n' {
-					buf.WriteString("  ")
-				}
-			}
-		}
-		if n.Type == html.TextNode {
-			buf.WriteString(n.Data)
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			extractText(c)
-		}
-	}
-	extractText(descNode)
-
-	text := strings.ReplaceAll(buf.String(), "\r", "")
-	for strings.Contains(text, "\n\n\n") {
-		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
-	}
-	return strings.TrimSpace(text)
-}
-
-// htmlToPlainText converts simple HTML (paragraphs, breaks, headings) to
-// readable plain text.
-func htmlToPlainText(fragment string) string {
-	doc, err := html.Parse(strings.NewReader(fragment))
-	if err != nil {
-		return ""
-	}
+	// Convert the subtree to lightweight markup, preserving block structure.
 	var buf bytes.Buffer
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
-		if n.Type == html.TextNode {
-			buf.WriteString(n.Data)
-		}
 		if n.Type == html.ElementNode {
 			switch n.Data {
+			case "button", "iframe", "video", "audio", "script", "style", "a":
+				return // strip entirely
 			case "br":
-				buf.WriteString("\n")
-			case "p", "h1", "h2", "h3", "h4", "h5", "h6":
-				if buf.Len() > 0 {
-					buf.WriteString("\n\n")
-				}
+				buf.WriteString("<br>")
+				return
+			case "p":
+				buf.WriteString("<p>")
+				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				buf.WriteString("</p>")
+				return
+			case "h1", "h2", "h3", "h4", "h5", "h6":
+				buf.WriteString("<h2>")
+				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				buf.WriteString("</h2>")
+				return
+			case "strong", "b", "em", "i":
+				buf.WriteString("<b>")
+				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				buf.WriteString("</b>")
+				return
+			case "ul":
+				buf.WriteString("<ul>")
+				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				buf.WriteString("</ul>")
+				return
+			case "ol":
+				buf.WriteString("<ol>")
+				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				buf.WriteString("</ol>")
+				return
 			case "li":
-				buf.WriteString("\n• ")
+				buf.WriteString("<li>")
+				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				buf.WriteString("</li>")
+				return
 			case "tr":
-				buf.WriteString("\n")
+				buf.WriteString("<br>")
 			case "td", "th":
 				if buf.Len() > 0 {
-					last := buf.Bytes()[buf.Len()-1]
-					if last != '\n' {
-						buf.WriteString("  ")
-					}
+					buf.WriteString(" ")
 				}
 			}
+		}
+		if n.Type == html.TextNode {
+			buf.WriteString(n.Data)
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			walk(c)
 		}
 	}
-	walk(doc)
+	walk(descNode)
 
-	// Clean up: collapse excessive newlines, trim
-	text := buf.String()
-	text = strings.ReplaceAll(text, "\r", "")
-	for strings.Contains(text, "\n\n\n") {
-		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
-	}
-	return strings.TrimSpace(text)
+	return strings.TrimSpace(buf.String())
 }
 
 // DownloadPageResult holds what ParseDownloadPage extracts from the signed page.
@@ -320,7 +294,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 				ext := strings.ToLower(roms.ROMExt(u.Filename))
 				if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".nes" ||
 					ext == ".md" || ext == ".gen" || ext == ".smd" ||
-					ext == ".p8" || ext == ".p8.png" || ext == ".zip" {
+					ext == ".p8" || ext == ".p8.png" || ext == ".zip" || ext == ".7z" {
 					logger.Debug("download-page: found ROM %s id=%s", u.Filename, u.UploadID)
 					result.Uploads = append(result.Uploads, u)
 				} else if !isSkippableExt(ext) {
@@ -338,6 +312,12 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 		}
 	}
 	walkDoc(doc)
+
+	// Deduplicate: some games have multiple uploads with the same filename
+	// (e.g. after a developer re-upload). Keep the one with the highest upload
+	// ID (most recently uploaded) so only one copy is downloaded.
+	result.Uploads = deduplicateUploadsByFilename(result.Uploads)
+
 	knownCount := 0
 	for _, u := range result.Uploads {
 		if !u.NeedsFormat {
@@ -347,6 +327,60 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 	logger.Info("download-page: %d known ROM(s), %d unknown-format file(s)",
 		knownCount, len(result.Uploads)-knownCount)
 	return result, nil
+}
+
+// deduplicateUploadsByFilename keeps one Upload per unique Filename, preferring
+// the entry with the highest numeric UploadID (most recently re-uploaded version).
+// Relative order of the surviving entries is preserved.
+func deduplicateUploadsByFilename(uploads []Upload) []Upload {
+	if len(uploads) <= 1 {
+		return uploads
+	}
+	// Find the winning UploadID for each filename.
+	best := make(map[string]int) // filename → highest numeric ID seen
+	bestStr := make(map[string]string)
+	for _, u := range uploads {
+		id, _ := strconv.Atoi(u.UploadID)
+		if prev, ok := best[u.Filename]; !ok || id > prev {
+			best[u.Filename] = id
+			bestStr[u.Filename] = u.UploadID
+		}
+	}
+	if len(best) == len(uploads) {
+		return uploads // no duplicates
+	}
+	// Rebuild in original order, taking only the winner for each filename.
+	out := make([]Upload, 0, len(best))
+	taken := make(map[string]bool)
+	for _, u := range uploads {
+		if taken[u.Filename] {
+			logger.Warn("download-page: skipping duplicate upload %s id=%s (keeping id=%s)",
+				u.Filename, u.UploadID, bestStr[u.Filename])
+			continue
+		}
+		if u.UploadID == bestStr[u.Filename] {
+			out = append(out, u)
+			taken[u.Filename] = true
+		}
+	}
+	// Any winner not yet emitted (because the loser appeared first in the list)
+	// needs a second pass; sort remaining by filename for determinism.
+	if len(out) < len(best) {
+		var remaining []Upload
+		for fn, id := range bestStr {
+			if !taken[fn] {
+				for _, u := range uploads {
+					if u.Filename == fn && u.UploadID == id {
+						remaining = append(remaining, u)
+						break
+					}
+				}
+			}
+		}
+		sort.Slice(remaining, func(i, j int) bool { return remaining[i].Filename < remaining[j].Filename })
+		out = append(out, remaining...)
+	}
+	return out
 }
 
 // extractUploadEntry walks a <div class="upload"> node and extracts the

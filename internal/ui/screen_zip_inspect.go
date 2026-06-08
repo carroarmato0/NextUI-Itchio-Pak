@@ -3,8 +3,11 @@
 package ui
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -60,6 +63,11 @@ type ZIPInspectScreen struct {
 	state zipInspectState
 	plan  ZIPPlan
 	err   error
+
+	// Progress tracking for the loading animation (ZIP range-read path).
+	inspectFetched int64     // bytes fetched so far (atomic via sync/atomic)
+	inspectTotal   int64     // total file size in bytes (atomic)
+	inspectStart   time.Time // when inspection started
 }
 
 func (s *ZIPInspectScreen) loadState() zipInspectState {
@@ -88,6 +96,7 @@ func NewZIPInspectScreen(
 func (s *ZIPInspectScreen) runInspect() {
 	defer func() { sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT}) }()
 	logger.Info("zip-inspect: starting for %s", s.upload.Filename)
+	s.inspectStart = time.Now()
 
 	var cdnURL string
 	var err error
@@ -104,9 +113,19 @@ func (s *ZIPInspectScreen) runInspect() {
 		return
 	}
 
-	manifest, err := roms.InspectRemoteZIP(s.client.HTTPClient(), cdnURL)
+	progress := func(fetched, total int64) {
+		atomic.StoreInt64(&s.inspectFetched, fetched)
+		atomic.StoreInt64(&s.inspectTotal, total)
+	}
+
+	var manifest roms.ZIPManifest
+	if strings.ToLower(filepath.Ext(s.upload.Filename)) == ".7z" {
+		manifest, err = roms.InspectRemote7z(s.client.HTTPClient(), cdnURL)
+	} else {
+		manifest, err = roms.InspectRemoteZIP(s.client.HTTPClient(), cdnURL, progress)
+	}
 	if err != nil {
-		logger.Error("zip-inspect: inspect ZIP: %v", err)
+		logger.Error("zip-inspect: inspect archive: %v", err)
 		s.err = err
 		s.storeState(zipInspectError)
 		return
@@ -144,21 +163,39 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 
 	switch s.loadState() {
 	case zipInspectLoading:
-		r.DrawTextCentered("Inspecting ZIP…", 0, mid-mainFH/2, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Inspecting archive", 0, mid-mainFH-smallFH-14, r.W, mt[0], mt[1], mt[2])
+		// Show bytes fetched and throughput so the user can see progress is happening.
+		fetched := atomic.LoadInt64(&s.inspectFetched)
+		total := atomic.LoadInt64(&s.inspectTotal)
+		if fetched > 0 && !s.inspectStart.IsZero() {
+			elapsed := time.Since(s.inspectStart).Seconds()
+			var info string
+			if elapsed > 0.5 {
+				kbps := float64(fetched) / 1024 / elapsed
+				if total > 0 {
+					info = fmt.Sprintf("%s fetched at %.0f KB/s  (file: %s)",
+						formatKB(fetched), kbps, formatKB(total))
+				} else {
+					info = fmt.Sprintf("%s fetched at %.0f KB/s", formatKB(fetched), kbps)
+				}
+			} else {
+				info = fmt.Sprintf("%s fetched", formatKB(fetched))
+			}
+			r.DrawSmallTextCentered(info, 0, mid-smallFH-4, r.W, ht[0], ht[1], ht[2])
+		}
+		drawLoadingDots(r, mid+8)
 	case zipInspectError:
-		r.DrawText("Inspection failed:", 20, mid-mainFH-smallFH-8, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, mid-smallFH, r.W-40, smallFH+4, 200, 100, 100)
+		errLines := r.WrapText(s.err.Error(), r.W-40)
+		errH := int32(len(errLines)) * (smallFH + 4)
+		startY := mid - (mainFH+10+errH)/2
+		r.DrawText("Inspection failed:", 20, startY, 200, 60, 60)
+		r.DrawWrappedText(s.err.Error(), 20, startY+mainFH+10, r.W-40, smallFH+4, 200, 100, 100)
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
-	switch s.loadState() {
-	case zipInspectLoading:
-		r.DrawSmallText("Please wait…", 10, ftrY, ht[0], ht[1], ht[2])
-	default:
-		r.DrawFooterHints([]renderer.FooterHint{
-			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},
-		}, ftrY)
-	}
+	r.DrawFooterHints([]renderer.FooterHint{
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Cancel"},
+	}, ftrY)
 	r.Present()
 }
 
@@ -173,17 +210,25 @@ func (s *ZIPInspectScreen) HandleEvent(e sdl.Event) Screen {
 			return s.route()
 		}
 	case *sdl.KeyboardEvent:
-		if ev.Type == sdl.KEYDOWN && s.loadState() == zipInspectError {
+		if ev.Type == sdl.KEYDOWN {
 			switch ev.Keysym.Sym {
-			case sdl.K_ESCAPE, sdl.K_RETURN:
+			case sdl.K_ESCAPE: // B — cancel at any time
 				return s.prev
+			case sdl.K_RETURN: // A — dismiss error
+				if s.loadState() == zipInspectError {
+					return s.prev
+				}
 			}
 		}
 	case *sdl.ControllerButtonEvent:
-		if ev.Type == sdl.CONTROLLERBUTTONDOWN && s.loadState() == zipInspectError {
+		if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+			case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
 				return s.prev
+			case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
+				if s.loadState() == zipInspectError {
+					return s.prev
+				}
 			}
 		}
 	}
@@ -228,7 +273,14 @@ func (s *ZIPInspectScreen) route() Screen {
 			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
 		}
 
-		// Non-Pico-8: keep the ZIP on disk (most emulators support ZIP natively).
+		// 7z archives must always be extracted — emulators do not support 7z natively.
+		if strings.ToLower(filepath.Ext(s.upload.Filename)) == ".7z" {
+			plan := s.plan
+			plan.DownloadROMs = true
+			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+		}
+
+		// Non-Pico-8 ZIP: keep on disk (most emulators support ZIP natively).
 		dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + s.upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
 			dest = existing

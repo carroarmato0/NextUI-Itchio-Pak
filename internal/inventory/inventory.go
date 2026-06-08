@@ -17,12 +17,39 @@ const (
 	FileTypeMusic = "music"
 )
 
+// romFileExt returns the effective file extension for a ROM filename, treating
+// ".p8.png" as a single compound extension rather than just ".png".
+// filepath.Ext alone would give ".png" for "game.p8.png", producing a wrong
+// stem ("game.p8") that fails upstream filename matching in the update service.
+//
+// Implementation uses zero-allocation byte-level comparison. The previous
+// strings.ToLower approach allocated a full string copy on every call; this
+// function is invoked from HasPendingUpdates which is called per-visible-row
+// per-frame, making the allocation cost significant (~945K objects/session).
+func romFileExt(filename string) string {
+	const p8png = ".p8.png"
+	if len(filename) >= len(p8png) {
+		s := filename[len(filename)-len(p8png):]
+		if s[0] == '.' &&
+			(s[1] == 'p' || s[1] == 'P') &&
+			s[2] == '8' &&
+			s[3] == '.' &&
+			(s[4] == 'p' || s[4] == 'P') &&
+			(s[5] == 'n' || s[5] == 'N') &&
+			(s[6] == 'g' || s[6] == 'G') {
+			return p8png
+		}
+	}
+	return filepath.Ext(filename)
+}
+
 type DownloadedFile struct {
-	Filename     string    `json:"filename"`
-	DestPath     string    `json:"dest_path"`
-	DownloadedAt time.Time `json:"downloaded_at"`
-	UnifiedName  bool      `json:"unified_name,omitempty"`
-	FileType     string    `json:"file_type,omitempty"` // "rom" | "music"; empty == "rom"
+	Filename      string    `json:"filename"`
+	DestPath      string    `json:"dest_path"`
+	DownloadedAt  time.Time `json:"downloaded_at"`
+	UnifiedName   bool      `json:"unified_name,omitempty"`
+	FileType      string    `json:"file_type,omitempty"`      // "rom" | "music"; empty == "rom"
+	SourceArchive string    `json:"source_archive,omitempty"` // upload filename when extracted from ZIP/7z
 }
 
 type UpstreamFile struct {
@@ -267,14 +294,23 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 	if !ok {
 		return false
 	}
-	downloaded := make(map[string]bool, len(e.Files)*2)
+	downloaded := make(map[string]bool, len(e.Files)*3)
 	for _, f := range e.Files {
 		downloaded[f.Filename] = true
 		// Format-picker appends an extension the upload name doesn't carry (e.g.
 		// "Game Boy ROM.gbc" stored vs "Game Boy ROM" upstream). Also index the
 		// stem so the already-downloaded file isn't treated as a new upload.
-		if stem := strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename)); stem != f.Filename {
+		if stem := strings.TrimSuffix(f.Filename, romFileExt(f.Filename)); stem != f.Filename {
 			downloaded[stem] = true
+		}
+		// For files extracted from archives (ZIP/7z), also index the source archive
+		// filename so an upstream re-upload of the same archive is correctly detected
+		// rather than treated as a missing file.
+		if f.SourceArchive != "" {
+			downloaded[f.SourceArchive] = true
+			if stem := strings.TrimSuffix(f.SourceArchive, filepath.Ext(f.SourceArchive)); stem != f.SourceArchive {
+				downloaded[stem] = true
+			}
 		}
 	}
 	for _, u := range e.KnownUpstreamFiles {

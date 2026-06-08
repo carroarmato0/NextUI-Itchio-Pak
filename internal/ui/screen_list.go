@@ -20,10 +20,6 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-// narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
-// are abbreviated at or below this width to prevent overflow.
-const narrowScreenW = int32(640)
-
 // Per-frame slice buffers reused across Draw calls to avoid per-frame heap escapes.
 var (
 	filteredTagsBuf []string
@@ -158,9 +154,11 @@ type ListScreen struct {
 	lastVisibleRows int
 
 	// Sort/filter state
-	sortMode     itchio.SortMode
-	viewGames    []itchio.Game // sorted/filtered view; paging operates on this
-	needsRebuild bool         // set by ScheduleRebuild; consumed at next Draw
+	sortMode       itchio.SortMode
+	platformFilter string          // "" = All; persisted to config.json
+	searchQuery    string          // "" = no filter; session-only, not persisted
+	viewGames      []itchio.Game   // sorted/filtered view; paging operates on this
+	needsRebuild   bool            // set by ScheduleRebuild; consumed at next Draw
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -261,6 +259,7 @@ func NewListScreen(
 	}
 
 	s.sortMode = itchio.SortMode(cfg.SortMode)
+	s.platformFilter = cfg.PlatformFilter
 
 	gameCache, err := itchio.LoadGamesCache(cachePath)
 	if err == nil && len(gameCache.Games) > 0 {
@@ -374,6 +373,10 @@ func (s *ListScreen) NeedsRedraw() bool {
 	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
 	}
+	// Keep redrawing while background activity spinner is visible.
+	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
+		return true
+	}
 	// Resume rendering 500ms before scrollDelay expires so the first
 	// animation frame is not missed when the cursor has been stationary.
 	return !s.titleScrollAt.IsZero() &&
@@ -455,19 +458,89 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
-	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
-	if s.cacheReady {
-		badge := itchio.SortModeBadge(s.sortMode)
-		bw, bh := r.TextSize(badge)
-		const hPad = int32(8)
-		pillW := bw + hPad*2
-		pillH := bh + 4
-		pillX := r.W - pillW - 12
-		pillY := headerTextY - 2
-		ac := r.Theme.Accent
+	r.DrawBoldText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
+
+	// Background-activity spinner — a ring with 3 rotating holes, drawn as:
+	//   1. Outer filled circle in title colour
+	//   2. Inner filled circle in background colour (creates the hollow ring)
+	//   3. Rotating equilateral triangle in background colour — its three edges
+	//      cut through the ring, producing three symmetric holes.
+	// This is 3 draw calls, far cheaper than the previous 36-dot approach.
+	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
+		titleW, _ := r.BoldTextSize("Itch.io")
+		outerR := fontH * 2 / 5       // diameter ≈ 80% of font height
+		innerR := outerR * 7 / 10     // ~3px ring at typical sizes
+		cx := int32(12) + titleW + 10 + outerR
+		cy := headerTextY + fontH/2
+
+		// Ring
+		r.DrawPill(cx-outerR, cy-outerR, outerR*2, outerR*2, mt[0], mt[1], mt[2])
+		if innerR > 0 {
+			hBGinner := r.Theme.HeaderBG
+			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, hBGinner[0], hBGinner[1], hBGinner[2])
+		}
+
+		// Rotating 3-armed cross — each arm is a rectangle (2 triangles) of half-width
+		// outerR/2 extending slightly past the ring's outer edge (+3 px) to fully cover
+		// the anti-aliased fringe and eliminate tip artefacts. Arms use the header bar
+		// colour so they blend seamlessly with the header background.
+		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
+		hw := float64(outerR) / 2.0      // arm half-width
+		R := float64(outerR) + 3.0       // extend past outer edge to cover fringe
+		hBG := r.Theme.HeaderBG
+		fcx, fcy := float64(cx), float64(cy)
+		for i := 0; i < 3; i++ {
+			a := offset + float64(i)*2.0*math.Pi/3.0
+			dx, dy := math.Cos(a), math.Sin(a)  // arm direction
+			px, py := -math.Sin(a), math.Cos(a) // arm perpendicular
+			// 4 corners of the arm rectangle
+			b1x := int32(math.Round(fcx + hw*px))
+			b1y := int32(math.Round(fcy + hw*py))
+			b2x := int32(math.Round(fcx - hw*px))
+			b2y := int32(math.Round(fcy - hw*py))
+			t1x := int32(math.Round(fcx + R*dx + hw*px))
+			t1y := int32(math.Round(fcy + R*dy + hw*py))
+			t2x := int32(math.Round(fcx + R*dx - hw*px))
+			t2y := int32(math.Round(fcy + R*dy - hw*py))
+			r.DrawFilledTriangle(b1x, b1y, b2x, b2y, t1x, t1y, hBG[0], hBG[1], hBG[2])
+			r.DrawFilledTriangle(b2x, b2y, t2x, t2y, t1x, t1y, hBG[0], hBG[1], hBG[2])
+		}
+	}
+
+	// Filter pills — platform and sort — right-aligned in header, same font size as title.
+	{
+		pillH := fontH + 6
+		pillY := headerTextY - 3
+
+		// Sort pill
+		sortLabel := "● " + itchio.SortModeBadge(s.sortMode)
+		sw, _ := r.TextSize(sortLabel)
+		sortPillW := sw + 24
+		sortPillX := r.W - sortPillW - 10
+		var sortBgR, sortBgG, sortBgB uint8
+		if s.sortMode == itchio.SortModeRSS {
+			sortBgR, sortBgG, sortBgB = 35, 50, 35
+		} else {
+			ac := r.Theme.Accent
+			sortBgR, sortBgG, sortBgB = ac[0]/2+18, ac[1]/2+18, ac[2]/2+18
+		}
 		aT := r.Theme.AccentText
-		r.DrawPill(pillX, pillY, pillW, pillH, ac[0], ac[1], ac[2])
-		r.DrawTextCenteredInRect(badge, pillX, pillY, pillW, pillH, aT[0], aT[1], aT[2])
+		r.DrawPill(sortPillX, pillY, sortPillW, pillH, sortBgR, sortBgG, sortBgB)
+		r.DrawTextCenteredInRect(sortLabel, sortPillX, pillY, sortPillW, pillH, aT[0], aT[1], aT[2])
+
+		// Platform pill (to the left of sort pill)
+		platLabel := "● " + s.platformLabel()
+		pw, _ := r.TextSize(platLabel)
+		platPillW := pw + 24
+		platPillX := sortPillX - platPillW - 6
+		var platBgR, platBgG, platBgB uint8
+		if s.platformFilter == "" {
+			platBgR, platBgG, platBgB = 30, 40, 55
+		} else {
+			platBgR, platBgG, platBgB = 30, 55, 80
+		}
+		r.DrawPill(platPillX, pillY, platPillW, pillH, platBgR, platBgG, platBgB)
+		r.DrawTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
 	}
 
 	contentTop := headerH + 4
@@ -507,22 +580,14 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 	if len(s.viewGames) == 0 && s.cacheReady {
 		ht := r.Theme.HintText
-		r.DrawTextCentered("No games match this filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
-		r.DrawTextCentered("Press L1/R1 to change sort.", 0, r.H/2+4, leftW, 80, 160, 180)
+		r.DrawTextCentered("No games match the active filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
+		r.DrawTextCentered("Press SELECT to change filters.", 0, r.H/2+4, leftW, 80, 160, 180)
 		ftrY := r.DrawFooterBar(footerH)
-		if r.W <= narrowScreenW {
-			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"},
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
-				{Kind: renderer.BadgePill, Label: "START", Text: "Set"},
-			}, ftrY)
-		} else {
-			r.DrawFooterHints([]renderer.FooterHint{
-				{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"},
-				{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
-				{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
-			}, ftrY)
-		}
+		r.DrawFooterHints([]renderer.FooterHint{
+			{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
+			{Kind: renderer.BadgePill, Label: "SELECT", Text: "Filter"},
+			{Kind: renderer.BadgePill, Label: "START", Text: "Settings"},
+		}, ftrY)
 		r.Present()
 		return
 	}
@@ -647,7 +712,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			badgeR, badgeG, badgeB = 220, 180, 60
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
-		pillW := badgeW + 10 // 5px horizontal padding per side
+		pillW := badgeW + 16 // 8px horizontal padding per side
+		// Enforce a minimum width so narrow labels (e.g. "!") always produce a
+		// pill shape rather than a rectangle. Making pillW ≥ pillH gives a circle
+		// for single-character badges and a proper pill for wider ones.
+		if minW := smallFH + 4; pillW < minW {
+			pillW = minW
+		}
 		// Increased margin from the right edge of the list (leftW) from 8 to 16.
 		badgeX := leftW - pillW - 16
 
@@ -710,7 +781,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		pillH := smallFH + 4
 		pillY := y + (fontH-pillH)/2
 		r.DrawPill(badgeX, pillY, pillW, pillH, badgeR, badgeG, badgeB)
-		r.DrawSmallText(badgeLabel, badgeX+5, pillY+2, 20, 20, 20)
+		r.DrawSmallTextCenteredInRect(badgeLabel, badgeX, pillY, pillW, pillH, 20, 20, 20)
 	}
 
 	// Draw the DL-mode group separator AFTER all row content so it renders
@@ -737,34 +808,75 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.warmPreloadWindow()
 	}
 
-	// Right panel: cover art (or placeholder) + metadata
+	// Right panel: cover art + metadata below.
+	// Cover art is sized dynamically: it expands to fill available space, shrinking
+	// only when the metadata (title + author + tags) would otherwise overflow.
 	if s.cursor < len(s.viewGames) {
 		g := s.viewGames[s.cursor]
-		metaY := contentTop
-		boxW := rightW
-		boxH := rightW * 3 / 4 // 4:3 aspect ratio box
+		lyt := LayoutFor(r.W, r.H)
+		_, fontH2 := r.TextSize("Ag")
+		_, smallFH2 := r.SmallTextSize("Ag")
 
-		// Draw the box background for all states
-		r.DrawRect(rightX, metaY, boxW, boxH, bg[0], bg[1], bg[2])
+		// Filter tags first so we can measure them before sizing the art.
+		filteredTagsBuf = filteredTagsBuf[:0]
+		for _, tag := range g.Tags {
+			if strings.EqualFold(tag, "free") {
+				continue
+			}
+			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
+				continue
+			}
+			filteredTagsBuf = append(filteredTagsBuf, tag)
+		}
+
+		// Measure how much vertical space the metadata below the art will need.
+		lineGap := smallFH2 + 10
+		metaH := lyt.ContentGap
+		if g.Title != "" {
+			metaH += fontH2 + 2
+		}
+		if g.Author != "" {
+			metaH += smallFH2 + 4
+		}
+		if len(filteredTagsBuf) > 0 {
+			metaH += r.MeasureTagPills(filteredTagsBuf, rightX, rightW, lineGap)
+		}
+
+		// Art fills the remainder, capped at 95% of panel width, minimum 40% of available height.
+		totalAvailH := r.H - footerH - contentTop
+		artH := totalAvailH - metaH
+		minArtH := totalAvailH * 2 / 5
+		if artH < minArtH {
+			artH = minArtH
+		}
+		artW := artH * 4 / 3
+		maxArtW := int32(float32(rightW) * 0.95)
+		if artW > maxArtW {
+			artW = maxArtW
+			artH = artW * 3 / 4
+		}
+		artX := rightX + (rightW-artW)/2
+
+		metaY := contentTop
+
+		r.DrawRect(artX, metaY, artW, artH, bg[0], bg[1], bg[2])
 
 		if g.CoverURL != "" {
 			tex := s.cache.Peek(r, g.CoverURL)
 			if tex != nil {
 				_, _, tw, th, _ := tex.Query()
-				// Fit image within box, maintaining aspect ratio
-				scaleW := float32(boxW) / float32(tw)
-				scaleH := float32(boxH) / float32(th)
+				scaleW := float32(artW) / float32(tw)
+				scaleH := float32(artH) / float32(th)
 				scale := scaleW
 				if scaleH < scaleW {
 					scale = scaleH
 				}
 				dw := int32(float32(tw) * scale)
 				dh := int32(float32(th) * scale)
-				// Center within box
-				imgX := rightX + (boxW-dw)/2
-				imgY := metaY + (boxH-dh)/2
+				imgX := artX + (artW-dw)/2
+				imgY := metaY + (artH-dh)/2
 				r.DrawTextureAt(tex, imgX, imgY, dw, dh)
-				// Pill badge overlay — drawn after texture so it appears above animated GIFs.
+				// Status badge overlay on cover
 				if s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) || s.inv.IsPresent(g.URL) {
 					var pillLabel string
 					var pillR, pillG, pillB uint8
@@ -787,87 +899,69 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 						textR, textG, textB = 20, 20, 20
 					}
 					lw, lh := r.SmallTextSize(pillLabel)
-					const pad = int32(5)
-					pillW := lw + pad*2
-					pillH := lh + 4
-					pillX := imgX + dw - pillW - 6
-					pillY := imgY + 6
-					// Draw a subtle shadow/border for the overlay badge
-					r.DrawPill(pillX+1, pillY+1, pillW, pillH, shadowR, shadowG, shadowB)
-					r.DrawPill(pillX, pillY, pillW, pillH, pillR, pillG, pillB)
-					r.DrawSmallTextCenteredInRect(pillLabel, pillX, pillY, pillW, pillH, textR, textG, textB)
+					const overlayPad = int32(8)
+					overlayPillW := lw + overlayPad*2
+					overlayPillH := lh + 4
+					if overlayPillW < overlayPillH {
+						overlayPillW = overlayPillH
+					}
+					overlayPillX := imgX + dw - overlayPillW - 6
+					overlayPillY := imgY + 6
+					r.DrawPill(overlayPillX+1, overlayPillY+1, overlayPillW, overlayPillH, shadowR, shadowG, shadowB)
+					r.DrawPill(overlayPillX, overlayPillY, overlayPillW, overlayPillH, pillR, pillG, pillB)
+					r.DrawSmallTextCenteredInRect(pillLabel, overlayPillX, overlayPillY, overlayPillW, overlayPillH, textR, textG, textB)
 				}
 			} else if s.cache.Failed(g.CoverURL) {
-				r.DrawTextCenteredInRect("No Image", rightX, metaY, boxW, boxH, 80, 80, 80)
+				r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, 80, 80, 80)
 			} else {
-				r.DrawTextCenteredInRect("Loading...", rightX, metaY, boxW, boxH, 80, 80, 80)
+				r.DrawTextCenteredInRect("Loading...", artX, metaY, artW, artH, 80, 80, 80)
 			}
 		} else {
-			// No cover URL — wireframe border
-			r.DrawRect(rightX+2, metaY+2, boxW-4, boxH-4, bg[0], bg[1], bg[2])
-			r.DrawRect(rightX+3, metaY+3, boxW-6, boxH-6, 35, 35, 35)
-			r.DrawTextCenteredInRect("No Image", rightX, metaY, boxW, boxH, 80, 80, 80)
+			r.DrawRect(artX+2, metaY+2, artW-4, artH-4, bg[0], bg[1], bg[2])
+			r.DrawRect(artX+3, metaY+3, artW-6, artH-6, 35, 35, 35)
+			r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, 80, 80, 80)
 		}
-		metaY += boxH + 12
+		metaY += artH + lyt.ContentGap
 
-		lineGap := fontH + 5
-
-		if g.Author != "" {
+		// Metadata below cover art (all static, no tag scrolling)
+		availMetaH := r.H - footerH - metaY
+		if availMetaH > 0 {
 			mt2 := r.Theme.MainText
-			r.DrawText("by "+g.Author, rightX, metaY, mt2[0], mt2[1], mt2[2])
-			metaY += lineGap
-		}
-		// Tags: filter and render as pill badges with vertical-scroll if overflow.
-		filteredTagsBuf = filteredTagsBuf[:0]
-		for _, tag := range g.Tags {
-			if strings.EqualFold(tag, "free") {
-				continue
+
+			// Title
+			if g.Title != "" && metaY < r.H-footerH {
+				titleMaxW := rightW - 4
+				if s.inv.IsPresent(g.URL) || s.inv.HasPendingUpdates(g.URL) || s.inv.IsRemoved(g.URL) {
+					r.DrawBoldText(truncateBoldToWidth(r, g.Title, titleMaxW), rightX, metaY, mt2[0], mt2[1], mt2[2])
+				} else {
+					r.DrawText(truncateToWidth(r, g.Title, titleMaxW), rightX, metaY, mt2[0], mt2[1], mt2[2])
+				}
+				metaY += fontH2 + 2
 			}
-			if len(tag) > 0 && strings.ContainsRune("$€£¥", rune(tag[0])) {
-				continue
+
+			// Author
+			if g.Author != "" && metaY < r.H-footerH {
+				ht2 := r.Theme.HintText
+				r.DrawSmallText("by "+g.Author, rightX, metaY, ht2[0], ht2[1], ht2[2])
+				metaY += smallFH2 + 4
 			}
-			filteredTagsBuf = append(filteredTagsBuf, tag)
-		}
-		if len(filteredTagsBuf) > 0 {
-			ac := r.Theme.Accent
-			aT := r.Theme.AccentText
-			// Measure total pill height to know whether scroll is needed.
-			totalTagH := r.MeasureTagPills(filteredTagsBuf, rightX, rightW, lineGap)
-			availH := r.H - footerH - metaY
-			if availH <= 0 {
-				availH = 0
-			}
-			if totalTagH <= availH {
-				s.tagScrollY = 0
-				// Blend accent toward gray-35 at 50% so the pill is clearly visible against
-				// the black background while keeping the accent hue.
+
+			// Tags as pills (filteredTagsBuf already populated above).
+			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH {
+				ac := r.Theme.Accent
+				aT2 := r.Theme.AccentText
 				bgPill := [3]uint8{
 					uint8((int(ac[0]) + 35) / 2),
 					uint8((int(ac[1]) + 35) / 2),
 					uint8((int(ac[2]) + 35) / 2),
 				}
-				r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
-					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
-				metaY += totalTagH
-			} else {
-				maxTagScroll := totalTagH - availH
-				if s.tagScrollY > maxTagScroll {
-					s.tagScrollY = maxTagScroll
+				tagAreaH := r.H - footerH - metaY
+				if tagAreaH > 0 {
+					r.SetClipRect(rightX, metaY, rightW, tagAreaH)
+					r.DrawTagPills(filteredTagsBuf, rightX, metaY, rightW, lineGap,
+						aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
+					r.ClearClipRect()
 				}
-				if s.tagScrollY == maxTagScroll &&
-					time.Since(s.tagScrollAt) > scrollDelay+time.Duration(maxTagScroll)*time.Second/time.Duration(tagScrollSpeed)+time.Second {
-					s.tagScrollY = 0
-					s.tagScrollAt = time.Now()
-				}
-				r.SetClipRect(rightX, metaY, rightW, availH)
-				bgPill := [3]uint8{
-					uint8((int(ac[0]) + 35) / 2),
-					uint8((int(ac[1]) + 35) / 2),
-					uint8((int(ac[2]) + 35) / 2),
-				}
-				r.DrawTagPills(filteredTagsBuf, rightX, metaY-s.tagScrollY, rightW, lineGap,
-					aT[0], aT[1], aT[2], bgPill[0], bgPill[1], bgPill[2])
-				r.ClearClipRect()
 			}
 		}
 	}
@@ -876,12 +970,16 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	ftrY := r.DrawFooterBar(footerH)
 
 	footerHintsBuf = footerHintsBuf[:0]
-	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"})
-	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "←→", Text: "Page"})
-	if s.cacheReady {
-		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"})
-	}
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "A", Text: "Open"})
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
+	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "Filter"})
+	if s.cacheReady {
+		if r.W <= narrowScreenW {
+			footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "Sort"})
+		} else {
+			footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"})
+		}
+	}
 	if r.W <= narrowScreenW {
 		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Set"})
 	} else {
@@ -940,27 +1038,12 @@ func (s *ListScreen) stopShoulderHold(dir int) {
 	}
 }
 
-func (s *ListScreen) nextSortMode() itchio.SortMode {
-	m := itchio.NextSortMode(s.sortMode)
-	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
-		m = itchio.NextSortMode(m)
-	}
-	return m
-}
-
-func (s *ListScreen) prevSortMode() itchio.SortMode {
-	m := itchio.PrevSortMode(s.sortMode)
-	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
-		m = itchio.PrevSortMode(m)
-	}
-	return m
-}
-
-// changeSortMode applies a new sort mode, resets the cursor to the top, and
-// persists the choice to config.
-func (s *ListScreen) changeSortMode(mode itchio.SortMode) {
-	s.sortMode = mode
-	logger.Info("sort: mode changed to %q (%s)", s.sortMode, itchio.SortModeBadge(s.sortMode))
+// SetFilter updates the active platform filter, sort mode, and search query,
+// rebuilds the view, and persists platform + sort to config.
+func (s *ListScreen) SetFilter(platform, sort, query string) {
+	s.platformFilter = platform
+	s.sortMode = itchio.SortMode(sort)
+	s.searchQuery = query
 	s.rebuildView()
 	s.cursor = 0
 	s.titleScrollX = 0
@@ -969,8 +1052,10 @@ func (s *ListScreen) changeSortMode(mode itchio.SortMode) {
 	s.tagScrollAt = time.Now()
 	s.lastCursorMove = time.Now()
 	s.warmedGameURL = ""
+	s.cfg.PlatformFilter = platform
 	s.cfg.SortMode = string(s.sortMode)
 	go s.cfg.Save(s.cfgPath)
+	logger.Info("filter: platform=%q sort=%q query=%q", platform, sort, query)
 }
 
 func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
@@ -993,14 +1078,22 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		case sdl.K_RIGHT:
 			if ev.Type == sdl.KEYDOWN {
-				s.startShoulderHold(1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, 1) - s.cursor)
+				} else {
+					s.startShoulderHold(1)
+				}
 			} else {
 				s.stopShoulderHold(1)
 			}
 			return s
 		case sdl.K_LEFT:
 			if ev.Type == sdl.KEYDOWN {
-				s.startShoulderHold(-1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, -1) - s.cursor)
+				} else {
+					s.startShoulderHold(-1)
+				}
 			} else {
 				s.stopShoulderHold(-1)
 			}
@@ -1010,18 +1103,6 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Keysym.Sym {
-		case sdl.K_PAGEDOWN:
-			if !s.cacheReady {
-				return s
-			}
-			s.changeSortMode(s.nextSortMode())
-			return s
-		case sdl.K_PAGEUP:
-			if !s.cacheReady {
-				return s
-			}
-			s.changeSortMode(s.prevSortMode())
-			return s
 		case sdl.K_ESCAPE:
 			return nil
 		case sdl.K_RETURN:
@@ -1030,6 +1111,21 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+		case sdl.K_TAB: // SELECT → filter overlay
+			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
+				func(platform, sort, query string) {
+					s.SetFilter(platform, sort, query)
+				})
+		case sdl.K_PAGEDOWN: // R shoulder — cycle sort forward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.nextSortModeSimple()), s.searchQuery)
+			}
+			return s
+		case sdl.K_PAGEUP: // L shoulder — cycle sort backward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.prevSortModeSimple()), s.searchQuery)
+			}
+			return s
 		case sdl.K_x:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
@@ -1067,14 +1163,22 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		case sdl.CONTROLLER_BUTTON_DPAD_RIGHT:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.startShoulderHold(1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, 1) - s.cursor)
+				} else {
+					s.startShoulderHold(1)
+				}
 			} else {
 				s.stopShoulderHold(1)
 			}
 			return s
 		case sdl.CONTROLLER_BUTTON_DPAD_LEFT:
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
-				s.startShoulderHold(-1)
+				if s.isAlphaJumpMode() && s.cacheReady {
+					s.jumpCursor(alphaJumpIndex(s.viewGames, s.cursor, -1) - s.cursor)
+				} else {
+					s.startShoulderHold(-1)
+				}
 			} else {
 				s.stopShoulderHold(-1)
 			}
@@ -1099,17 +1203,20 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
-		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
-			if !s.cacheReady {
-				return s
+		case sdl.CONTROLLER_BUTTON_BACK: // SELECT → filter overlay
+			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
+				func(platform, sort, query string) {
+					s.SetFilter(platform, sort, query)
+				})
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER: // R1 — cycle sort forward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.nextSortModeSimple()), s.searchQuery)
 			}
-			s.changeSortMode(s.nextSortMode())
 			return s
-		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
-			if !s.cacheReady {
-				return s
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER: // L1 — cycle sort backward
+			if s.cacheReady {
+				s.SetFilter(s.platformFilter, string(s.prevSortModeSimple()), s.searchQuery)
 			}
-			s.changeSortMode(s.prevSortMode())
 			return s
 		case sdl.CONTROLLER_BUTTON_X:
 			if s.cursor < len(s.viewGames) {
@@ -1145,6 +1252,40 @@ func (s *ListScreen) badgePrice(url string, price float64) string {
 	v := "$" + strconv.FormatFloat(price, 'f', 2, 64)
 	s.badgePriceCache[url] = v
 	return v
+}
+
+// platformLabel returns the display label for the current platform filter.
+func (s *ListScreen) platformLabel() string {
+	if s.platformFilter == "" {
+		return "All"
+	}
+	return s.platformFilter
+}
+
+// isAlphaJumpMode reports whether the current sort mode uses alpha-jump navigation
+// for D-pad left/right.
+func (s *ListScreen) isAlphaJumpMode() bool {
+	return s.sortMode == itchio.SortModeAZ || s.sortMode == itchio.SortModeZA
+}
+
+// nextSortModeSimple returns the next sort mode in the cycle, skipping Owned
+// when no owned games are loaded.
+func (s *ListScreen) nextSortModeSimple() itchio.SortMode {
+	m := itchio.NextSortMode(s.sortMode)
+	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
+		m = itchio.NextSortMode(m)
+	}
+	return m
+}
+
+// prevSortModeSimple returns the previous sort mode in the cycle, skipping Owned
+// when no owned games are loaded.
+func (s *ListScreen) prevSortModeSimple() itchio.SortMode {
+	m := itchio.PrevSortMode(s.sortMode)
+	if m == itchio.SortModeOwned && len(s.ownedURLs) == 0 {
+		m = itchio.PrevSortMode(m)
+	}
+	return m
 }
 
 // cachedTruncate returns a memoised truncated title, computing it only once per
@@ -1263,7 +1404,14 @@ func (s *ListScreen) rebuildView() {
 			removed[g.URL] = true
 		}
 	}
-	s.viewGames = itchio.ApplySort(s.cachedGames, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
+	filtered := s.cachedGames
+	if s.platformFilter != "" {
+		filtered = applyPlatformFilter(filtered, s.platformFilter)
+	}
+	if s.searchQuery != "" {
+		filtered = applySearchFilter(filtered, s.searchQuery)
+	}
+	s.viewGames = itchio.ApplySort(filtered, s.sortMode, downloaded, pendingUpdates, removed, s.ownedURLs)
 	n := len(s.viewGames)
 	s.totalGames.Store(int32(n))
 	s.totalPages.Store(int32((n + itchio.PerPage - 1) / itchio.PerPage))

@@ -54,7 +54,7 @@ func TestInspectRemoteZIP_RangeSupported(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip", nil)
 	if err != nil {
 		t.Fatalf("InspectRemoteZIP error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestInspectRemoteZIP_FallbackOn200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip", nil)
 	if err != nil {
 		t.Fatalf("InspectRemoteZIP fallback error: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestInspectRemoteZIP_HeadForbiddenRangeProbe(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip", nil)
 	if err != nil {
 		t.Fatalf("InspectRemoteZIP error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestInspectRemoteZIP_MusicOnly(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip")
+	manifest, err := roms.InspectRemoteZIP(srv.Client(), srv.URL+"/test.zip", nil)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}

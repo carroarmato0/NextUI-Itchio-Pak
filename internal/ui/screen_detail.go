@@ -270,11 +270,44 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
 
 	mt := r.Theme.MainText
-	title := truncateToWidth(r, s.game.Title, r.W-24)
+	ht := r.Theme.HintText
+
+	// Right-side badges — platform and download status.
+	// Compute badge positions right-to-left so they never overlap with title.
+	badgeRightEdge := r.W - 10
+	badgePillH := smallFH + 4
+
+	if s.game.Platform != "" {
+		platLabel := s.game.Platform
+		pw, _ := r.SmallTextSize(platLabel)
+		platPillW := pw + 12
+		platPillX := badgeRightEdge - platPillW
+		platPillY := (headerH - badgePillH) / 2
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, 35, 45, 65)
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, 130, 170, 210)
+		badgeRightEdge = platPillX - 6
+	}
+
+	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
+		dlLabel := "● Downloaded"
+		if r.W <= narrowScreenW {
+			dlLabel = "● DL"
+		}
+		dw, _ := r.SmallTextSize(dlLabel)
+		dlPillW := dw + 12
+		dlPillX := badgeRightEdge - dlPillW
+		dlPillY := (headerH - badgePillH) / 2
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, 25, 50, 30)
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, 70, 190, 90)
+		badgeRightEdge = dlPillX - 6
+	}
+
+	// Title truncated to stay clear of badges.
+	maxTitleW := badgeRightEdge - 16
+	title := truncateToWidth(r, s.game.Title, maxTitleW)
 	blockH := mainFH + 4 + smallFH
 	titleY := (headerH - blockH) / 2
 	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
-	ht := r.Theme.HintText
 	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
@@ -287,7 +320,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// ── Loading state ───────────────────────────────────────
 	// Use the same column geometry as the loaded layout so the image
 	// doesn't jump in size once the QR code and detail data arrive.
-	qrColW := r.W / 4
+	// QR column narrower than before — screenshot gets more horizontal space.
+	qrColW := r.W / 5
+	if r.W <= narrowScreenW {
+		qrColW = r.W / 6
+	}
 	imgAreaW := r.W - qrColW - margin - 10
 	imgBoxW := imgAreaW - margin
 	imgBoxH := contentH * 2 / 3
@@ -412,15 +449,31 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 
 	if isPresent {
+		// Row 2: action button LEFT + status card RIGHT on the same line.
+		rowY := y
+		rowH := fontH + 14
+		aT := r.Theme.AccentText
+
+		// Determine action label.
+		var actionLabel string
+		var actionR, actionG, actionB uint8
 		if s.game.IsFree {
-			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], 0)
+			actionLabel, actionR, actionG, actionB = "Download again", 80, 200, 80
 		} else if s.cfg.APIKey == "" {
-			drawActionRow("A", "Purchase required", 220, 180, 60, 100, 80, 20, s.game.Price)
+			actionLabel, actionR, actionG, actionB = "Purchase required", 220, 180, 60
 		} else {
-			drawActionRow("A", "Download again", 80, 200, 80, ac[0], ac[1], ac[2], s.game.Price)
+			actionLabel, actionR, actionG, actionB = "Download again", 80, 200, 80
 		}
 
-		// Status card: [DL] scrolling-path [X] Delete — groups on-device info + action.
+		// Draw action badge + label.
+		d := fontH + 4
+		r.DrawCircleBadge(margin+d/2, rowY+d/2, d, ac[0], ac[1], ac[2])
+		r.DrawSmallTextCenteredInRect("A", margin, rowY, d, d, aT[0], aT[1], aT[2])
+		r.DrawText(actionLabel, margin+d+8, rowY, actionR, actionG, actionB)
+		alW, _ := r.TextSize(actionLabel)
+		actionEndX := margin + d + 8 + alW
+
+		// Status card occupies the remaining width on the same row.
 		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
 			f := entry.Files[0]
 			pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
@@ -428,8 +481,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				pathText += " (+" + strconv.Itoa(len(entry.Files)-1) + " more)"
 			}
 
-			const cp = int32(8)  // card inner padding
-			const dlBp = int32(5) // DL pill horizontal padding
+			const cp = int32(8)
+			const dlBp = int32(5)
 
 			dlW, _ := r.SmallTextSize("DL")
 			dlPillW := dlW + dlBp*2
@@ -439,43 +492,48 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			delLabelW, _ := r.SmallTextSize("Delete")
 			delBlockW := delCircleD + 6 + delLabelW
 
+			cardX := actionEndX + 12
+			cardW := r.W - margin - cardX
 			cardH := dlPillH + cp*2
-			cardW := r.W - margin*2
 
-			// Thin border + dark fill
-			r.DrawRect(margin, y, cardW, cardH, 42, 42, 58)
-			r.DrawRect(margin+1, y+1, cardW-2, cardH-2, 10, 10, 18)
+			// Align card vertically with the action button.
+			cardY := rowY + (rowH-cardH)/2
+			if cardY < rowY {
+				cardY = rowY
+			}
 
-			// DL pill (left)
-			r.DrawPill(margin+cp, y+cp, dlPillW, dlPillH, 80, 200, 220)
-			r.DrawSmallTextCenteredInRect("DL", margin+cp, y+cp, dlPillW, dlPillH, 20, 20, 20)
+			r.DrawRect(cardX, cardY, cardW, cardH, 42, 42, 58)
+			r.DrawRect(cardX+1, cardY+1, cardW-2, cardH-2, 10, 10, 18)
 
-			// [X] Delete (right, vertically centered)
-			delCircleX := margin + cardW - cp - delBlockW
+			r.DrawPill(cardX+cp, cardY+cp, dlPillW, dlPillH, 80, 200, 220)
+			r.DrawSmallTextCenteredInRect("DL", cardX+cp, cardY+cp, dlPillW, dlPillH, 20, 20, 20)
+
+			delCircleX := cardX + cardW - cp - delBlockW
 			delCircleCX := delCircleX + delCircleD/2
-			delCircleCY := y + cardH/2
-			aT := r.Theme.AccentText
+			delCircleCY := cardY + cardH/2
 			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, 160, 50, 50)
-			r.DrawSmallTextCenteredInRect("X", delCircleX, y+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
-			r.DrawSmallText("Delete", delCircleX+delCircleD+6, y+cp+2, 200, 80, 80)
+			r.DrawSmallTextCenteredInRect("X", delCircleX, cardY+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
+			r.DrawSmallText("Delete", delCircleX+delCircleD+6, cardY+cp+2, 200, 80, 80)
 
-			// Scrolling path text (clipped between DL pill and delete block)
-			textX := margin + cp + dlPillW + 6
+			textX := cardX + cp + dlPillW + 6
 			textMaxW := delCircleX - textX - 4
 			pathW, _ := r.SmallTextSize(pathText)
 
-			r.SetClipRect(textX, y, textMaxW, cardH)
+			r.SetClipRect(textX, cardY, textMaxW, cardH)
 			if pathW <= textMaxW {
 				s.pathScrollX = 0
-				r.DrawSmallText(pathText, textX, y+cp+2, 100, 100, 120)
+				r.DrawSmallText(pathText, textX, cardY+cp+2, 100, 100, 120)
+			} else if r.W <= narrowScreenW {
+				// On small screens truncate the path rather than scrolling.
+				truncated := truncateSmallToWidth(r, pathText, textMaxW)
+				r.DrawSmallText(truncated, textX, cardY+cp+2, 100, 100, 120)
 			} else {
 				maxScrollX := pathW - textMaxW
 				scrollX := s.pathScrollX
 				if scrollX > maxScrollX {
 					scrollX = maxScrollX
 				}
-				r.DrawSmallText(pathText, textX-scrollX, y+cp+2, 100, 100, 120)
-				// Reset scroll once we've paused at the end long enough
+				r.DrawSmallText(pathText, textX-scrollX, cardY+cp+2, 100, 100, 120)
 				if s.pathScrollX >= maxScrollX {
 					totalDur := pathScrollDelay +
 						time.Duration(maxScrollX)*time.Second/time.Duration(pathScrollSpeed) +
@@ -486,11 +544,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 					}
 				}
 			}
-			// Restore outer content clip (don't fully clear — that would unclip the header area)
 			r.SetClipRect(0, contentTop, r.W, contentH)
 
-			y += cardH + 10
-
+			// Unified naming toggle (below the combined row, if applicable)
+			y = rowY + rowH + 4
 			if s.cfg.UnifiedNaming {
 				toggleLabel := "Disable title filename"
 				if entry.UnifiedNamingDisabled {
@@ -498,6 +555,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				}
 				drawActionRow("Y", toggleLabel, mt[0], mt[1], mt[2], ac[0], ac[1], ac[2], 0)
 			}
+		} else {
+			y = rowY + rowH + 4
 		}
 	} else {
 		if s.game.IsFree {
@@ -529,11 +588,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += tagsH + 10
 	}
 
-	// ── Description (full width) ────────────────────────────
+	// ── Description (full width, HTML-formatted) ─────────────
 	if s.detail != nil && s.detail.Description != "" {
-		r.DrawRect(margin, y, usableW, 1, 50, 50, 50) // separator
+		r.DrawRect(margin, y, usableW, 1, 50, 50, 50)
 		y += 11
-		descH := r.DrawWrappedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
+		descH := r.DrawFormattedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
 		y += descH
 	}
 
@@ -546,6 +605,32 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// obscured by content that scrolled toward the top of the screen.
 	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+	if s.game.Platform != "" {
+		platLabel := s.game.Platform
+		pw, _ := r.SmallTextSize(platLabel)
+		platPillW := pw + 12
+		platPillX := r.W - 10 - platPillW
+		platPillY := (headerH - badgePillH) / 2
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, 35, 45, 65)
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, 130, 170, 210)
+	}
+	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
+		dlLabel := "● Downloaded"
+		if r.W <= narrowScreenW {
+			dlLabel = "● DL"
+		}
+		dw, _ := r.SmallTextSize(dlLabel)
+		dlPillW := dw + 12
+		redrawBadgeRight := r.W - 10
+		if s.game.Platform != "" {
+			pw, _ := r.SmallTextSize(s.game.Platform)
+			redrawBadgeRight = redrawBadgeRight - (pw + 12) - 6
+		}
+		dlPillX := redrawBadgeRight - dlPillW
+		dlPillY := (headerH - badgePillH) / 2
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, 25, 50, 30)
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, 70, 190, 90)
+	}
 	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
 	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 

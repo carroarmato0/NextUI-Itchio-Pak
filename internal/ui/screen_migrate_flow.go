@@ -156,7 +156,7 @@ func (s *MigrateFlowScreen) runMigration() {
 	}
 }
 
-func (s *MigrateFlowScreen) NeedsRedraw() bool { return false }
+func (s *MigrateFlowScreen) NeedsRedraw() bool { return s.state == mfsRunning }
 func (s *MigrateFlowScreen) HasPendingAnimation() bool { return false }
 
 func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
@@ -221,7 +221,8 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 		}, ftrY)
 
 	case mfsRunning:
-		r.DrawTextCentered("Renaming…", 0, mid, r.W, mt[0], mt[1], mt[2])
+		r.DrawTextCentered("Renaming", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
+		drawLoadingDots(r, mid+8)
 
 	case mfsDone:
 		r.DrawTextCentered("Done!", 0, mid-fontH, r.W, 80, 200, 80)

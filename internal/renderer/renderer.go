@@ -516,6 +516,54 @@ func (r *Renderer) DrawFooterBar(h int32) int32 {
 	return r.H - h + 2 + (h-2-fh)/2
 }
 
+// DrawFilledTriangle rasterises a solid filled triangle defined by three vertices.
+// Uses horizontal spans collected into a stack-allocated buffer, then emitted in
+// one FillRects call to minimise CGo crossings.
+func (r *Renderer) DrawFilledTriangle(x0, y0, x1, y1, x2, y2 int32, red, green, blue uint8) {
+	// Sort vertices top→bottom by y.
+	if y0 > y1 {
+		x0, y0, x1, y1 = x1, y1, x0, y0
+	}
+	if y0 > y2 {
+		x0, y0, x2, y2 = x2, y2, x0, y0
+	}
+	if y1 > y2 {
+		x1, y1, x2, y2 = x2, y2, x1, y1
+	}
+
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	r.Renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+
+	// interp returns x along edge (ax,ay)→(bx,by) at scanline y.
+	interp := func(ax, ay, bx, by, y int32) int32 {
+		d := by - ay
+		if d == 0 {
+			return ax
+		}
+		return ax + (bx-ax)*(y-ay)/d
+	}
+
+	var rects [256]sdl.Rect
+	n := 0
+	for y := y0; y <= y2 && n < len(rects); y++ {
+		a := interp(x0, y0, x2, y2, y) // long edge top→bottom
+		var b int32
+		if y <= y1 {
+			b = interp(x0, y0, x1, y1, y)
+		} else {
+			b = interp(x1, y1, x2, y2, y)
+		}
+		if a > b {
+			a, b = b, a
+		}
+		rects[n] = sdl.Rect{X: a, Y: y, W: b - a + 1, H: 1}
+		n++
+	}
+	if n > 0 {
+		r.Renderer.FillRects(rects[:n])
+	}
+}
+
 // DrawWrappedText renders word-wrapped text starting at (x, y) within maxWidth,
 // using lineH pixels between lines. Returns the total height used.
 func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red, green, blue uint8) int32 {
@@ -526,6 +574,166 @@ func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red
 		}
 	}
 	return int32(len(lines)) * lineH
+}
+
+// descStripInlineTags removes all HTML tags from s, returning plain text.
+// Used by DrawFormattedText to extract readable text from inline-tagged markup.
+func descStripInlineTags(s string) string {
+	var buf strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '<' {
+			end := strings.IndexByte(s[i:], '>')
+			if end < 0 {
+				break
+			}
+			i += end + 1
+			continue
+		}
+		buf.WriteByte(s[i])
+		i++
+	}
+	return strings.Join(strings.Fields(buf.String()), " ")
+}
+
+// descClampU8 clamps an int value to [0, 255].
+func descClampU8(v int) uint8 {
+	if v > 255 {
+		return 255
+	}
+	if v < 0 {
+		return 0
+	}
+	return uint8(v)
+}
+
+// DrawFormattedText renders a description string containing a limited subset
+// of HTML markup produced by extractDescription: <p>, <br>, <h2>, <b>,
+// <ul>, <ol>, <li>. Block-level structure (paragraphs, headings, list items)
+// is honoured; inline <b> content is rendered in a slightly brighter colour.
+// Returns the total pixel height consumed.
+func (r *Renderer) DrawFormattedText(markup string, x, y, maxW, lineH int32,
+	baseR, baseG, baseB uint8) int32 {
+	startY := y
+	_, fontH := r.TextSize("Ag")
+
+	// Brightened colour for headings and bold text.
+	boldR := descClampU8(int(baseR) + 55)
+	boldG := descClampU8(int(baseG) + 55)
+	boldB := descClampU8(int(baseB) + 55)
+
+	listType := "" // "ul" or "ol"
+	listCounter := 0
+
+	lower := strings.ToLower
+
+	i := 0
+	for i < len(markup) {
+		if markup[i] != '<' {
+			// Bare text — find next tag
+			end := strings.IndexByte(markup[i:], '<')
+			var text string
+			if end < 0 {
+				text = strings.TrimSpace(markup[i:])
+				i = len(markup)
+			} else {
+				text = strings.TrimSpace(markup[i : i+end])
+				i += end
+			}
+			if text != "" {
+				y += r.DrawWrappedText(text, x, y, maxW, lineH, baseR, baseG, baseB)
+			}
+			continue
+		}
+
+		// Parse tag
+		end := strings.IndexByte(markup[i:], '>')
+		if end < 0 {
+			break
+		}
+		tag := strings.TrimSpace(lower(markup[i+1 : i+end]))
+		i += end + 1
+
+		switch tag {
+		case "p":
+			closeIdx := strings.Index(lower(markup[i:]), "</p>")
+			if closeIdx < 0 {
+				closeIdx = len(markup) - i
+			}
+			pText := descStripInlineTags(markup[i : i+closeIdx])
+			if pText != "" {
+				if y > startY {
+					y += fontH / 3
+				}
+				y += r.DrawWrappedText(pText, x, y, maxW, lineH, baseR, baseG, baseB)
+				y += fontH / 3
+			}
+			if closeIdx < len(markup)-i {
+				i += closeIdx + 4
+			} else {
+				i = len(markup)
+			}
+
+		case "h2":
+			closeIdx := strings.Index(lower(markup[i:]), "</h2>")
+			if closeIdx < 0 {
+				closeIdx = len(markup) - i
+			}
+			hText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
+			if hText != "" {
+				if y > startY {
+					y += fontH / 2
+				}
+				r.DrawBoldText(hText, x, y, boldR, boldG, boldB)
+				y += lineH + fontH/4
+			}
+			if closeIdx < len(markup)-i {
+				i += closeIdx + 5
+			} else {
+				i = len(markup)
+			}
+
+		case "ul":
+			listType = "ul"
+		case "ol":
+			listType = "ol"
+			listCounter = 0
+		case "/ul", "/ol":
+			listType = ""
+			listCounter = 0
+			y += fontH / 4
+
+		case "li":
+			closeIdx := strings.Index(lower(markup[i:]), "</li>")
+			if closeIdx < 0 {
+				closeIdx = len(markup) - i
+			}
+			liText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
+			if liText != "" {
+				var prefix string
+				if listType == "ol" {
+					listCounter++
+					prefix = fmt.Sprintf("%d.  ", listCounter)
+				} else {
+					prefix = "•  "
+				}
+				_, smallFH := r.SmallTextSize("Ag")
+				pw, _ := r.SmallTextSize(prefix)
+				r.DrawSmallText(prefix, x, y+(lineH-smallFH)/2, baseR, baseG, baseB)
+				y += r.DrawWrappedText(liText, x+pw, y, maxW-pw, lineH, baseR, baseG, baseB)
+				y += fontH / 6
+			}
+			if closeIdx < len(markup)-i {
+				i += closeIdx + 5
+			} else {
+				i = len(markup)
+			}
+
+		case "br":
+			y += lineH / 2
+		}
+	}
+	return y - startY
 }
 
 // DrawPill draws a filled pill (capsule) shape.
@@ -597,16 +805,31 @@ func (r *Renderer) createPillTexture(w, h int32, red, green, blue uint8) *sdl.Te
 	r.Renderer.SetDrawColor(0, 0, 0, 0)
 	r.Renderer.Clear()
 
+	// Clip to texture bounds. drawFilledCircleRawAlpha renders 1-px fringe
+	// pixels at cx±(radius+1) which can land outside the texture. On some GPU
+	// implementations out-of-bounds writes wrap modulo the texture width,
+	// producing a misplaced half-alpha pixel inside the pill (visible artifact).
+	clipRect := sdl.Rect{X: 0, Y: 0, W: w, H: h}
+	r.Renderer.SetClipRect(&clipRect)
+
 	radius := h / 2
 	if radius < 1 {
 		radius = 1
 	}
+	// Draw end caps first. Their inner fringe pixels (alpha=128, BLENDMODE_NONE)
+	// may land inside the future body rectangle at rows near the top and bottom
+	// of the caps. Drawing the body AFTER overwrites those inner fringe pixels
+	// with full opacity, preventing semi-transparent holes inside the pill.
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	drawFilledCircleRawAlpha(r.Renderer, radius, radius, radius, red, green, blue)
+	drawFilledCircleRawAlpha(r.Renderer, w-radius, radius, radius, red, green, blue)
+	// drawFilledCircleRawAlpha leaves the draw color at alpha=128 (fringe).
+	// Reset to fully opaque before drawing the body so FillRect uses alpha=255.
 	r.Renderer.SetDrawColor(red, green, blue, 255)
 	pillBodyBuf = sdl.Rect{X: radius, Y: 0, W: w - radius*2, H: h}
 	r.Renderer.FillRect(&pillBodyBuf)
-	drawFilledCircleRawAlpha(r.Renderer, radius, radius, radius, red, green, blue)
-	drawFilledCircleRawAlpha(r.Renderer, w-radius, radius, radius, red, green, blue)
 
+	r.Renderer.SetClipRect(nil) // restore before switching render target
 	r.Renderer.SetRenderTarget(prev)
 	r.Renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 	return tex
@@ -689,10 +912,12 @@ func drawFilledCircle(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue 
 	}
 }
 
-// drawFilledCircleRawAlpha is identical to drawFilledCircle but always uses
-// BLENDMODE_NONE, writing literal alpha values into the target. Used when
-// rendering into a texture so that fringe pixels are stored as (r,g,b,128)
-// rather than blended against the transparent clear colour.
+// drawFilledCircleRawAlpha renders a filled circle into a texture target using
+// BLENDMODE_NONE (raw alpha write). Fringe pixels are intentionally omitted:
+// with BLENDMODE_NONE, fringe pixels (alpha=128) overwrite already-drawn solid
+// pixels (alpha=255), producing semi-transparent holes when two circles overlap
+// (short pill) or when the body rect subsequently covers the same area. At
+// pill heights of 28–41 px the 1-px aliased edge is imperceptible.
 func drawFilledCircleRawAlpha(ren *sdl.Renderer, cx, cy, radius int32, red, green, blue uint8) {
 	if radius > maxCircleRadius {
 		radius = maxCircleRadius
@@ -702,15 +927,9 @@ func drawFilledCircleRawAlpha(ren *sdl.Renderer, cx, cy, radius int32, red, gree
 	for i, dxi := range ext {
 		iy := cy + int32(i) - radius
 		circleRectBuf[i] = sdl.Rect{X: cx - dxi, Y: iy, W: dxi*2 + 1, H: 1}
-		circleRectBuf[n+i*2] = sdl.Rect{X: cx - dxi - 1, Y: iy, W: 1, H: 1}
-		circleRectBuf[n+i*2+1] = sdl.Rect{X: cx + dxi + 1, Y: iy, W: 1, H: 1}
 	}
 	ren.SetDrawColor(red, green, blue, 255)
 	ren.FillRects(circleRectBuf[:n])
-	if radius >= 4 {
-		ren.SetDrawColor(red, green, blue, 128)
-		ren.FillRects(circleRectBuf[n : n+n*2])
-	}
 }
 
 // MeasureTagPills returns the total pixel height that DrawTagPills would consume
@@ -813,4 +1032,47 @@ func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
 			cx += 8
 		}
 	}
+}
+
+// DrawModal draws a centred modal overlay with a title, wrapped body text, and
+// footer hints. Used for confirmations and informational dialogs across all screens.
+func (r *Renderer) DrawModal(title, body string, hints []FooterHint) {
+	_, fontH := r.TextSize("Ag")
+	lineH := fontH + 4
+
+	marginX := r.W / 8
+	pad := int32(20)
+	panelW := r.W - marginX*2
+	bodyMaxW := panelW - pad*2
+
+	bodyLines := r.WrapText(body, bodyMaxW)
+	bodyH := int32(len(bodyLines)) * lineH
+	hintsH := int32(44)
+	panelH := pad + fontH + pad/2 + bodyH + pad + hintsH
+	if panelH > r.H*4/5 {
+		panelH = r.H * 4 / 5
+	}
+
+	panelX := marginX
+	panelY := (r.H - panelH) / 2
+
+	bg := r.Theme.Background
+	// Fill
+	r.DrawRect(panelX, panelY, panelW, panelH, bg[0]+20, bg[1]+20, bg[2]+20)
+	// Border (1px on each edge)
+	r.DrawRect(panelX, panelY, panelW, 1, 70, 70, 100)
+	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, 70, 70, 100)
+	r.DrawRect(panelX, panelY, 1, panelH, 70, 70, 100)
+	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, 70, 70, 100)
+
+	// Title
+	mt := r.Theme.MainText
+	r.DrawTextCentered(title, panelX, panelY+pad, panelW, mt[0], mt[1], mt[2])
+
+	// Body
+	ht := r.Theme.HintText
+	r.DrawWrappedText(body, panelX+pad, panelY+pad+fontH+pad/2, bodyMaxW, lineH, ht[0], ht[1], ht[2])
+
+	// Hints
+	r.DrawFooterHints(hints, panelY+panelH-hintsH)
 }

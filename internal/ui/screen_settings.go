@@ -11,7 +11,6 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
-	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
@@ -44,10 +43,6 @@ const (
 	sItemCount
 )
 
-const (
-	apiKeySetupURL  = "https://github.com/carroarmato0/NextUI-Itchio-Pak#adding-the-key-to-the-pak"
-	apiKeySetupBody = "Paid games require an Itch.io API key. Scan the QR code below for instructions on how to add it."
-)
 
 type SettingsScreen struct {
 	client         *itchio.Client
@@ -71,8 +66,9 @@ type SettingsScreen struct {
 	heldSince  time.Time
 	lastRepeat time.Time
 
-	showAPIKeyHelp bool
-	apiKeyHelpQR   *sdl.Texture
+	// pendingKeyTest is set by the keyboard callback to trigger a KeyTestScreen
+	// transition on the next event cycle (after the keyboard closes).
+	pendingKeyTest bool
 }
 
 func NewSettingsScreen(
@@ -330,20 +326,18 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
-		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
+		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
 	if s.cursor == sItemAPIKey {
 		if s.cfg.APIKey != "" {
-			hints[1].Text = "Test API key"
+			hints[0].Text = "Test"
+			hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "Y", Text: "Edit key"})
 		} else {
-			hints[1].Text = "Setup guide"
+			hints[0].Text = "Enter key"
 		}
 	}
 	r.DrawFooterHints(hints, ftrY)
-	if s.showAPIKeyHelp {
-		s.drawAPIKeyHelpOverlay(r)
-	}
 	r.Present()
 }
 
@@ -364,24 +358,29 @@ func (s *SettingsScreen) stopHold(dir int) {
 	}
 }
 
+// openKeyboardForAPIKey opens the virtual keyboard for entering or editing the
+// API key. seed is pre-filled (use s.cfg.APIKey to edit an existing key, or ""
+// to enter a new one). On confirm, the key is saved and a KeyTestScreen is
+// shown so the user sees the validation result immediately.
+func (s *SettingsScreen) openKeyboardForAPIKey() Screen {
+	seed := s.cfg.APIKey
+	return NewKeyboardScreen(s, seed, func(value string) {
+		if value == "" || value == seed {
+			return // no change
+		}
+		s.cfg.APIKey = value
+		go s.cfg.Save(s.cfgPath)
+		logger.Info("settings: API key updated via keyboard, len=%d", len(value))
+		s.pendingKeyTest = true
+	})
+}
+
 func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
-	if s.showAPIKeyHelp {
-		dismiss := false
-		switch ev := e.(type) {
-		case *sdl.KeyboardEvent:
-			dismiss = ev.Type == sdl.KEYDOWN
-		case *sdl.ControllerButtonEvent:
-			dismiss = ev.Type == sdl.CONTROLLERBUTTONDOWN
-		}
-		if dismiss {
-			s.showAPIKeyHelp = false
-			if s.apiKeyHelpQR != nil {
-				s.apiKeyHelpQR.Destroy()
-				s.apiKeyHelpQR = nil
-			}
-			logger.Debug("settings: API key help overlay dismissed")
-		}
-		return s
+	// Keyboard confirmed a new API key — transition to KeyTestScreen now that
+	// the keyboard has closed and we are back on the event loop.
+	if s.pendingKeyTest {
+		s.pendingKeyTest = false
+		return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 	}
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
@@ -410,6 +409,10 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
+		case sdl.K_y: // physical Y — edit API key when one is already set
+			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+				return s.openKeyboardForAPIKey()
+			}
 		case sdl.K_ESCAPE:
 			return s.prev
 		case sdl.K_s:
@@ -441,6 +444,10 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
+		case sdl.CONTROLLER_BUTTON_X: // physical Y — edit API key when one is already set
+			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
+				return s.openKeyboardForAPIKey()
+			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return s.prev
 		case sdl.CONTROLLER_BUTTON_START:
@@ -488,8 +495,7 @@ func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
 	case sItemAPIKey:
 		if s.cfg.APIKey == "" {
-			s.showAPIKeyHelp = true
-			logger.Info("settings: API key help overlay shown")
+			return s.openKeyboardForAPIKey()
 		}
 	case sItemROMLocation:
 		if s.cfg.ROMLocation == "auto" {
@@ -500,22 +506,11 @@ func (s *SettingsScreen) activate() Screen {
 		s.cfg.Save(s.cfgPath)
 	case sItemPico8Core:
 		oldCore := s.cfg.Pico8Core
-		if oldCore == "pico8" {
-			s.cfg.Pico8Core = "fakeo8"
-		} else {
-			s.cfg.Pico8Core = "pico8"
+		newCore := "fakeo8"
+		if oldCore == "fakeo8" {
+			newCore = "pico8"
 		}
-		oldDir := roms.Pico8ROMDir(oldCore)
-		newDir := roms.Pico8ROMDir(s.cfg.Pico8Core)
-		if err := inventory.MigratePico8Files(s.inv, s.invPath, oldDir, newDir); err != nil {
-			logger.Warn("settings: pico8 core migration failed: %v", err)
-			s.cfg.Pico8Core = oldCore // revert
-			return nil
-		}
-		if err := s.cfg.Save(s.cfgPath); err != nil {
-			logger.Warn("settings: save failed after pico8 core switch: %v", err)
-		}
-		logger.Info("settings: pico8 core changed to %s", s.cfg.Pico8Core)
+		return NewPico8CoreMigrateScreen(s.cfg, s.cfgPath, s.inv, s.invPath, oldCore, newCore, s)
 	case sItemMusicDownload:
 		switch s.cfg.MusicDownload {
 		case "off":
@@ -580,67 +575,3 @@ func (s *SettingsScreen) activate() Screen {
 	return s
 }
 
-func (s *SettingsScreen) drawAPIKeyHelpOverlay(r *renderer.Renderer) {
-	_, fontH := r.TextSize("Ag")
-	_, smallFH := r.SmallTextSize("Ag")
-	lineH := fontH + 4
-
-	pad := int32(20)
-	panelW := r.W * 6 / 10
-	bodyMaxW := panelW - pad*2
-
-	// Pre-measure body text to correctly size the panel.
-	bodyLines := r.WrapText(apiKeySetupBody, bodyMaxW)
-	bodyH := int32(len(bodyLines)) * lineH
-
-	// QR size: 40% of panel width, clamped to [80, 160].
-	qrSize := panelW * 4 / 10
-	if qrSize > 160 {
-		qrSize = 160
-	}
-	if qrSize < 80 {
-		qrSize = 80
-	}
-
-	panelH := pad + fontH + 8 + bodyH + 12 + qrSize + 6 + smallFH + pad
-	panelX := (r.W - panelW) / 2
-	panelY := (r.H - panelH) / 2
-
-	// 2px accent-coloured border drawn as a slightly larger rect behind the panel.
-	ac := r.Theme.Accent
-	r.DrawRect(panelX-2, panelY-2, panelW+4, panelH+4, ac[0], ac[1], ac[2])
-
-	// Solid panel background.
-	bg := r.Theme.Background
-	r.DrawRect(panelX, panelY, panelW, panelH, bg[0], bg[1], bg[2])
-
-	// Title.
-	mt := r.Theme.MainText
-	y := panelY + pad
-	r.DrawTextCentered("API Key Setup", panelX, y, panelW, mt[0], mt[1], mt[2])
-	y += fontH + 8
-
-	// Body text.
-	ht := r.Theme.HintText
-	r.DrawWrappedText(apiKeySetupBody, panelX+pad, y, bodyMaxW, lineH, ht[0], ht[1], ht[2])
-	y += bodyH + 12
-
-	// QR code — lazily generated and cached for the lifetime of the overlay.
-	if s.apiKeyHelpQR == nil {
-		tex, err := r.QRTexture(apiKeySetupURL, int(qrSize))
-		if err != nil {
-			logger.Warn("settings: API key help QR generation failed: %v", err)
-		} else {
-			s.apiKeyHelpQR = tex
-			logger.Debug("settings: API key help QR texture generated")
-		}
-	}
-	if s.apiKeyHelpQR != nil {
-		qrX := panelX + (panelW-qrSize)/2
-		r.DrawTextureAt(s.apiKeyHelpQR, qrX, y, qrSize, qrSize)
-	}
-	y += qrSize + 6
-
-	// Caption.
-	r.DrawSmallTextCentered("Scan to open setup guide", panelX, y, panelW, 120, 120, 120)
-}
