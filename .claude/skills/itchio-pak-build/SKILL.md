@@ -21,6 +21,27 @@ description: Use when building, testing, cross-compiling, releasing, or deployin
 
 All commands also available as `make <target>`: `test`, `build-native`, `build-all`, `release`, `deploy`, `clean`.
 
+## ⚠️ Build vs Deploy — Critical Distinction
+
+`build.sh <platform>` and `deploy.sh` are **NOT** a paired workflow:
+
+- `build.sh tg5040` → writes binary to `bin/tg5040/itchio-pak` **only**
+- `deploy.sh` → pushes `dist/Itch-io.pak/` which is only populated by `release.sh`
+
+**Running `build.sh` then `deploy.sh` deploys a stale binary from a previous release.**
+
+### For quick dev/test iteration (code changes only):
+```sh
+./scripts/build.sh tg5040
+adb push bin/tg5040/itchio-pak /mnt/SDCARD/Tools/tg5040/Itch-io.pak/itchio-pak
+```
+
+### For a full release deploy (binary + assets + libs):
+```sh
+./scripts/release.sh   # builds all platforms, populates dist/
+./scripts/deploy.sh    # pushes dist/Itch-io.pak/ to device
+```
+
 ## Container Runtime Selection
 
 `scripts/build.sh` auto-detects at runtime:
