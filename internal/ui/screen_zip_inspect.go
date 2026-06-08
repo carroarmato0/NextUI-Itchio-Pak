@@ -290,6 +290,28 @@ func (s *ZIPInspectScreen) route() Screen {
 		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
 	}
 
+	// Mixed Pico-8 ZIP: one compiled .p8.png alongside .p8 source files.
+	// The .p8.png is self-contained; .p8 text files are source/build artifacts
+	// the emulator does not need. Extract only the .p8.png flat into the ROM
+	// root, suppressing the source files.
+	if p8PNGEntries := m.ROMsByExt()[".p8.png"]; len(p8PNGEntries) == 1 && len(m.ROMsByExt()[".p8"]) > 0 {
+		plan := s.plan
+		plan.DownloadROMs = true
+		plan.SelectedROMs = map[string]string{
+			".p8.png": filepath.Base(p8PNGEntries[0].Name),
+			".p8":     "", // suppress source files
+		}
+		plan.DownloadMusic = m.HasMusic() && s.cfg.MusicDownload == "auto"
+		if plan.DownloadMusic {
+			if s.cfg.MusicLocation == "ask" {
+				return NewMusicLocationPickerScreen(s.client, s.cfg, s.cfgPath,
+					s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+			}
+			plan.MusicDir = roms.MusicDestinationDir(s.game.Title)
+		}
+		return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+	}
+
 	// Multi-file Pico-8: extract all .p8/.p8.png/.lua files to a game
 	// subdirectory, preserving the ZIP's relative path structure.
 	if m.IsPico8MultiFileGame() {
