@@ -68,6 +68,13 @@ func NewFetchUploadsScreen(
 		inv: inv, inventoryPath: inventoryPath,
 	}
 	go func() {
+		if detail != nil && detail.BrowserOnly {
+			s.err = fmt.Errorf("no downloadable files found for this game")
+			s.storeState(fetchError)
+			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+			return
+		}
+
 		var err error
 
 		useAuthPath := !game.IsFree && cfg.APIKey != "" &&
@@ -197,7 +204,10 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 
 	case fetchError:
 		if s.err != nil && s.err.Error() == "no downloadable files found for this game" {
-			const noDownloadMsg = "This game does not have any downloadable files — it may be browser-only. Press B to return and scan the QR code to open the game page."
+			noDownloadMsg := "This game does not have any downloadable files — it may be browser-only. Press B to return and scan the QR code to open the game page."
+			if s.detail != nil && s.detail.BrowserOnly {
+				noDownloadMsg = "This game is browser-only and has no downloadable files. Press B to return and scan the QR code to open the game page."
+			}
 			ndLines := r.WrapText(noDownloadMsg, r.W-40)
 			ndH := int32(len(ndLines)) * (smallFH + 4)
 			startY := mid - (mainFH+10+ndH)/2
