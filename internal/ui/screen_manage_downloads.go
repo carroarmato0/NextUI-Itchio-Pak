@@ -567,10 +567,13 @@ func (s *ManageDownloadsScreen) performDelete(gameURL string, fileIdx int) (bool
 			if artPath := inventory.CoverArtPath(entry.CoverURL, f.DestPath); artPath != "" {
 				if err := os.Remove(artPath); err != nil && !os.IsNotExist(err) {
 					logger.Warn("inventory: delete cover-art=%s: %v", artPath, err)
+				} else {
+					pruneMediaDir(artPath)
 				}
 			}
 		}
 	}
+	pruneDeletedDirs(toDelete, s.cfg.Pico8Core)
 	logger.Info("inventory: deleted game=%q files=%d", entry.Title, len(toDelete))
 
 	if fileIdx == deleteIdxAll {

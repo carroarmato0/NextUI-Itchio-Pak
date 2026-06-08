@@ -14,6 +14,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/veandco/go-sdl2/sdl"
@@ -1037,15 +1038,53 @@ func (s *DetailScreen) performSingleFileDelete() {
 				logger.Warn("inventory: delete cover-art=%s: %v", artPath, err)
 			} else {
 				logger.Debug("inventory: deleted cover-art=%s", artPath)
+				pruneMediaDir(artPath)
 			}
 		}
 	}
+	pruneDeletedDirs(entry.Files, s.cfg.Pico8Core)
 	logger.Info("inventory: deleted game=%q files=%d", entry.Title, len(entry.Files))
 	s.inv.Remove(s.game.URL)
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Warn("inventory: save after delete failed: %v", err)
 	}
 	s.ScheduleRebuild()
+}
+
+// pruneMediaDir removes the .media/ directory containing artPath if it is
+// now empty. Only acts when the directory is named ".media" — the ROM-root
+// .media/ shared across all games is left alone if it still has other entries.
+func pruneMediaDir(artPath string) {
+	mediaDir := filepath.Dir(artPath)
+	if filepath.Base(mediaDir) == ".media" {
+		_ = os.Remove(mediaDir) // no-op if non-empty
+	}
+}
+
+// pruneDeletedDirs removes empty game subdirectories left after deleting files.
+// It walks up from each ROM file's parent until it reaches the ROM root,
+// removing directories that are now empty.
+func pruneDeletedDirs(files []inventory.DownloadedFile, pico8Core string) {
+	seen := map[string]bool{}
+	for _, f := range files {
+		ext := strings.ToLower(roms.ROMExt(filepath.Base(f.DestPath)))
+		romRoot := filepath.Clean(strings.TrimSuffix(roms.DestinationDir(ext, pico8Core), "/"))
+		if romRoot == "" {
+			continue
+		}
+		dir := filepath.Clean(filepath.Dir(f.DestPath))
+		if dir == romRoot || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		for dir != romRoot && dir != "." && dir != "/" {
+			if err := os.Remove(dir); err != nil {
+				break
+			}
+			logger.Debug("inventory: removed empty dir=%s", dir)
+			dir = filepath.Dir(dir)
+		}
+	}
 }
 
 // backHints returns standard "back + settings" footer hints scaled to screen width.
