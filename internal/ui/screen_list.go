@@ -458,7 +458,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerTextY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
-	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
+	r.DrawBoldText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
 
 	// Background-activity spinner — a ring with 3 rotating holes, drawn as:
 	//   1. Outer filled circle in title colour
