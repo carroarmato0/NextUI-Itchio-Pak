@@ -460,20 +460,36 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
 
-	// Background-activity spinner — 3 dots at 120° intervals rotating clockwise
-	// when the cache is building (RSS fetch) or the update service is running.
-	// Continuous float angle gives smooth motion; one revolution every 3 s.
+	// Background-activity spinner — a nearly-complete ring with 3 evenly-spaced
+	// holes rotating clockwise. 36 dot positions form a solid-looking circle;
+	// any dot whose angle falls inside one of the 3 hole arcs (each 40° wide)
+	// is skipped. The hole positions advance continuously for smooth motion.
 	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
 		titleW, _ := r.TextSize("Itch.io")
-		const orbitR = 9.0
-		const dotD = int32(3)
+		const (
+			nPos          = 36
+			orbitR        = 9.0
+			dotD          = int32(2)
+			holeHalfAngle = math.Pi / 9.0 // 20° → 40° hole per gap
+		)
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
 		cx := float64(int32(12)+titleW+14) + orbitR
 		cy := float64(headerTextY) + float64(fontH)*0.5
-		for i := 0; i < 3; i++ {
-			angle := offset + float64(i)*2.0*math.Pi/3.0
-			dx := int32(math.Round(cx+orbitR*math.Cos(angle))) - dotD/2
-			dy := int32(math.Round(cy+orbitR*math.Sin(angle))) - dotD/2
+		for i := 0; i < nPos; i++ {
+			dotAngle := 2.0 * math.Pi * float64(i) / nPos
+			inHole := false
+			for h := 0; h < 3; h++ {
+				holeCenter := offset + float64(h)*2.0*math.Pi/3.0
+				if math.Abs(math.Remainder(dotAngle-holeCenter, 2.0*math.Pi)) < holeHalfAngle {
+					inHole = true
+					break
+				}
+			}
+			if inHole {
+				continue
+			}
+			dx := int32(math.Round(cx+orbitR*math.Cos(dotAngle))) - dotD/2
+			dy := int32(math.Round(cy+orbitR*math.Sin(dotAngle))) - dotD/2
 			r.DrawPill(dx, dy, dotD, dotD, mt[0], mt[1], mt[2])
 		}
 	}
