@@ -178,6 +178,79 @@ func TestHasPico8ROMs(t *testing.T) {
 	}
 }
 
+func TestIsPico8MultiFileGame(t *testing.T) {
+	tests := []struct {
+		name    string
+		entries []roms.ZIPEntry
+		want    bool
+	}{
+		{
+			name: "two .p8 carts → multi-file",
+			entries: []roms.ZIPEntry{
+				{Name: "cart1.p8", Kind: roms.KindROM},
+				{Name: "cart2.p8", Kind: roms.KindROM},
+			},
+			want: true,
+		},
+		{
+			name: "one .p8 + one .p8.png → multi-file",
+			entries: []roms.ZIPEntry{
+				{Name: "cart.p8", Kind: roms.KindROM},
+				{Name: "cart.p8.png", Kind: roms.KindROM},
+			},
+			want: true,
+		},
+		{
+			name: "single .p8 text cart + Lua → multi-file (.p8 may use #include)",
+			entries: []roms.ZIPEntry{
+				{Name: "game.p8", Kind: roms.KindROM},
+				{Name: "helper.lua", Kind: roms.KindOther},
+			},
+			want: true,
+		},
+		{
+			// Root cause of the Moss Moss bug: .p8.png is a self-contained compiled
+			// binary; bundled .lua files are source artifacts never read at runtime.
+			name: "single .p8.png + Lua → NOT multi-file",
+			entries: []roms.ZIPEntry{
+				{Name: "pico8/moss_moss.p8.png", Kind: roms.KindROM},
+				{Name: "pico8/helper.lua", Kind: roms.KindOther},
+			},
+			want: false,
+		},
+		{
+			name: "single .p8 (no Lua) → not multi-file",
+			entries: []roms.ZIPEntry{
+				{Name: "game.p8", Kind: roms.KindROM},
+			},
+			want: false,
+		},
+		{
+			name: "single .p8.png (no Lua) → not multi-file",
+			entries: []roms.ZIPEntry{
+				{Name: "cart.p8.png", Kind: roms.KindROM},
+			},
+			want: false,
+		},
+		{
+			name:    "no Pico-8 carts → not multi-file",
+			entries: []roms.ZIPEntry{{Name: "game.gbc", Kind: roms.KindROM}},
+			want:    false,
+		},
+		{
+			name:    "empty manifest → not multi-file",
+			entries: nil,
+			want:    false,
+		},
+	}
+	for _, tt := range tests {
+		m := roms.ZIPManifest{Entries: tt.entries}
+		if got := m.IsPico8MultiFileGame(); got != tt.want {
+			t.Errorf("%s: IsPico8MultiFileGame() = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestHasLuaFiles(t *testing.T) {
 	tests := []struct {
 		name    string

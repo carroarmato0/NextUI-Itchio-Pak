@@ -127,6 +127,24 @@ func (m ZIPManifest) HasPico8ROMs() bool {
 	return len(m.ROMsByExt()[".p8"])+len(m.ROMsByExt()[".p8.png"]) > 0
 }
 
+// IsPico8MultiFileGame reports whether the manifest requires multi-file
+// extraction into a game subdirectory: either multiple Pico-8 carts, or a
+// single .p8 text-format cart with .lua files (which may be referenced at
+// runtime via #include).
+//
+// A single .p8.png with .lua files does NOT qualify: .p8.png is a compiled,
+// self-contained cartridge — the bundled .lua files are source artifacts that
+// the emulator never reads at runtime.
+func (m ZIPManifest) IsPico8MultiFileGame() bool {
+	byExt := m.ROMsByExt()
+	p8Count := len(byExt[".p8"]) + len(byExt[".p8.png"])
+	if p8Count > 1 {
+		return true
+	}
+	// Single cart: only .p8 text-format carts may need Lua includes at runtime.
+	return len(byExt[".p8"]) > 0 && m.HasLuaFiles()
+}
+
 // HasLuaFiles reports whether the manifest contains any .lua file.
 // Pico-8 games sometimes ship with Lua support scripts that must live
 // alongside the cartridges.

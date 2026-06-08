@@ -292,8 +292,7 @@ func (s *ZIPInspectScreen) route() Screen {
 
 	// Multi-file Pico-8: extract all .p8/.p8.png/.lua files to a game
 	// subdirectory, preserving the ZIP's relative path structure.
-	p8Count := len(m.ROMsByExt()[".p8"]) + len(m.ROMsByExt()[".p8.png"])
-	if p8Count > 1 || (p8Count == 1 && m.HasLuaFiles()) {
+	if m.IsPico8MultiFileGame() {
 		gameDir := roms.Pico8GameSubDir(s.cfg.Pico8Core, s.game.Title)
 		plan := s.plan
 		plan.DownloadROMs = true
