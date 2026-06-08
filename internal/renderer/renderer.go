@@ -516,6 +516,54 @@ func (r *Renderer) DrawFooterBar(h int32) int32 {
 	return r.H - h + 2 + (h-2-fh)/2
 }
 
+// DrawFilledTriangle rasterises a solid filled triangle defined by three vertices.
+// Uses horizontal spans collected into a stack-allocated buffer, then emitted in
+// one FillRects call to minimise CGo crossings.
+func (r *Renderer) DrawFilledTriangle(x0, y0, x1, y1, x2, y2 int32, red, green, blue uint8) {
+	// Sort vertices top→bottom by y.
+	if y0 > y1 {
+		x0, y0, x1, y1 = x1, y1, x0, y0
+	}
+	if y0 > y2 {
+		x0, y0, x2, y2 = x2, y2, x0, y0
+	}
+	if y1 > y2 {
+		x1, y1, x2, y2 = x2, y2, x1, y1
+	}
+
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	r.Renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+
+	// interp returns x along edge (ax,ay)→(bx,by) at scanline y.
+	interp := func(ax, ay, bx, by, y int32) int32 {
+		d := by - ay
+		if d == 0 {
+			return ax
+		}
+		return ax + (bx-ax)*(y-ay)/d
+	}
+
+	var rects [256]sdl.Rect
+	n := 0
+	for y := y0; y <= y2 && n < len(rects); y++ {
+		a := interp(x0, y0, x2, y2, y) // long edge top→bottom
+		var b int32
+		if y <= y1 {
+			b = interp(x0, y0, x1, y1, y)
+		} else {
+			b = interp(x1, y1, x2, y2, y)
+		}
+		if a > b {
+			a, b = b, a
+		}
+		rects[n] = sdl.Rect{X: a, Y: y, W: b - a + 1, H: 1}
+		n++
+	}
+	if n > 0 {
+		r.Renderer.FillRects(rects[:n])
+	}
+}
+
 // DrawWrappedText renders word-wrapped text starting at (x, y) within maxWidth,
 // using lineH pixels between lines. Returns the total height used.
 func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red, green, blue uint8) int32 {

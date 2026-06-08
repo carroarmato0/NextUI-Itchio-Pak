@@ -460,38 +460,34 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	mt := r.Theme.MainText
 	r.DrawText("Itch.io", 12, headerTextY, mt[0], mt[1], mt[2])
 
-	// Background-activity spinner — a nearly-complete ring with 3 evenly-spaced
-	// holes rotating clockwise. 36 dot positions form a solid-looking circle;
-	// any dot whose angle falls inside one of the 3 hole arcs (each 40° wide)
-	// is skipped. The hole positions advance continuously for smooth motion.
+	// Background-activity spinner — a ring with 3 rotating holes, drawn as:
+	//   1. Outer filled circle in title colour
+	//   2. Inner filled circle in background colour (creates the hollow ring)
+	//   3. Rotating equilateral triangle in background colour — its three edges
+	//      cut through the ring, producing three symmetric holes.
+	// This is 3 draw calls, far cheaper than the previous 36-dot approach.
 	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
 		titleW, _ := r.TextSize("Itch.io")
-		const (
-			nPos          = 36
-			holeHalfAngle = math.Pi / 9.0 // 20° → 40° hole per gap
-		)
-		orbitR := float64(fontH) / 2.0
-		dotD := int32(math.Max(2, math.Round(float64(fontH)/10.0)))
-		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
-		cx := float64(int32(12)+titleW) + 10.0 + orbitR
-		cy := float64(headerTextY) + float64(fontH)*0.5
-		for i := 0; i < nPos; i++ {
-			dotAngle := 2.0 * math.Pi * float64(i) / nPos
-			inHole := false
-			for h := 0; h < 3; h++ {
-				holeCenter := offset + float64(h)*2.0*math.Pi/3.0
-				if math.Abs(math.Remainder(dotAngle-holeCenter, 2.0*math.Pi)) < holeHalfAngle {
-					inHole = true
-					break
-				}
-			}
-			if inHole {
-				continue
-			}
-			dx := int32(math.Round(cx+orbitR*math.Cos(dotAngle))) - dotD/2
-			dy := int32(math.Round(cy+orbitR*math.Sin(dotAngle))) - dotD/2
-			r.DrawPill(dx, dy, dotD, dotD, mt[0], mt[1], mt[2])
+		outerR := fontH * 2 / 5       // diameter ≈ 80% of font height
+		innerR := outerR * 7 / 10     // ~3px ring at typical sizes
+		cx := int32(12) + titleW + 10 + outerR
+		cy := headerTextY + fontH/2
+
+		// Ring
+		r.DrawPill(cx-outerR, cy-outerR, outerR*2, outerR*2, mt[0], mt[1], mt[2])
+		if innerR > 0 {
+			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, bg[0], bg[1], bg[2])
 		}
+
+		// Rotating equilateral triangle — vertices at the ring's outer edge.
+		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
+		var vx, vy [3]int32
+		for i := 0; i < 3; i++ {
+			a := offset + float64(i)*2.0*math.Pi/3.0
+			vx[i] = cx + int32(math.Round(float64(outerR)*math.Cos(a)))
+			vy[i] = cy + int32(math.Round(float64(outerR)*math.Sin(a)))
+		}
+		r.DrawFilledTriangle(vx[0], vy[0], vx[1], vy[1], vx[2], vy[2], bg[0], bg[1], bg[2])
 	}
 
 	// Filter pills — platform and sort — right-aligned in header, same font size as title.
