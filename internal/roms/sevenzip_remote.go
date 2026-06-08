@@ -70,7 +70,8 @@ func manifestFrom7zReader(r *sevenzip.ReadCloser) ZIPManifest {
 		kind := ClassifyEntry(name)
 
 		// Magic-byte detection for entries without a recognised extension.
-		if kind == KindOther {
+		// Skip for known image extensions — a .png is always artwork.
+		if kind == KindOther && !isImageExt(strings.ToLower(filepath.Ext(name))) {
 			if detected := classify7zByMagic(f); detected != "" {
 				stem := strings.TrimSuffix(name, filepath.Ext(name))
 				name = stem + detected

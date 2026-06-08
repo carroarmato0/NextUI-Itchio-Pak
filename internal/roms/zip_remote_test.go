@@ -170,6 +170,38 @@ func TestInspectRemoteZIP_MusicOnly(t *testing.T) {
 	}
 }
 
+func TestInspectRemoteZIP_PNGNotPromotedByMagic(t *testing.T) {
+	// A ZIP containing one real .p8.png cart plus .png exports for raspi/linux.
+	// The .png files are 128-px-wide PNGs that would be detected as .p8.png by
+	// magic bytes, but must not be counted as ROMs because .png is an image ext.
+	// Minimal valid 128-px-wide PNG (1×1 is fine for testing the guard).
+	pngHeader := []byte{
+		0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, // PNG magic
+		0x00, 0x00, 0x00, 0x0D,                         // IHDR chunk length
+		'I', 'H', 'D', 'R',                             // "IHDR"
+		0x00, 0x00, 0x00, 0x80,                         // width = 128 (0x80)
+		0x00, 0x00, 0x00, 0x80,                         // height = 128
+	}
+	files := map[string]string{
+		"game/pico8/cart.p8.png": "cart",
+		"game/raspi/cart.png":    string(pngHeader),
+		"game/linux/cart.png":    string(pngHeader),
+	}
+	data := buildTestZIP(t, files)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, "game.zip", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(http.DefaultClient, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP: %v", err)
+	}
+	if manifest.ROMCount() != 1 {
+		t.Errorf("ROMCount = %d, want 1 (.png platform exports must not be promoted to ROM)", manifest.ROMCount())
+	}
+}
+
 func TestInspectRemoteZIP_MacOSMetaDirExcluded(t *testing.T) {
 	// ZIPs created on macOS include a __MACOSX/ directory containing resource
 	// fork stubs. These have ROM extensions (._file.p8.png) but must not be
