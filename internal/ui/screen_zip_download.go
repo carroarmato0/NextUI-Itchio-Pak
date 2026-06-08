@@ -179,6 +179,16 @@ func (s *ZIPDownloadScreen) run() {
 					logger.Warn("zip-download: pico8 m3u write: %v", err)
 				} else {
 					logger.Info("zip-download: pico8 m3u written %s (%d carts)", m3uPath, len(p8Files))
+					s.inv.Add(s.game.URL, inventory.Entry{
+						GameURL: s.game.URL, Title: s.game.Title,
+						Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
+					}, inventory.DownloadedFile{
+						Filename:      filepath.Base(m3uPath),
+						DestPath:      m3uPath,
+						DownloadedAt:  now,
+						FileType:      inventory.FileTypeM3U,
+						SourceArchive: s.plan.Upload.Filename,
+					})
 				}
 			}
 		}

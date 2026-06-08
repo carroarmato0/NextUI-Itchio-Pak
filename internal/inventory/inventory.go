@@ -15,6 +15,7 @@ import (
 const (
 	FileTypeROM   = "rom"
 	FileTypeMusic = "music"
+	FileTypeM3U   = "m3u"
 )
 
 // romFileExt returns the effective file extension for a ROM filename, treating
