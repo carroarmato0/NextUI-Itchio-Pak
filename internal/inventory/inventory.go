@@ -21,9 +21,24 @@ const (
 // ".p8.png" as a single compound extension rather than just ".png".
 // filepath.Ext alone would give ".png" for "game.p8.png", producing a wrong
 // stem ("game.p8") that fails upstream filename matching in the update service.
+//
+// Implementation uses zero-allocation byte-level comparison. The previous
+// strings.ToLower approach allocated a full string copy on every call; this
+// function is invoked from HasPendingUpdates which is called per-visible-row
+// per-frame, making the allocation cost significant (~945K objects/session).
 func romFileExt(filename string) string {
-	if strings.HasSuffix(strings.ToLower(filename), ".p8.png") {
-		return ".p8.png"
+	const p8png = ".p8.png"
+	if len(filename) >= len(p8png) {
+		s := filename[len(filename)-len(p8png):]
+		if s[0] == '.' &&
+			(s[1] == 'p' || s[1] == 'P') &&
+			s[2] == '8' &&
+			s[3] == '.' &&
+			(s[4] == 'p' || s[4] == 'P') &&
+			(s[5] == 'n' || s[5] == 'N') &&
+			(s[6] == 'g' || s[6] == 'G') {
+			return p8png
+		}
 	}
 	return filepath.Ext(filename)
 }
