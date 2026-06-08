@@ -476,20 +476,23 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Ring
 		r.DrawPill(cx-outerR, cy-outerR, outerR*2, outerR*2, mt[0], mt[1], mt[2])
 		if innerR > 0 {
-			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, bg[0], bg[1], bg[2])
+			hBGinner := r.Theme.HeaderBG
+			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, hBGinner[0], hBGinner[1], hBGinner[2])
 		}
 
 		// Rotating 3-armed cross — each arm is a rectangle (2 triangles) of half-width
-		// outerR/2 extending from centre to the ring's outer edge. The arms cut 3 wide
-		// symmetric holes as the cross rotates, larger than a triangle would produce.
+		// outerR/2 extending slightly past the ring's outer edge (+3 px) to fully cover
+		// the anti-aliased fringe and eliminate tip artefacts. Arms use the header bar
+		// colour so they blend seamlessly with the header background.
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
-		hw := float64(outerR) / 2.0 // arm half-width
-		R := float64(outerR)
+		hw := float64(outerR) / 2.0      // arm half-width
+		R := float64(outerR) + 3.0       // extend past outer edge to cover fringe
+		hBG := r.Theme.HeaderBG
 		fcx, fcy := float64(cx), float64(cy)
 		for i := 0; i < 3; i++ {
 			a := offset + float64(i)*2.0*math.Pi/3.0
-			dx, dy := math.Cos(a), math.Sin(a)   // arm direction
-			px, py := -math.Sin(a), math.Cos(a)  // arm perpendicular
+			dx, dy := math.Cos(a), math.Sin(a)  // arm direction
+			px, py := -math.Sin(a), math.Cos(a) // arm perpendicular
 			// 4 corners of the arm rectangle
 			b1x := int32(math.Round(fcx + hw*px))
 			b1y := int32(math.Round(fcy + hw*py))
@@ -499,8 +502,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			t1y := int32(math.Round(fcy + R*dy + hw*py))
 			t2x := int32(math.Round(fcx + R*dx - hw*px))
 			t2y := int32(math.Round(fcy + R*dy - hw*py))
-			r.DrawFilledTriangle(b1x, b1y, b2x, b2y, t1x, t1y, bg[0], bg[1], bg[2])
-			r.DrawFilledTriangle(b2x, b2y, t2x, t2y, t1x, t1y, bg[0], bg[1], bg[2])
+			r.DrawFilledTriangle(b1x, b1y, b2x, b2y, t1x, t1y, hBG[0], hBG[1], hBG[2])
+			r.DrawFilledTriangle(b2x, b2y, t2x, t2y, t1x, t1y, hBG[0], hBG[1], hBG[2])
 		}
 	}
 
