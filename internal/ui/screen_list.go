@@ -479,15 +479,29 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, bg[0], bg[1], bg[2])
 		}
 
-		// Rotating equilateral triangle — vertices at the ring's outer edge.
+		// Rotating 3-armed cross — each arm is a rectangle (2 triangles) of half-width
+		// outerR/2 extending from centre to the ring's outer edge. The arms cut 3 wide
+		// symmetric holes as the cross rotates, larger than a triangle would produce.
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
-		var vx, vy [3]int32
+		hw := float64(outerR) / 2.0 // arm half-width
+		R := float64(outerR)
+		fcx, fcy := float64(cx), float64(cy)
 		for i := 0; i < 3; i++ {
 			a := offset + float64(i)*2.0*math.Pi/3.0
-			vx[i] = cx + int32(math.Round(float64(outerR)*math.Cos(a)))
-			vy[i] = cy + int32(math.Round(float64(outerR)*math.Sin(a)))
+			dx, dy := math.Cos(a), math.Sin(a)   // arm direction
+			px, py := -math.Sin(a), math.Cos(a)  // arm perpendicular
+			// 4 corners of the arm rectangle
+			b1x := int32(math.Round(fcx + hw*px))
+			b1y := int32(math.Round(fcy + hw*py))
+			b2x := int32(math.Round(fcx - hw*px))
+			b2y := int32(math.Round(fcy - hw*py))
+			t1x := int32(math.Round(fcx + R*dx + hw*px))
+			t1y := int32(math.Round(fcy + R*dy + hw*py))
+			t2x := int32(math.Round(fcx + R*dx - hw*px))
+			t2y := int32(math.Round(fcy + R*dy - hw*py))
+			r.DrawFilledTriangle(b1x, b1y, b2x, b2y, t1x, t1y, bg[0], bg[1], bg[2])
+			r.DrawFilledTriangle(b2x, b2y, t2x, t2y, t1x, t1y, bg[0], bg[1], bg[2])
 		}
-		r.DrawFilledTriangle(vx[0], vy[0], vx[1], vy[1], vx[2], vy[2], bg[0], bg[1], bg[2])
 	}
 
 	// Filter pills — platform and sort — right-aligned in header, same font size as title.
