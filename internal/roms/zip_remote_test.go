@@ -169,3 +169,35 @@ func TestInspectRemoteZIP_MusicOnly(t *testing.T) {
 		t.Errorf("MusicCount = %d, want 2", manifest.MusicCount())
 	}
 }
+
+func TestInspectRemoteZIP_MacOSMetaDirExcluded(t *testing.T) {
+	// ZIPs created on macOS include a __MACOSX/ directory containing resource
+	// fork stubs. These have ROM extensions (._file.p8.png) but must not be
+	// counted as playable files. Verify they are excluded from the manifest.
+	files := map[string]string{
+		"game/pico8/moss_moss.p8.png":                           "cart",
+		"__MACOSX/game/pico8/._moss_moss.p8.png":                "mac-meta",
+		"__MACOSX/game/pico8/._moss_moss_other.p8.png":          "mac-meta",
+		"game/pico8/._moss_moss_local.p8.png":                   "mac-meta",
+	}
+	data := buildTestZIP(t, files)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, "game.zip", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(http.DefaultClient, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP: %v", err)
+	}
+	if manifest.ROMCount() != 1 {
+		t.Errorf("ROMCount = %d, want 1 (macOS metadata must be excluded)", manifest.ROMCount())
+	}
+	p8png := manifest.ROMsByExt()[".p8.png"]
+	if len(p8png) != 1 {
+		t.Errorf("p8.png count = %d, want 1", len(p8png))
+	}
+	if len(p8png) == 1 && p8png[0].Name != "moss_moss.p8.png" {
+		t.Errorf("p8.png name = %q, want %q", p8png[0].Name, "moss_moss.p8.png")
+	}
+}
