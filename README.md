@@ -215,6 +215,16 @@ are preparing an SD card that will be used across multiple device types.
 <table>
   <tr>
     <td align="center">
+      <img src="docs/screenshots/filter-search.png" alt="Filter and search" width="480"/><br/>
+      <sub>Filter &amp; Search — platform, sort mode, and free-text search in one overlay</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/keyboard.png" alt="Virtual keyboard" width="480"/><br/>
+      <sub>Virtual keyboard — used for search and API key entry; ABC/abc/0-9 pages</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
       <img src="docs/screenshots/game.png" alt="Game detail" width="480"/><br/>
       <sub>Game detail — cover art, screenshots, QR code and description</sub>
     </td>
