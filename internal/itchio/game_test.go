@@ -328,6 +328,73 @@ func TestFetchGameDetailNoBundleNames(t *testing.T) {
 	}
 }
 
+func TestBrowserOnlyDetection_HTML5Only(t *testing.T) {
+	const pageHTML = `<html><body>
+<div class="html_embed_widget">
+  <div class="iframe_placeholder" data-src="//html.itch.zone/html/12345/"></div>
+</div>
+</body></html>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if !detail.BrowserOnly {
+		t.Error("BrowserOnly should be true: html.itch.zone embed, no download_btn, no buy_row")
+	}
+}
+
+func TestBrowserOnlyDetection_FreeDownloadable(t *testing.T) {
+	const pageHTML = `<html><body>
+<div class="html_embed_widget">
+  <div class="iframe_placeholder" data-src="//html.itch.zone/html/12345/"></div>
+</div>
+<a class="button download_btn" href="/game/dl">Download Now</a>
+</body></html>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.BrowserOnly {
+		t.Error("BrowserOnly should be false when download_btn is present")
+	}
+}
+
+func TestBrowserOnlyDetection_PaidGame(t *testing.T) {
+	const pageHTML = `<html><body>
+<div class="html_embed_widget">
+  <div class="iframe_placeholder" data-src="//html.itch.zone/html/12345/"></div>
+</div>
+<div class="buy_row">
+  <a class="button buy_now_button" href="/game/purchase">Buy Now</a>
+</div>
+</body></html>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.BrowserOnly {
+		t.Error("BrowserOnly should be false when buy_row is present (paid game with HTML5 demo)")
+	}
+}
+
 func TestAnnotateBundleNames(t *testing.T) {
 	keys := []itchio.OwnedKey{
 		{ID: 1, BundleSize: 1},                                   // individual

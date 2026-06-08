@@ -24,6 +24,7 @@ type GameDetail struct {
 	CSRFToken      string
 	PageTags       []string // itch.io tag labels scraped from the game page
 	BundleNames    []string // names of bundles that include this game (from public page)
+	BrowserOnly    bool     // true when page has HTML5 embed but no downloadable or paid files
 }
 
 type Upload struct {
@@ -116,6 +117,15 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 		}
 	}
 	logger.Debug("game: %d bundle name(s): %v", len(detail.BundleNames), detail.BundleNames)
+
+	// Detect browser-only: page has an HTML5 game embed but no free-download or
+	// purchase button visible to anonymous users.
+	hasHTML5Embed  := strings.Contains(s, "html.itch.zone")
+	hasDownloadBtn := strings.Contains(s, "download_btn")
+	hasBuySection  := strings.Contains(s, "buy_row")
+	detail.BrowserOnly = hasHTML5Embed && !hasDownloadBtn && !hasBuySection
+	logger.Debug("game: browserOnly=%v (embed=%v downloadBtn=%v buySection=%v)",
+		detail.BrowserOnly, hasHTML5Embed, hasDownloadBtn, hasBuySection)
 
 	return detail, nil
 }
