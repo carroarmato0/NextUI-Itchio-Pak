@@ -961,6 +961,12 @@ func (s *DetailScreen) startDownload() Screen {
 	if s.loading {
 		return s
 	}
+	if s.detail != nil && s.detail.BrowserOnly {
+		s.ShowModal("Browser-only game",
+			"This game has no downloadable files and can only be played in a web browser. "+
+				"Press B to dismiss, then scan the QR code to open the game page.")
+		return s
+	}
 	if !s.game.IsFree && s.cfg.APIKey == "" {
 		return s
 	}
