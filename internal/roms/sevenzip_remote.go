@@ -59,9 +59,13 @@ func manifestFrom7zReader(r *sevenzip.ReadCloser) ZIPManifest {
 			continue
 		}
 		// Normalise path separators (Windows 7z archives may use backslashes).
-		name := filepath.Base(strings.ReplaceAll(f.Name, "\\", "/"))
+		fullPath := strings.ReplaceAll(f.Name, "\\", "/")
+		if IsInMacOSMetaDir(fullPath) {
+			continue
+		}
+		name := filepath.Base(fullPath)
 		if strings.HasPrefix(name, "._") {
-			continue // macOS resource-fork stub
+			continue // macOS resource-fork stub outside __MACOSX/
 		}
 		kind := ClassifyEntry(name)
 

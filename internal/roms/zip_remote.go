@@ -240,7 +240,7 @@ func manifestFromZipReader(r *zip.Reader) ZIPManifest {
 		// __MACOSX is a macOS-specific directory that ZIP archives created on
 		// macOS include automatically. It contains resource fork metadata that
 		// is not meaningful outside macOS; skip it entirely.
-		if isInMacOSMetaDir(f.Name) {
+		if IsInMacOSMetaDir(f.Name) {
 			continue
 		}
 		name := filepath.Base(f.Name)
@@ -267,10 +267,11 @@ func manifestFromZipReader(r *zip.Reader) ZIPManifest {
 	return m
 }
 
-// isInMacOSMetaDir reports whether a ZIP entry path is inside the __MACOSX
-// metadata directory that macOS automatically injects into ZIP archives.
-func isInMacOSMetaDir(name string) bool {
-	name = filepath.ToSlash(name)
+// IsInMacOSMetaDir reports whether an archive entry path is inside the
+// __MACOSX metadata directory that macOS automatically injects into ZIP and
+// 7z archives. Backslashes are normalised before the check.
+func IsInMacOSMetaDir(name string) bool {
+	name = filepath.ToSlash(strings.ReplaceAll(name, "\\", "/"))
 	return strings.HasPrefix(name, "__MACOSX/") || strings.Contains(name, "/__MACOSX/")
 }
 

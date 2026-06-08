@@ -198,6 +198,9 @@ func (s *ZIPDownloadScreen) run() {
 		if f.FileInfo().IsDir() {
 			continue
 		}
+		if roms.IsInMacOSMetaDir(f.Name) {
+			continue
+		}
 		baseName := filepath.Base(f.Name)
 		// macOS resource-fork stubs start with "._"; skip them.
 		if strings.HasPrefix(baseName, "._") {
@@ -279,6 +282,9 @@ func (s *ZIPDownloadScreen) run7z(tmpPath string) {
 		if f.FileInfo().IsDir() {
 			continue
 		}
+		if roms.IsInMacOSMetaDir(f.Name) {
+			continue
+		}
 		baseName := filepath.Base(strings.ReplaceAll(f.Name, "\\", "/"))
 		if strings.HasPrefix(baseName, "._") {
 			continue
@@ -332,6 +338,9 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 		if f.FileInfo().IsDir() {
 			continue
 		}
+		if roms.IsInMacOSMetaDir(f.Name) {
+			continue
+		}
 		name := filepath.ToSlash(strings.ReplaceAll(f.Name, "\\", "/"))
 		base := filepath.Base(name)
 		if strings.HasPrefix(base, "._") {
@@ -360,6 +369,9 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
+			continue
+		}
+		if roms.IsInMacOSMetaDir(f.Name) {
 			continue
 		}
 		name := filepath.ToSlash(strings.ReplaceAll(f.Name, "\\", "/"))
@@ -712,6 +724,9 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 		if f.FileInfo().IsDir() {
 			continue
 		}
+		if roms.IsInMacOSMetaDir(f.Name) {
+			continue
+		}
 		name := filepath.ToSlash(f.Name)
 		base := filepath.Base(name)
 		if strings.HasPrefix(base, "._") {
@@ -744,6 +759,9 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
+			continue
+		}
+		if roms.IsInMacOSMetaDir(f.Name) {
 			continue
 		}
 		name := filepath.ToSlash(f.Name)
