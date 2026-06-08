@@ -343,7 +343,7 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 			relevantPaths = append(relevantPaths, name)
 		}
 	}
-	prefix := topLevelDirPrefix(relevantPaths)
+	prefix := commonPathPrefix(relevantPaths)
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -692,7 +692,7 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 			relevantPaths = append(relevantPaths, name)
 		}
 	}
-	prefix := topLevelDirPrefix(relevantPaths)
+	prefix := commonPathPrefix(relevantPaths)
 	logger.Debug("zip-download: pico8 strip-prefix=%q game-dir=%s", prefix, gameDir)
 
 	for _, f := range r.File {
@@ -831,34 +831,51 @@ func extractZIPEntry(f *zip.File, dest string) error {
 	return extractEntry(f.Open, dest)
 }
 
-// topLevelDirPrefix returns the common top-level directory prefix shared by
-// all paths, including the trailing slash. Returns "" when files are at the
-// ZIP root or share no common top-level directory.
+// commonPathPrefix returns the longest common directory path shared by all
+// paths, including the trailing slash. Returns "" when paths share no common
+// parent directory (files at the ZIP root, or in entirely different subtrees).
 //
-// Example: ["game-v1/main.p8", "game-v1/data.lua"] → "game-v1/"
-// Example: ["main.p8", "data.lua"]                 → ""
-func topLevelDirPrefix(paths []string) string {
+// Unlike the former commonPathPrefix which stopped after the first component,
+// this strips ALL shared leading directory levels so that packaging structures
+// like "GameName/pico8/cart.p8" are fully unwrapped:
+//
+//	["game/pico8/a.p8", "game/pico8/b.p8"]  → "game/pico8/"
+//	["game/cart_a/a.p8", "game/cart_b/b.p8"] → "game/"
+//	["a.p8", "b.p8"]                         → ""
+func commonPathPrefix(paths []string) string {
 	if len(paths) == 0 {
 		return ""
 	}
-	first := func(p string) string {
+	dirParts := func(p string) []string {
 		p = filepath.ToSlash(p)
-		idx := strings.Index(p, "/")
+		idx := strings.LastIndex(p, "/")
 		if idx < 0 {
-			return ""
+			return nil
 		}
-		return p[:idx+1]
+		return strings.Split(p[:idx], "/")
 	}
-	prefix := first(paths[0])
-	if prefix == "" {
+	parts := dirParts(paths[0])
+	if len(parts) == 0 {
 		return ""
 	}
 	for _, p := range paths[1:] {
-		if first(p) != prefix {
+		other := dirParts(p)
+		n := len(parts)
+		if len(other) < n {
+			n = len(other)
+		}
+		for i := 0; i < n; i++ {
+			if parts[i] != other[i] {
+				n = i
+				break
+			}
+		}
+		parts = parts[:n]
+		if len(parts) == 0 {
 			return ""
 		}
 	}
-	return prefix
+	return strings.Join(parts, "/") + "/"
 }
 
 func (s *ZIPDownloadScreen) NeedsRedraw() bool        { return true }
