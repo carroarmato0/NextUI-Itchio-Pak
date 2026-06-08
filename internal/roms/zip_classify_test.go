@@ -41,6 +41,11 @@ func TestClassifyEntry(t *testing.T) {
 		{"cart.P8.PNG", roms.KindROM},
 		// cover.png must remain KindOther (not confused with .p8.png)
 		{"cover.png", roms.KindOther},
+		// macOS resource forks must never be classified as playable files,
+		// regardless of their extension.
+		{"._cart.p8.png", roms.KindOther},
+		{"._game.gbc", roms.KindOther},
+		{"subdir/._game.gbc", roms.KindOther},
 	}
 	for _, tt := range tests {
 		got := roms.ClassifyEntry(tt.name)

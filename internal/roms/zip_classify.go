@@ -1,6 +1,7 @@
 package roms
 
 import (
+	"path/filepath"
 	"strings"
 )
 
@@ -37,6 +38,10 @@ var musicExts = map[string]bool{
 }
 
 func ClassifyEntry(name string) FileKind {
+	// macOS resource fork stubs start with "._"; never treat them as playable files.
+	if strings.HasPrefix(filepath.Base(name), "._") {
+		return KindOther
+	}
 	ext := strings.ToLower(ROMExt(name))
 	if romExts[ext] {
 		return KindROM
