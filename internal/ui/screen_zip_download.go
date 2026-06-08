@@ -344,6 +344,20 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 		}
 	}
 	prefix := commonPathPrefix(relevantPaths)
+
+	p8PNGCount := 0
+	for _, p := range relevantPaths {
+		if strings.ToLower(roms.ROMExt(filepath.Base(p))) == ".p8.png" {
+			p8PNGCount++
+		}
+	}
+	unifyP8PNG := p8PNGCount == 1 && s.cfg.UnifiedNaming
+	if unifyP8PNG {
+		if inv, ok := s.inv.Lookup(s.game.URL); ok && inv.UnifiedNamingDisabled {
+			unifyP8PNG = false
+		}
+	}
+
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -369,16 +383,33 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 			s.skipped = append(s.skipped, base)
 			continue
 		}
-		logger.Info("7z-download: pico8 extracted %s → %s", base, dest)
-		s.extracted = append(s.extracted, dest)
+
+		finalDest := dest
+		unifiedName := false
+		if ext == ".p8.png" && unifyP8PNG {
+			if newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true); didRename {
+				if err := os.Rename(dest, newDest); err != nil {
+					logger.Warn("7z-download: pico8 unified rename: %v", err)
+				} else {
+					finalDest = newDest
+					unifiedName = true
+				}
+			} else {
+				unifiedName = true
+			}
+		}
+
+		logger.Info("7z-download: pico8 extracted %s → %s", base, finalDest)
+		s.extracted = append(s.extracted, finalDest)
 		s.inv.Add(s.game.URL, inventory.Entry{
 			GameURL: s.game.URL, Title: s.game.Title,
 			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 		}, inventory.DownloadedFile{
-			Filename:      base,
-			DestPath:      dest,
+			Filename:      filepath.Base(finalDest),
+			DestPath:      finalDest,
 			DownloadedAt:  now,
 			FileType:      inventory.FileTypeROM,
+			UnifiedName:   unifiedName,
 			SourceArchive: s.plan.Upload.Filename,
 		})
 	}
@@ -695,6 +726,22 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 	prefix := commonPathPrefix(relevantPaths)
 	logger.Debug("zip-download: pico8 strip-prefix=%q game-dir=%s", prefix, gameDir)
 
+	// Apply unified naming to the .p8.png only when it is the sole compiled
+	// cart in the ZIP. Multiple .p8.png files indicate a genuine multi-cart
+	// game where per-file names are meaningful and must not be collapsed.
+	p8PNGCount := 0
+	for _, p := range relevantPaths {
+		if strings.ToLower(roms.ROMExt(filepath.Base(p))) == ".p8.png" {
+			p8PNGCount++
+		}
+	}
+	unifyP8PNG := p8PNGCount == 1 && s.cfg.UnifiedNaming
+	if unifyP8PNG {
+		if inv, ok := s.inv.Lookup(s.game.URL); ok && inv.UnifiedNamingDisabled {
+			unifyP8PNG = false
+		}
+	}
+
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -725,17 +772,34 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 			s.skipped = append(s.skipped, base)
 			continue
 		}
-		logger.Info("zip-download: pico8 extracted %s → %s", base, dest)
-		s.extracted = append(s.extracted, dest)
+
+		finalDest := dest
+		unifiedName := false
+		if ext == ".p8.png" && unifyP8PNG {
+			if newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true); didRename {
+				if err := os.Rename(dest, newDest); err != nil {
+					logger.Warn("zip-download: pico8 unified rename: %v", err)
+				} else {
+					finalDest = newDest
+					unifiedName = true
+				}
+			} else {
+				unifiedName = true
+			}
+		}
+
+		logger.Info("zip-download: pico8 extracted %s → %s", base, finalDest)
+		s.extracted = append(s.extracted, finalDest)
 
 		s.inv.Add(s.game.URL, inventory.Entry{
 			GameURL: s.game.URL, Title: s.game.Title,
 			Author: s.game.Author, CoverURL: s.game.CoverURL, IsFree: s.game.IsFree,
 		}, inventory.DownloadedFile{
-			Filename:      base,
-			DestPath:      dest,
+			Filename:      filepath.Base(finalDest),
+			DestPath:      finalDest,
 			DownloadedAt:  now,
 			FileType:      inventory.FileTypeROM,
+			UnifiedName:   unifiedName,
 			SourceArchive: s.plan.Upload.Filename,
 		})
 	}
