@@ -559,7 +559,9 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			y = rowY + rowH + 4
 		}
 	} else {
-		if s.game.IsFree {
+		if s.detail != nil && s.detail.BrowserOnly {
+			drawActionRow("A", "Browser-only", 140, 140, 140, ac[0], ac[1], ac[2], 0)
+		} else if s.game.IsFree {
 			drawActionRow("A", "Download", 80, 200, 80, ac[0], ac[1], ac[2], 0)
 		} else if s.cfg.APIKey == "" {
 			drawActionRow("A", "Purchase required", 220, 180, 60, 100, 80, 20, s.game.Price)
