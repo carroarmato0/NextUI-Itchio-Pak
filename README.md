@@ -140,8 +140,10 @@ If a background task (ROM download, game list cache build, inventory check) is r
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
 - **Pico-8 Core** — selects which Pico-8 emulator downloaded `.p8` / `.p8.png` files are destined for:
-  - `FakeO8 (default)` — saves to `Roms/Pico-8 (P8)/`, used by NextUI's built-in FakeO8 core
-  - `Pico-8 (official)` — saves to `Roms/Pico-8 (PICO)/`, used by the [minui-pico-8-pak](https://github.com/josegonzalez/minui-pico-8-pak) which requires a paid copy of Pico-8
+  - `FakeO8 (default)` — saves to `Roms/Pico-8 (P8)/`, used by NextUI's built-in FakeO8 core. Free to use; compatible with most single-cartridge games.
+  - `Pico-8 (official)` — saves to `Roms/Pico-8 (PICO)/`, used by the [minui-pico-8-pak](https://github.com/josegonzalez/minui-pico-8-pak). Requires a **paid copy of Pico-8** (a licensed BIOS file must be present); in return it offers broader game compatibility and full **multi-cart support** for games that ship as several linked cartridges.
+
+  > **Note:** Some Pico-8 games on itch.io are designed to run only inside the official Pico-8 runtime and will not work correctly under FakeO8. If a game behaves incorrectly or refuses to start, try switching to the official core.
 
   Switching cores instantly moves all previously downloaded Pico-8 files (ROMs and cover art) to the new folder — no manual file management needed. Switching back moves them back.
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
@@ -428,6 +430,18 @@ in the Settings screen on the device.
   chosen). The result depends on how the game developer structured the GIF — a
   GIF that opens on a black frame, uses unusual disposal methods, or has few
   visually distinct frames may still produce a poor thumbnail.
+
+- **Some Pico-8 games have no downloadable files.** A number of Pico-8 titles on
+  itch.io are published as browser-only experiences with no file uploads at all.
+  When this happens the Pak shows a clear "No downloads available" message with a
+  QR code so you can open the game's itch.io page and play it in a browser instead.
+
+- **Multi-cart Pico-8 games require the official Pico-8 core.** Games that ship as
+  several linked `.p8` or `.p8.png` cartridges (using Pico-8's built-in cart-chaining
+  mechanism) can only be launched correctly by the official Pico-8 runtime. FakeO8
+  does not support cart-chaining; attempting to play a multi-cart game under FakeO8
+  will typically only run the first cartridge. Switch to the **Pico-8 (official)**
+  core in Settings — this requires a paid copy of Pico-8 with the BIOS file in place.
 
 - **`.pocket` and other non-ROM files** are filtered out — only `.gb`, `.gbc`,
   `.gba`, `.nes`, `.md`, `.gen`, `.smd`, `.p8`, and `.p8.png` files are shown.
