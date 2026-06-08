@@ -468,12 +468,12 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		titleW, _ := r.TextSize("Itch.io")
 		const (
 			nPos          = 36
-			orbitR        = 9.0
-			dotD          = int32(2)
 			holeHalfAngle = math.Pi / 9.0 // 20° → 40° hole per gap
 		)
+		orbitR := float64(fontH) / 2.0
+		dotD := int32(math.Max(2, math.Round(float64(fontH)/10.0)))
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
-		cx := float64(int32(12)+titleW+14) + orbitR
+		cx := float64(int32(12)+titleW) + 10.0 + orbitR
 		cy := float64(headerTextY) + float64(fontH)*0.5
 		for i := 0; i < nPos; i++ {
 			dotAngle := 2.0 * math.Pi * float64(i) / nPos
