@@ -585,6 +585,11 @@ func classifyWithMagic(baseName string, open func() (io.ReadCloser, error)) (rom
 	if kind != roms.KindOther {
 		return kind, baseName
 	}
+	// Don't promote image files to ROMs via magic-byte detection: a .png
+	// named .png is artwork even if it is 128 px wide.
+	if roms.IsImageExt(strings.ToLower(filepath.Ext(baseName))) {
+		return kind, baseName
+	}
 	rc, err := open()
 	if err != nil {
 		return kind, baseName

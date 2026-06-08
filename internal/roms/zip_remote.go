@@ -252,7 +252,7 @@ func manifestFromZipReader(r *zip.Reader) ZIPManifest {
 		// "soulbound_v1_0" → detected as .p8 from the pico-8 text header).
 		// Skip magic detection for known image extensions: a .png is always
 		// artwork even if it is 128 px wide (e.g. raspi/linux Pico-8 exports).
-		if kind == KindOther && !isImageExt(strings.ToLower(filepath.Ext(name))) {
+		if kind == KindOther && !IsImageExt(strings.ToLower(filepath.Ext(name))) {
 			if detected := classifyByMagic(f); detected != "" {
 				stem := strings.TrimSuffix(name, filepath.Ext(name))
 				name = stem + detected
@@ -269,11 +269,11 @@ func manifestFromZipReader(r *zip.Reader) ZIPManifest {
 	return m
 }
 
-// isImageExt reports whether ext is a common image format extension.
+// IsImageExt reports whether ext is a common image format extension.
 // Files with these extensions are always artwork and must never be promoted
 // to a ROM via magic-byte detection (e.g. a 128-px-wide PNG is a Pico-8
 // cart only when named .p8.png, not when named .png).
-func isImageExt(ext string) bool {
+func IsImageExt(ext string) bool {
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".ico", ".tif", ".tiff":
 		return true
