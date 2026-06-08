@@ -45,26 +45,34 @@ from itch.io — all on-device, no PC required.
 - When a background check detects a new upstream file for a downloaded game, its badge changes to `[UP]` — press **X** from the game list to dismiss the notification
 - If a downloaded game has been removed from itch.io (HTTP 404/410), its badge changes to `[!]` — press **X** to dismiss
 
-### Sorting and filtering
-Press **R1** (next) or **L1** (previous) from the game list to cycle through sort and filter modes. The cursor resets to the top of the list each time. The active mode is shown as a badge in the top-right corner of the header:
+### Sorting, filtering and search
 
-| Badge | Description |
-|---|---|
-| `[RSS]` | Feed order — newest from itch.io (default) |
-| `[A-Z]` | Alphabetical ascending |
-| `[Z-A]` | Alphabetical descending |
-| `[NEW]` | By publication date, newest first |
-| `[DL]` | Downloaded only — hides games not yet on device; pending-update games (`[UP]`) are grouped first, removed games (`[!]`) second, then the rest |
-| `[FREE]` | Free games only |
-| `[PAID]` | Paid games only |
-| `[OWNED]` | Owned games only |
+Press **SELECT** from the game list to open the **Filter & Search** overlay. From there you can:
 
-The selected sort mode is saved automatically and restored on the next launch.
+- **Platform** — show games for a specific system (All, GB, GBC, GBA, NES, MD, Pico-8) or all at once
+- **Sort** — choose a sort mode:
+
+  | Mode | Description |
+  |---|---|
+  | RSS | Feed order — newest from itch.io (default) |
+  | A-Z | Alphabetical ascending |
+  | Z-A | Alphabetical descending |
+  | New | By publication date, newest first |
+  | DL | Downloaded only — pending-update games (`[UP]`) first, removed (`[!]`) second, then the rest |
+  | Free | Free games only |
+  | Paid | Paid games only |
+  | Owned | Owned games only |
+
+- **Search** — free-text search across game titles and authors; press **A** on the search field to open the virtual keyboard
+
+Press **SELECT** again (or **A** from the keyboard) to apply. Press **B** to dismiss without changes, or **Y** to clear all active filters.
+
+The active platform and sort mode are shown as pills in the header and saved automatically for the next launch. In A-Z / Z-A mode, **L1/R1** jump directly to the next/previous letter boundary. In all other modes, **L1/R1** cycle through sort modes.
 
 ### Game detail
 - Cover art and screenshot gallery (L/R to browse); animated GIF cover art plays inline
 - Game title, author, price or "Free" badge
-- Scrollable description (plain text, converted from the game's HTML)
+- Scrollable description with basic HTML formatting preserved (paragraphs, headings, bullet and numbered lists)
 - QR code for every game — scan to open the itch.io page in a browser
 - Download button (A) — disabled for paid games when no API key is set
 - Downloaded files are listed with their on-device paths; press **Y** to manage, delete, or toggle title-based filename for the game
@@ -128,7 +136,7 @@ The power button behaves the same way it does with emulators on NextUI:
 If a background task (ROM download, game list cache build, inventory check) is running when you press the power button, a full-screen **"Please wait"** overlay is shown until the task finishes. The action fires automatically — no confirmation or extra button press needed.
 
 ### Settings
-- **API Key** — shows `WORKING` (green) when an itch.io API key is configured and working, enabling paid game downloads. Selecting the row when no key is set opens an in-app overlay with a QR code linking to the setup instructions
+- **API Key** — shows `WORKING` (green) when an itch.io API key is configured and validated. Press **A** on the row to enter a new key using the built-in virtual keyboard; when a key is already set, press **A** to re-run the validation test or press **Y** to edit the key
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
 - **Pico-8 Core** — selects which Pico-8 emulator downloaded `.p8` / `.p8.png` files are destined for:
@@ -150,16 +158,14 @@ If a background task (ROM download, game list cache build, inventory check) is r
 |---|---|
 | D-pad up/down | Navigate list / scroll detail page |
 | D-pad up/down (hold) | Auto-scroll with acceleration |
-| D-pad down (at last item) | Advance to next page |
-| D-pad up (at first item) | Go back to previous page (lands on last item) |
-| D-pad left / right | Jump one page forward/back in game list |
-| D-pad left / right | Previous/next screenshot in detail view |
-| L / R shoulder | Cycle sort mode backward/forward (game list); cursor resets to top |
-| L / R shoulder | Previous/next screenshot in detail view |
+| D-pad left / right | Jump one page forward/back in game list; previous/next screenshot in detail view |
+| L1 / R1 (game list, A-Z mode) | Jump to previous/next letter boundary |
+| L1 / R1 (game list, other modes) | Cycle sort mode backward/forward |
 | A | Select / confirm / download |
-| B | Back |
-| Y | Manage / delete downloaded ROMs, or toggle title-based filename (game detail screen) |
+| B | Back / cancel |
 | X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
+| Y | Manage / delete downloaded ROMs, or edit API key in Settings |
+| SELECT | Open Filter &amp; Search overlay (game list) |
 | Start | Open Settings from any screen |
 | Power (short press) | Sleep — resumes at the same screen on wake |
 | Power (hold 2 s) | Shutdown — waits for active tasks to finish first |
@@ -298,31 +304,32 @@ API key. The Settings screen shows **FOUND** (green) when a key is active.
 
 ### Adding the key to the Pak
 
-The Pak does not include an on-screen keyboard, so the key is set by editing
-the config file directly. The config file is at
-`.userdata/shared/Itch-io/config.json` on the SD card.
+#### Option 1 — Built-in virtual keyboard (recommended)
 
-> **Warning:** The config file also stores your ROM selection mode, ROM
-> location, content filter preferences, and other settings. Any method that
-> writes the entire file from scratch will overwrite those values. The options
-> below show how to add or update only the `api_key` field safely.
+Open **Settings** (press **Start** from any screen), navigate to **API Key**,
+and press **A**. A virtual keyboard appears where you can type the key
+directly on-device. Confirm with the **OK** key; the Pak validates the key
+immediately and shows `WORKING` on success.
 
-#### Option 1 — Browser-based file manager (recommended)
+To update an existing key, navigate to **API Key** in Settings and press **Y**
+to open the virtual keyboard pre-filled with the current value.
+
+#### Option 2 — Browser-based file manager
 
 With your device connected over USB, open
 **[https://dashboard.loveretro.games/](https://dashboard.loveretro.games/)**
 in a browser. Use the built-in file manager to navigate to
-`.userdata/shared/Itch-io/config.json` and edit the file directly — no
-command line required, and only the fields you change are affected.
+`.userdata/shared/Itch-io/config.json` and edit the `"api_key"` field directly
+— no command line required, and only the fields you change are affected.
 
-#### Option 2 — SD card
+#### Option 3 — SD card
 
 1. Power off the device and remove the SD card.
 2. Open `.userdata/shared/Itch-io/config.json` in a text editor.
 3. Add or update the `"api_key"` field, leaving all other fields untouched.
 4. Save, reinsert the SD card, and boot.
 
-#### Option 3 — ADB (pull → edit → push)
+#### Option 4 — ADB (pull → edit → push)
 
 ```sh
 # Download the current config to your computer
@@ -335,19 +342,13 @@ adb push config.json /mnt/SDCARD/.userdata/shared/Itch-io/config.json
 ```
 
 If you have never launched the Pak and no config file exists yet, you can
-create one from scratch — just make sure to include any other settings you
-want alongside the key (or leave them out to accept defaults):
+create a minimal one:
 
 ```json
 {
   "api_key": "YOUR_API_KEY_HERE"
 }
 ```
-
----
-
-Restart the Pak after saving — the Settings screen will show **API Key: FOUND**
-once the key is loaded.
 
 ---
 
@@ -421,9 +422,6 @@ in the Settings screen on the device.
   3. **Try a different network.** Switching WiFi networks (e.g. a mobile hotspot)
      gives the Pak a fresh public IP that may not be challenged.
 
-- **No in-app keyboard for API key entry.** The API key must be set by editing
-  `config.json` directly (see [itch.io API Key](#itch-io-api-key-paid-games)).
-
 - **Animated GIF thumbnail conversion is best-effort.** When a game's cover art
   is an animated GIF, a static PNG thumbnail is derived from it automatically
   using a colour-variance heuristic (the frame with the most colour diversity is
@@ -433,10 +431,6 @@ in the Settings screen on the device.
 
 - **`.pocket` and other non-ROM files** are filtered out — only `.gb`, `.gbc`,
   `.gba`, `.nes`, `.md`, `.gen`, `.smd`, `.p8`, and `.p8.png` files are shown.
-
-- **No search** — the game list is sourced from multiple itch.io tag feeds
-  (one per platform) combined in itch.io's default sort order. There is no
-  free-text search.
 
 - **CSRF token expiry** — if the ROM picker is left open for a long time before
   selecting a file, the resolver may reject the request. Back out and
