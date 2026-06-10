@@ -177,10 +177,10 @@ func TestInspectRemoteZIP_PNGNotPromotedByMagic(t *testing.T) {
 	// Minimal valid 128-px-wide PNG (1×1 is fine for testing the guard).
 	pngHeader := []byte{
 		0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, // PNG magic
-		0x00, 0x00, 0x00, 0x0D,                         // IHDR chunk length
-		'I', 'H', 'D', 'R',                             // "IHDR"
-		0x00, 0x00, 0x00, 0x80,                         // width = 128 (0x80)
-		0x00, 0x00, 0x00, 0x80,                         // height = 128
+		0x00, 0x00, 0x00, 0x0D, // IHDR chunk length
+		'I', 'H', 'D', 'R', // "IHDR"
+		0x00, 0x00, 0x00, 0x80, // width = 128 (0x80)
+		0x00, 0x00, 0x00, 0x80, // height = 128
 	}
 	files := map[string]string{
 		"game/pico8/cart.p8.png": "cart",
@@ -202,15 +202,45 @@ func TestInspectRemoteZIP_PNGNotPromotedByMagic(t *testing.T) {
 	}
 }
 
+func TestInspectRemoteZIP_NestedZIPNotPromotedByMagic(t *testing.T) {
+	innerZIP := buildTestZIP(t, map[string]string{
+		"Deadeus.gb": "romdata",
+	})
+	data := buildTestZIP(t, map[string]string{
+		"Deadeus.gb":  "romdata",
+		"Deadeus.zip": string(innerZIP),
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, "game.zip", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(http.DefaultClient, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP: %v", err)
+	}
+	if manifest.ROMCount() != 1 {
+		t.Fatalf("ROMCount = %d, want 1 (nested ZIP must not be promoted to ROM)", manifest.ROMCount())
+	}
+	if got := len(manifest.ROMsByExt()[".gb"]); got != 1 {
+		t.Fatalf(".gb ROM count = %d, want 1", got)
+	}
+	for _, e := range manifest.Entries {
+		if e.Name == "Deadeus.zip" && e.Kind != roms.KindOther {
+			t.Fatalf("Deadeus.zip kind = %v, want KindOther", e.Kind)
+		}
+	}
+}
+
 func TestInspectRemoteZIP_MacOSMetaDirExcluded(t *testing.T) {
 	// ZIPs created on macOS include a __MACOSX/ directory containing resource
 	// fork stubs. These have ROM extensions (._file.p8.png) but must not be
 	// counted as playable files. Verify they are excluded from the manifest.
 	files := map[string]string{
-		"game/pico8/moss_moss.p8.png":                           "cart",
-		"__MACOSX/game/pico8/._moss_moss.p8.png":                "mac-meta",
-		"__MACOSX/game/pico8/._moss_moss_other.p8.png":          "mac-meta",
-		"game/pico8/._moss_moss_local.p8.png":                   "mac-meta",
+		"game/pico8/moss_moss.p8.png":                  "cart",
+		"__MACOSX/game/pico8/._moss_moss.p8.png":       "mac-meta",
+		"__MACOSX/game/pico8/._moss_moss_other.p8.png": "mac-meta",
+		"game/pico8/._moss_moss_local.p8.png":          "mac-meta",
 	}
 	data := buildTestZIP(t, files)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

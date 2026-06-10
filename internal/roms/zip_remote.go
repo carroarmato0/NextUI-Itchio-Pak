@@ -290,9 +290,9 @@ func IsInMacOSMetaDir(name string) bool {
 }
 
 // classifyByMagic opens a ZIP entry, reads the first DetectBufSize uncompressed
-// bytes, and returns the detected ROM extension. Returns "" on any error or when
-// no signature matches. Works for both local and remote ZIPs (remote reads
-// trigger HTTP Range requests via the underlying ReaderAt).
+// bytes, and returns the detected playable ROM extension. Returns "" on any
+// error or when no signature matches. Works for both local and remote ZIPs
+// (remote reads trigger HTTP Range requests via the underlying ReaderAt).
 func classifyByMagic(f *zip.File) string {
 	rc, err := f.Open()
 	if err != nil {
@@ -301,5 +301,5 @@ func classifyByMagic(f *zip.File) string {
 	defer rc.Close()
 	buf := make([]byte, DetectBufSize)
 	n, _ := io.ReadFull(rc, buf)
-	return DetectROMExt(buf[:n])
+	return DetectPlayableROMExt(buf[:n])
 }

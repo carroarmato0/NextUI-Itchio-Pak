@@ -607,7 +607,7 @@ func classifyWithMagic(baseName string, open func() (io.ReadCloser, error)) (rom
 	buf := make([]byte, roms.DetectBufSize)
 	n, _ := io.ReadFull(rc, buf)
 	rc.Close()
-	detected := roms.DetectROMExt(buf[:n])
+	detected := roms.DetectPlayableROMExt(buf[:n])
 	if detected == "" {
 		return kind, baseName
 	}
@@ -975,7 +975,7 @@ func commonPathPrefix(paths []string) string {
 	return strings.Join(parts, "/") + "/"
 }
 
-func (s *ZIPDownloadScreen) NeedsRedraw() bool        { return true }
+func (s *ZIPDownloadScreen) NeedsRedraw() bool         { return true }
 func (s *ZIPDownloadScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {

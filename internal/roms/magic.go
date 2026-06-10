@@ -70,3 +70,14 @@ func DetectROMExt(data []byte) string {
 
 	return ""
 }
+
+// DetectPlayableROMExt is like DetectROMExt, but excludes archive/container
+// formats. Use this for files already inside an archive so nested ZIPs are not
+// promoted to playable ROM entries.
+func DetectPlayableROMExt(data []byte) string {
+	ext := DetectROMExt(data)
+	if ext == ".zip" {
+		return ""
+	}
+	return ext
+}

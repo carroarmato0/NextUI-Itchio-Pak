@@ -56,9 +56,9 @@ func TestDetectROMExt(t *testing.T) {
 	}
 
 	tests := []struct {
-		name  string
-		data  []byte
-		want  string
+		name string
+		data []byte
+		want string
 	}{
 		{"NES magic", nesHeader(), ".nes"},
 		{"GBA magic", gbaHeader(), ".gba"},
@@ -80,5 +80,18 @@ func TestDetectROMExt(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("%s: DetectROMExt() = %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestDetectPlayableROMExtExcludesZIP(t *testing.T) {
+	zipHeader := []byte{0x50, 0x4B, 0x03, 0x04, 0x14, 0x00}
+	if got := roms.DetectPlayableROMExt(zipHeader); got != "" {
+		t.Fatalf("DetectPlayableROMExt(zip) = %q, want empty", got)
+	}
+
+	gbHeader := make([]byte, 0x150)
+	copy(gbHeader[0x104:], []byte{0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B})
+	if got := roms.DetectPlayableROMExt(gbHeader); got != ".gb" {
+		t.Fatalf("DetectPlayableROMExt(gb) = %q, want .gb", got)
 	}
 }

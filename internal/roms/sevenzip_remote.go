@@ -89,7 +89,7 @@ func manifestFrom7zReader(r *sevenzip.ReadCloser) ZIPManifest {
 }
 
 // classify7zByMagic reads the first DetectBufSize bytes of a 7z entry and
-// returns the detected ROM extension, or "" if unrecognised.
+// returns the detected playable ROM extension, or "" if unrecognised.
 func classify7zByMagic(f *sevenzip.File) string {
 	rc, err := f.Open()
 	if err != nil {
@@ -98,5 +98,5 @@ func classify7zByMagic(f *sevenzip.File) string {
 	defer rc.Close()
 	buf := make([]byte, DetectBufSize)
 	n, _ := io.ReadFull(rc, buf)
-	return DetectROMExt(buf[:n])
+	return DetectPlayableROMExt(buf[:n])
 }
