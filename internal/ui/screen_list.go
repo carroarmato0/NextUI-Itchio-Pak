@@ -470,7 +470,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		titleW, _ := r.BoldTextSize("Itch.io")
 		outerR := fontH * 2 / 5       // diameter ≈ 80% of font height
 		innerR := outerR * 7 / 10     // ~3px ring at typical sizes
-		cx := int32(12) + titleW + 10 + outerR
+		cx := int32(12) + titleW + 18 + outerR
 		cy := headerTextY + fontH/2
 
 		// Ring
