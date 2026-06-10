@@ -24,7 +24,7 @@ var AllPlatforms = []FeedPlatform{
 	{
 		Code:      "GB",
 		Name:      "Game Boy",
-		FeedSlugs: []string{"made-with-gb-studio", "tag-gameboy-rom"},
+		FeedSlugs: []string{"made-with-gb-studio", "tag-gbstudio", "tag-gameboy-rom"},
 	},
 	{
 		Code:      "GBA",
