@@ -21,6 +21,7 @@ cmd/itchio-pak/itchio-pak
 .superpowers/
 .go_cache/
 .remember/
+.claude
 tmp/
 
 # ADB debug output
@@ -32,6 +33,4 @@ debug-profiles/
 itchio-pak.log
 
 # Graphify knowledge graph (generated outputs — keep report/cost/manifest)
-graphify-out/graph.json
-graphify-out/graph.html
-graphify-out/cache/
+graphify-out/
