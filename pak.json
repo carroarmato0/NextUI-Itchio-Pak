@@ -1,6 +1,6 @@
 {
   "name": "Itch-io",
-  "version": "v1.0.19",
+  "version": "v1.0.20",
   "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
@@ -15,6 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
+    "v1.0.20": "\n• Fix games being wrongly marked as removed after a version update was published.",
     "v1.0.19": "\n• Add gbstudio tag to find more GB games.\n• Fix nested zip archives from being recognized as candidate roms.",
     "v1.0.18": "\n• Various Pico-8 fixes.",
     "v1.0.17": "\n• UI overhaul.\n• New Search, Filter/Sort functionality.\n• Virtual Keyboad.\n• Support for PICO-8.",
