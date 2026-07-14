@@ -33,6 +33,16 @@ detect_runtime() {
 IMAGE="itchio-pak-dev"
 CACHE_DIR="$(pwd)/.go_cache"
 if [ -z "${IN_CONTAINER:-}" ]; then
+    # Host-side shell-tooling tests (release scripts). These exercise host tools
+    # (jq/git/gh) rather than Go code, so they run here — not in the Go container,
+    # which has no jq/unzip. Skipped if jq is unavailable.
+    if command -v jq >/dev/null 2>&1; then
+        echo "==> release-github_test.sh"
+        "$SCRIPT_DIR/release-github_test.sh" || exit 1
+    else
+        echo "note: skipping release-github_test.sh (jq not found on host)" >&2
+    fi
+
     mkdir -p "$CACHE_DIR"
     RUNTIME="$(detect_runtime)"
     if [ -z "$RUNTIME" ]; then

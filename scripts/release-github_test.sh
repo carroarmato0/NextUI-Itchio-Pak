@@ -34,10 +34,15 @@ check "compare link ends at current version" "$notes" "...$VERSION"
 [ -n "$PREV" ] && check "compare link starts at previous version" "$notes" "/compare/$PREV..."
 
 # --- --dry-run lists both artifacts and does not create a release ---
-dry="$("$SCRIPT" --dry-run 2>&1)"
-check "dry-run mentions the .pakz artifact" "$dry" "Itch-io.pakz"
-check "dry-run mentions the .pak.zip artifact" "$dry" "Itch-io.pak.zip"
-check "dry-run announces itself" "$dry" "DRY RUN"
+# Requires built dist/ artifacts; skip when absent (e.g. a fresh CI checkout).
+if [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.zip" ]; then
+	dry="$("$SCRIPT" --dry-run 2>&1)"
+	check "dry-run mentions the .pakz artifact" "$dry" "Itch-io.pakz"
+	check "dry-run mentions the .pak.zip artifact" "$dry" "Itch-io.pak.zip"
+	check "dry-run announces itself" "$dry" "DRY RUN"
+else
+	printf 'skip - dry-run checks (no dist/ artifacts; run scripts/release.sh)\n'
+fi
 
 # --- unknown flag is rejected ---
 if "$SCRIPT" --bogus >/dev/null 2>&1; then
