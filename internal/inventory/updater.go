@@ -188,6 +188,14 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 		return nil
 	}
 
+	// A reachable game page that offers zero downloads is effectively gone —
+	// the only non-404 case that counts as a removal.
+	if len(uploads) == 0 {
+		s.inv.MarkRemoved(gameURL)
+		logger.Warn("update-svc: game page offers no downloads %s", gameURL)
+		return nil
+	}
+
 	upstreamFiles := make([]UpstreamFile, 0, len(uploads))
 	upstreamNames := make(map[string]bool, len(uploads)*2)
 	for _, u := range uploads {
@@ -202,9 +210,12 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 		}
 	}
 
-	// Warn if any downloaded file is no longer offered upstream.
-	// Music files extracted from ZIPs have individual track names that are never
-	// directly listed as upload filenames, so skip them here.
+	// Log (informationally) any downloaded file that is no longer offered upstream.
+	// This is NOT a removal: a version bump replaces the old upload with a new one
+	// (e.g. "Moss Moss 1.3.zip" → "Moss Moss 1.4.zip"), which surfaces to the user
+	// as a pending update via HasPendingUpdates. The game page still returns files,
+	// so it is reachable. Music tracks extracted from ZIPs are never listed as
+	// upload filenames, so skip them.
 	for _, f := range downloadedFiles {
 		if f.FileType == FileTypeMusic {
 			continue
@@ -218,13 +229,11 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 		}
 		stem := strings.TrimSuffix(checkName, romFileExt(checkName))
 		if !upstreamNames[checkName] && !upstreamNames[stem] {
-			s.inv.MarkRemoved(gameURL)
-			logger.Warn("update-svc: downloaded file %q no longer available upstream for %s", checkName, gameURL)
-			return upstreamFiles
+			logger.Info("update-svc: downloaded file %q superseded upstream for %s (update available)", checkName, gameURL)
 		}
 	}
 
-	// All downloaded files still available — clear any stale removal state.
+	// Game page is reachable and offers downloads — clear any stale removal state.
 	s.inv.MarkReachable(gameURL)
 	logger.Debug("update-svc: %s — %d upstream file(s) recorded", gameURL, len(upstreamFiles))
 	return upstreamFiles

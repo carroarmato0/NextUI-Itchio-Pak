@@ -316,8 +316,11 @@ func TestUpdateService_DiffPrunesVanishedFile(t *testing.T) {
 	}
 }
 
-func TestUpdateService_MarksRemovedWhenDownloadedFileVanishesFromStore(t *testing.T) {
-	// Upstream now only has game-v2.gb — the originally downloaded game.gb is gone.
+func TestUpdateService_DoesNotMarkRemovedWhenNewerVersionReplacesFile(t *testing.T) {
+	// Regression (Moss Moss): a version bump replaces the downloaded archive
+	// upstream — e.g. "Moss Moss 1.3.zip" → "Moss Moss 1.4.zip". The game page
+	// still returns uploads, so the game is reachable: it has an update pending,
+	// NOT a removal. Marking it removed is a false positive.
 	srv := freeGameServer(t, http.StatusOK, []string{"game-v2.gb"})
 	defer srv.Close()
 
@@ -330,7 +333,8 @@ func TestUpdateService_MarksRemovedWhenDownloadedFileVanishesFromStore(t *testin
 
 	invPath := filepath.Join(dir, "inventory.json")
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
-	inv.Add(srv.URL+"/game",
+	gameURL := srv.URL + "/game"
+	inv.Add(gameURL,
 		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
 		inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
 	inv.Save(invPath)
@@ -342,8 +346,41 @@ func TestUpdateService_MarksRemovedWhenDownloadedFileVanishesFromStore(t *testin
 	<-done
 	svc.Stop()
 
-	if !inv.IsRemoved(srv.URL + "/game") {
-		t.Error("IsRemoved: want true when downloaded file is no longer available upstream")
+	if inv.IsRemoved(gameURL) {
+		t.Error("IsRemoved: want false when the game page still offers uploads (version bump is an update, not a removal)")
+	}
+}
+
+func TestUpdateService_MarksRemovedWhenNoUpstreamFilesOffered(t *testing.T) {
+	// The game page is reachable (200) but offers zero downloads — the game is
+	// effectively gone. This is the only non-404 case that should be marked removed.
+	srv := freeGameServer(t, http.StatusOK, []string{})
+	defer srv.Close()
+
+	dir := t.TempDir()
+	romPath := filepath.Join(dir, "game.gb")
+	os.WriteFile(romPath, []byte("ROM"), 0644)
+	artPath := inventory.CoverArtPath(srv.URL+"/cover.png", romPath)
+	os.MkdirAll(filepath.Dir(artPath), 0755)
+	os.WriteFile(artPath, minimalPNG(), 0644)
+
+	invPath := filepath.Join(dir, "inventory.json")
+	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+	gameURL := srv.URL + "/game"
+	inv.Add(gameURL,
+		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
+		inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
+	inv.Save(invPath)
+
+	client := itchio.NewClientWithBase(srv.URL)
+	done := make(chan struct{})
+	svc := inventory.NewUpdateService(inv, invPath, client, nil)
+	svc.Start(func() { close(done) })
+	<-done
+	svc.Stop()
+
+	if !inv.IsRemoved(gameURL) {
+		t.Error("IsRemoved: want true when the game page offers no downloads at all")
 	}
 }
 
