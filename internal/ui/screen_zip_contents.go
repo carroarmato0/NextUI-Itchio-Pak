@@ -147,6 +147,7 @@ func (s *ZIPContentsScreen) NeedsRedraw() bool        { return true }
 func (s *ZIPContentsScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
+	mu := r.Theme.Muted()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -173,7 +174,7 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 	if m.HasMusic() {
 		summary += fmt.Sprintf("  ·  %d music track(s)", m.MusicCount())
 	}
-	r.DrawSmallText(summary, 20, summaryY, 140, 140, 140)
+	r.DrawSmallText(summary, 20, summaryY, mu[0], mu[1], mu[2])
 
 	rowH := mainFH + 14
 	listTop := summaryY + smallFH + 12
@@ -216,7 +217,7 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 		switch row.kind {
 		case zipRowExtHeader:
 			label := strings.ToUpper(row.ext) + " files — pick one:"
-			r.DrawSmallText(label, 20, y+(rowH-smallFH)/2, 100, 100, 120)
+			r.DrawSmallText(label, 20, y+(rowH-smallFH)/2, mu[0], mu[1], mu[2])
 		case zipRowROM:
 			marker := "  "
 			if s.selectedROMs[row.ext] == row.entry.Name {

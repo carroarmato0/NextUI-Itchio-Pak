@@ -979,6 +979,11 @@ func (s *ZIPDownloadScreen) NeedsRedraw() bool         { return true }
 func (s *ZIPDownloadScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	mu := r.Theme.Muted()
+	ok := r.Theme.Success()
+	track := r.Theme.ProgressTrack()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -1006,15 +1011,15 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		tot := atomic.LoadInt64(&s.total)
 		r.DrawSmallText(s.plan.Upload.Filename, 20, contentTop+4, ht[0], ht[1], ht[2])
 		barW := r.W - 80
-		r.DrawRect(40, mid-10, barW, 20, 60, 60, 60)
+		r.DrawRect(40, mid-10, barW, 20, track[0], track[1], track[2])
 		if tot > 0 {
 			filled := int32(float64(barW) * float64(dl) / float64(tot))
-			r.DrawRect(40, mid-10, filled, 20, 80, 200, 80)
+			r.DrawRect(40, mid-10, filled, 20, ok[0], ok[1], ok[2])
 			r.DrawText(fmt.Sprintf("%d%%  (%s / %s)", dl*100/tot, humanBytes(dl), humanBytes(tot)),
 				40, mid+18, mt[0], mt[1], mt[2])
 		} else {
 			if dl > 0 {
-				r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
+				r.DrawRect(40, mid-10, barW/3, 20, ok[0], ok[1], ok[2])
 			}
 			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, mt[0], mt[1], mt[2])
 		}
@@ -1028,7 +1033,7 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		const doneGap = int32(8)
 		blockH := fontH + doneGap + smallFH
 		blockY := mid - blockH/2
-		r.DrawTextCentered("Extraction complete!", 0, blockY, r.W, 80, 200, 80)
+		r.DrawTextCentered("Extraction complete!", 0, blockY, r.W, ok[0], ok[1], ok[2])
 		count := fmt.Sprintf("%d file(s) extracted", len(s.extracted))
 		r.DrawSmallTextCentered(count, 0, blockY+fontH+doneGap, r.W, ht[0], ht[1], ht[2])
 
@@ -1047,13 +1052,13 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 			if y+rowH > bottomLimit || (remaining > 1 && y+rowH*2 > bottomLimit) {
 				break
 			}
-			r.DrawSmallTextCentered(truncateSmallToWidth(r, filepath.Base(p), r.W-40), 0, y, r.W, 120, 120, 120)
+			r.DrawSmallTextCentered(truncateSmallToWidth(r, filepath.Base(p), r.W-40), 0, y, r.W, mu[0], mu[1], mu[2])
 			y += rowH
 			shown++
 		}
 		if shown < len(s.extracted) {
 			more := fmt.Sprintf("…and %d more file(s)", len(s.extracted)-shown)
-			r.DrawSmallTextCentered(more, 0, y, r.W, 80, 80, 80)
+			r.DrawSmallTextCentered(more, 0, y, r.W, mu[0], mu[1], mu[2])
 		}
 		if s.musicFailed {
 			r.DrawSmallTextCentered("Note: music folder could not be created",
@@ -1062,9 +1067,9 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 
 	case zipDLError:
 		y := contentTop + 8
-		r.DrawText("Extraction failed:", 20, y, 200, 60, 60)
+		r.DrawText("Extraction failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, 200, 100, 100)
+		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

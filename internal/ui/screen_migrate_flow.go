@@ -160,6 +160,11 @@ func (s *MigrateFlowScreen) NeedsRedraw() bool { return s.state == mfsRunning }
 func (s *MigrateFlowScreen) HasPendingAnimation() bool { return false }
 
 func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	mu := r.Theme.Muted()
+	ok := r.Theme.Success()
+	warn := r.Theme.Warning()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -189,10 +194,10 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 		if len(saveBase) > 40 {
 			saveBase = "…" + saveBase[len(saveBase)-40:]
 		}
-		r.DrawTextCentered("Save file detected", 0, mid-fontH*2, r.W, 240, 180, 60)
+		r.DrawTextCentered("Save file detected", 0, mid-fontH*2, r.W, warn[0], warn[1], warn[2])
 		r.DrawSmallTextCentered(saveBase, 0, mid-fontH, r.W, ht[0], ht[1], ht[2])
 		if s.saveConflict && s.saveAsked {
-			r.DrawSmallTextCentered("A save already exists at the new path.", 0, mid, r.W, 200, 100, 100)
+			r.DrawSmallTextCentered("A save already exists at the new path.", 0, mid, r.W, badTx[0], badTx[1], badTx[2])
 			r.DrawSmallTextCentered("Overwrite it?", 0, mid+smallFH+4, r.W, ht[0], ht[1], ht[2])
 			ftrY := r.DrawFooterBar(footerH)
 			r.DrawFooterHints([]renderer.FooterHint{
@@ -201,7 +206,7 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 			}, ftrY)
 		} else {
 			r.DrawSmallTextCentered("Rename it to match the new ROM name?", 0, mid, r.W, ht[0], ht[1], ht[2])
-			r.DrawSmallTextCentered("If you skip, your save will not load until renamed manually.", 0, mid+smallFH+4, r.W, 120, 120, 120)
+			r.DrawSmallTextCentered("If you skip, your save will not load until renamed manually.", 0, mid+smallFH+4, r.W, mu[0], mu[1], mu[2])
 			ftrY := r.DrawFooterBar(footerH)
 			r.DrawFooterHints([]renderer.FooterHint{
 				{Kind: renderer.BadgeCircle, Label: "A", Text: "Rename save"},
@@ -210,10 +215,10 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 		}
 
 	case mfsCheckStates:
-		r.DrawTextCentered("Save states detected", 0, mid-fontH*2, r.W, 240, 180, 60)
+		r.DrawTextCentered("Save states detected", 0, mid-fontH*2, r.W, warn[0], warn[1], warn[2])
 		r.DrawSmallTextCentered(fmt.Sprintf("%d save state(s) found.", len(s.existingStates)), 0, mid-fontH, r.W, ht[0], ht[1], ht[2])
 		r.DrawSmallTextCentered("Rename them to match the new ROM name?", 0, mid, r.W, ht[0], ht[1], ht[2])
-		r.DrawSmallTextCentered("If you skip, they will not load until renamed manually.", 0, mid+smallFH+4, r.W, 120, 120, 120)
+		r.DrawSmallTextCentered("If you skip, they will not load until renamed manually.", 0, mid+smallFH+4, r.W, mu[0], mu[1], mu[2])
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgeCircle, Label: "A", Text: "Rename states"},
@@ -225,7 +230,7 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 		drawLoadingDots(r, mid+8)
 
 	case mfsDone:
-		r.DrawTextCentered("Done!", 0, mid-fontH, r.W, 80, 200, 80)
+		r.DrawTextCentered("Done!", 0, mid-fontH, r.W, ok[0], ok[1], ok[2])
 		summary := s.buildSummary()
 		r.DrawSmallTextCentered(summary, 0, mid+4, r.W, ht[0], ht[1], ht[2])
 		ftrY := r.DrawFooterBar(footerH)
@@ -238,8 +243,8 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 		if s.err != nil {
 			msg = s.err.Error()
 		}
-		r.DrawTextCentered("Migration failed", 0, mid-fontH, r.W, 200, 60, 60)
-		r.DrawSmallTextCentered(msg, 0, mid+4, r.W, 200, 100, 100)
+		r.DrawTextCentered("Migration failed", 0, mid-fontH, r.W, bad[0], bad[1], bad[2])
+		r.DrawSmallTextCentered(msg, 0, mid+4, r.W, badTx[0], badTx[1], badTx[2])
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgePill, Label: "A/B", Text: "Back"},

@@ -62,6 +62,7 @@ func (s *PurchasePickerScreen) NeedsRedraw() bool { return false }
 func (s *PurchasePickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
+	mu := r.Theme.Muted()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -81,7 +82,7 @@ func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 10
-	r.DrawSmallText("Multiple purchases found — choose one:", 20, contentTop, 180, 180, 180)
+	r.DrawSmallText("Multiple purchases found — choose one:", 20, contentTop, mu[0], mu[1], mu[2])
 	contentTop += smallFH + 10
 
 	rowH := fontH + smallFH + 18

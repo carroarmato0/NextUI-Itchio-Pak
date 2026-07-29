@@ -166,6 +166,11 @@ func (s *MultiROMDownloadScreen) NeedsRedraw() bool        { return true }
 func (s *MultiROMDownloadScreen) HasPendingAnimation() bool { return false }
 
 func (s *MultiROMDownloadScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	mu := r.Theme.Muted()
+	ok := r.Theme.Success()
+	track := r.Theme.ProgressTrack()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -192,25 +197,25 @@ func (s *MultiROMDownloadScreen) Draw(r *renderer.Renderer) {
 		dl := atomic.LoadInt64(&s.dlProgress)
 		tot := atomic.LoadInt64(&s.dlTotal)
 		label := fmt.Sprintf("File %d of %d", idx+1, len(s.downloads))
-		r.DrawSmallTextCentered(label, 0, mid-fontH-smallFH-14, r.W, 140, 140, 140)
+		r.DrawSmallTextCentered(label, 0, mid-fontH-smallFH-14, r.W, mu[0], mu[1], mu[2])
 		if idx < len(s.downloads) {
 			name := truncateSmallToWidth(r, s.downloads[idx].Upload.Filename, r.W-40)
 			r.DrawSmallTextCentered(name, 0, mid-fontH-6, r.W, ht[0], ht[1], ht[2])
 		}
 		barW := r.W - 80
-		r.DrawRect(40, mid-10, barW, 20, 60, 60, 60)
+		r.DrawRect(40, mid-10, barW, 20, track[0], track[1], track[2])
 		if tot > 0 {
 			filled := int32(float64(barW) * float64(dl) / float64(tot))
-			r.DrawRect(40, mid-10, filled, 20, 80, 200, 80)
+			r.DrawRect(40, mid-10, filled, 20, ok[0], ok[1], ok[2])
 			r.DrawText(fmt.Sprintf("%d%%  (%s / %s)", dl*100/tot, humanBytes(dl), humanBytes(tot)),
 				40, mid+18, mt[0], mt[1], mt[2])
 		} else if dl > 0 {
-			r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
+			r.DrawRect(40, mid-10, barW/3, 20, ok[0], ok[1], ok[2])
 			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, mt[0], mt[1], mt[2])
 		}
 
 	case multiDLDone:
-		r.DrawTextCentered(fmt.Sprintf("%d ROM(s) downloaded!", len(s.downloads)), 0, mid-fontH-8, r.W, 80, 200, 80)
+		r.DrawTextCentered(fmt.Sprintf("%d ROM(s) downloaded!", len(s.downloads)), 0, mid-fontH-8, r.W, ok[0], ok[1], ok[2])
 		lineY := mid + 8
 		for _, p := range s.finalPaths {
 			if p == "" || lineY+smallFH > r.H-footerH-4 {
@@ -223,9 +228,9 @@ func (s *MultiROMDownloadScreen) Draw(r *renderer.Renderer) {
 
 	case multiDLError:
 		y := headerH + 10 + 8
-		r.DrawText("Download failed:", 20, y, 200, 60, 60)
+		r.DrawText("Download failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, 200, 100, 100)
+		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

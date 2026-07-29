@@ -140,6 +140,8 @@ func (s *ZIPInspectScreen) NeedsRedraw() bool        { return true }
 func (s *ZIPInspectScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -188,8 +190,8 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 		errLines := r.WrapText(s.err.Error(), r.W-40)
 		errH := int32(len(errLines)) * (smallFH + 4)
 		startY := mid - (mainFH+10+errH)/2
-		r.DrawText("Inspection failed:", 20, startY, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, startY+mainFH+10, r.W-40, smallFH+4, 200, 100, 100)
+		r.DrawText("Inspection failed:", 20, startY, bad[0], bad[1], bad[2])
+		r.DrawWrappedText(s.err.Error(), 20, startY+mainFH+10, r.W-40, smallFH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

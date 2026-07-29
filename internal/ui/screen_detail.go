@@ -284,8 +284,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		platPillW := pw + 12
 		platPillX := badgeRightEdge - platPillW
 		platPillY := (headerH - badgePillH) / 2
-		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, 35, 45, 65)
-		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, 130, 170, 210)
+		ppBG := r.Theme.Chip()
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, ppBG[0], ppBG[1], ppBG[2])
+		ppTx := r.Theme.ContrastText(r.Theme.Chip())
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, ppTx[0], ppTx[1], ppTx[2])
 		badgeRightEdge = platPillX - 6
 	}
 
@@ -298,8 +300,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		dlPillW := dw + 12
 		dlPillX := badgeRightEdge - dlPillW
 		dlPillY := (headerH - badgePillH) / 2
-		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, 25, 50, 30)
-		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, 70, 190, 90)
+		dlBG := r.Theme.SuccessBG()
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
+		dlTx := r.Theme.Success()
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
 		badgeRightEdge = dlPillX - 6
 	}
 
@@ -358,7 +362,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 	if s.err != nil {
-		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, 200, 50, 50)
+		er := r.Theme.Error()
+		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, er[0], er[1], er[2])
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints(backHints(r.W), ftrY)
 		return
@@ -399,9 +404,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			imgY := y + (imgBoxH-dh)/2
 			r.DrawTextureAt(tex, imgX, imgY, dw, dh)
 		} else if !s.cache.Failed(ssURL) {
-			r.DrawText("Loading...", margin+imgBoxW/2-40, y+imgBoxH/2-10, 80, 80, 80)
+			mu := r.Theme.Muted()
+			r.DrawText("Loading...", margin+imgBoxW/2-40, y+imgBoxH/2-10, mu[0], mu[1], mu[2])
 		} else {
-			r.DrawText("No Image", margin+imgBoxW/2-40, y+imgBoxH/2-10, 80, 80, 80)
+			mu := r.Theme.Muted()
+			r.DrawText("No Image", margin+imgBoxW/2-40, y+imgBoxH/2-10, mu[0], mu[1], mu[2])
 		}
 
 		// QR code in the right portion of the top row
@@ -409,7 +416,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		s.drawQR(r, qrX, y, qrColW, imgBoxH)
 
 		y += imgBoxH + 6
-		r.DrawText(s.screenshotLabels[s.screenshotIdx], margin, y, 140, 140, 140)
+		mu := r.Theme.Muted()
+		r.DrawText(s.screenshotLabels[s.screenshotIdx], margin, y, mu[0], mu[1], mu[2])
 		y += fontH + 6
 	} else {
 		// No screenshots — show QR full-width at the same pixel size as the
@@ -443,8 +451,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			pillH := smallFH + 4
 			pillX := r.W - margin - pillW
 			pillY := y + (fontH+4-pillH)/2
-			r.DrawPill(pillX, pillY, pillW, pillH, 80, 60, 10)
-			r.DrawSmallTextCenteredInRect(priceStr, pillX, pillY, pillW, pillH, 220, 180, 60)
+			prBG := r.Theme.WarningBG()
+			r.DrawPill(pillX, pillY, pillW, pillH, prBG[0], prBG[1], prBG[2])
+			prTx := r.Theme.Warning()
+			r.DrawSmallTextCenteredInRect(priceStr, pillX, pillY, pillW, pillH, prTx[0], prTx[1], prTx[2])
 		}
 		y += fontH + 14
 	}
@@ -503,18 +513,24 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				cardY = rowY
 			}
 
-			r.DrawRect(cardX, cardY, cardW, cardH, 42, 42, 58)
-			r.DrawRect(cardX+1, cardY+1, cardW-2, cardH-2, 10, 10, 18)
+			cdBd := r.Theme.Chip()
+			r.DrawRect(cardX, cardY, cardW, cardH, cdBd[0], cdBd[1], cdBd[2])
+			cdBG := r.Theme.ModalScrim()
+			r.DrawRect(cardX+1, cardY+1, cardW-2, cardH-2, cdBG[0], cdBG[1], cdBG[2])
 
-			r.DrawPill(cardX+cp, cardY+cp, dlPillW, dlPillH, 80, 200, 220)
-			r.DrawSmallTextCenteredInRect("DL", cardX+cp, cardY+cp, dlPillW, dlPillH, 20, 20, 20)
+			cdDL := r.Theme.Info()
+			r.DrawPill(cardX+cp, cardY+cp, dlPillW, dlPillH, cdDL[0], cdDL[1], cdDL[2])
+			cdDLTx := r.Theme.ContrastText(r.Theme.Info())
+			r.DrawSmallTextCenteredInRect("DL", cardX+cp, cardY+cp, dlPillW, dlPillH, cdDLTx[0], cdDLTx[1], cdDLTx[2])
 
 			delCircleX := cardX + cardW - cp - delBlockW
 			delCircleCX := delCircleX + delCircleD/2
 			delCircleCY := cardY + cardH/2
-			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, 160, 50, 50)
+			delC := r.Theme.Error()
+			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, delC[0], delC[1], delC[2])
 			r.DrawSmallTextCenteredInRect("X", delCircleX, cardY+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
-			r.DrawSmallText("Delete", delCircleX+delCircleD+6, cardY+cp+2, 200, 80, 80)
+			delT := r.Theme.Error()
+			r.DrawSmallText("Delete", delCircleX+delCircleD+6, cardY+cp+2, delT[0], delT[1], delT[2])
 
 			textX := cardX + cp + dlPillW + 6
 			textMaxW := delCircleX - textX - 4
@@ -523,18 +539,21 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			r.SetClipRect(textX, cardY, textMaxW, cardH)
 			if pathW <= textMaxW {
 				s.pathScrollX = 0
-				r.DrawSmallText(pathText, textX, cardY+cp+2, 100, 100, 120)
+				pth := r.Theme.Muted()
+				r.DrawSmallText(pathText, textX, cardY+cp+2, pth[0], pth[1], pth[2])
 			} else if r.W <= narrowScreenW {
 				// On small screens truncate the path rather than scrolling.
 				truncated := truncateSmallToWidth(r, pathText, textMaxW)
-				r.DrawSmallText(truncated, textX, cardY+cp+2, 100, 100, 120)
+				pth := r.Theme.Muted()
+				r.DrawSmallText(truncated, textX, cardY+cp+2, pth[0], pth[1], pth[2])
 			} else {
 				maxScrollX := pathW - textMaxW
 				scrollX := s.pathScrollX
 				if scrollX > maxScrollX {
 					scrollX = maxScrollX
 				}
-				r.DrawSmallText(pathText, textX-scrollX, cardY+cp+2, 100, 100, 120)
+				pth := r.Theme.Muted()
+				r.DrawSmallText(pathText, textX-scrollX, cardY+cp+2, pth[0], pth[1], pth[2])
 				if s.pathScrollX >= maxScrollX {
 					totalDur := pathScrollDelay +
 						time.Duration(maxScrollX)*time.Second/time.Duration(pathScrollSpeed) +
@@ -574,17 +593,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	// ── Tags ────────────────────────────────────────────────
 	if s.detail != nil && len(s.detail.PageTags) > 0 {
-		r.DrawRect(margin, y, usableW, 1, 50, 50, 50)
+		sep := r.Theme.Separator()
+		r.DrawRect(margin, y, usableW, 1, sep[0], sep[1], sep[2])
 		y += 11
-		ac2 := r.Theme.Accent
-		aT2 := r.Theme.AccentText
-		// Blend accent toward gray-35 at 50% so the pill is clearly visible against
-		// the black background while keeping the accent hue.
-		bgPill := [3]uint8{
-			uint8((int(ac2[0]) + 35) / 2),
-			uint8((int(ac2[1]) + 35) / 2),
-			uint8((int(ac2[2]) + 35) / 2),
-		}
+		// Same chip treatment as the list screen's tag pills. Replaces an
+		// `(Accent+35)/2` blend toward a fixed grey, which assumed a dark
+		// background and drew a heavy purple slab on a light palette.
+		bgPill := r.Theme.Chip()
+		aT2 := r.Theme.ContrastText(bgPill)
 		// Use a fixed line height for tag pills (consistent with list screen).
 		tagsH := r.DrawTagPills(s.detail.PageTags, margin, y, usableW, fontH+6,
 			aT2[0], aT2[1], aT2[2], bgPill[0], bgPill[1], bgPill[2])
@@ -593,9 +609,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	// ── Description (full width, HTML-formatted) ─────────────
 	if s.detail != nil && s.detail.Description != "" {
-		r.DrawRect(margin, y, usableW, 1, 50, 50, 50)
+		sep := r.Theme.Separator()
+		r.DrawRect(margin, y, usableW, 1, sep[0], sep[1], sep[2])
 		y += 11
-		descH := r.DrawFormattedText(s.detail.Description, margin, y, usableW, fontH+4, 180, 180, 180)
+		body := r.Theme.MainText
+		descH := r.DrawFormattedText(s.detail.Description, margin, y, usableW, fontH+4, body[0], body[1], body[2])
 		y += descH
 	}
 
@@ -614,8 +632,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		platPillW := pw + 12
 		platPillX := r.W - 10 - platPillW
 		platPillY := (headerH - badgePillH) / 2
-		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, 35, 45, 65)
-		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, 130, 170, 210)
+		ppBG := r.Theme.Chip()
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, ppBG[0], ppBG[1], ppBG[2])
+		ppTx := r.Theme.ContrastText(r.Theme.Chip())
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, ppTx[0], ppTx[1], ppTx[2])
 	}
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
@@ -631,8 +651,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		}
 		dlPillX := redrawBadgeRight - dlPillW
 		dlPillY := (headerH - badgePillH) / 2
-		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, 25, 50, 30)
-		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, 70, 190, 90)
+		dlBG := r.Theme.SuccessBG()
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
+		dlTx := r.Theme.Success()
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
 	}
 	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
 	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
@@ -665,31 +687,38 @@ func (s *DetailScreen) drawModal(r *renderer.Renderer) {
 	boxY := (r.H - boxH) / 2
 
 	// Dark background covers underlying content
-	r.DrawRect(0, 0, r.W, r.H, 10, 10, 15)
+	scrim := r.Theme.ModalScrim()
+	r.DrawRect(0, 0, r.W, r.H, scrim[0], scrim[1], scrim[2])
 
 	// Border (accent-tinted) + box background
 	ac := r.Theme.Accent
 	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, ac[0]/2, ac[1]/2, ac[2]/2)
-	r.DrawRect(boxX, boxY, boxW, boxH, 25, 25, 35)
+	panel := r.Theme.ModalPanel()
+	r.DrawRect(boxX, boxY, boxW, boxH, panel[0], panel[1], panel[2])
 
 	y := boxY + pad
 
-	r.DrawTextCentered(s.modal.title, boxX, y, boxW, 240, 180, 60)
+	ttl := r.Theme.Warning()
+	r.DrawTextCentered(s.modal.title, boxX, y, boxW, ttl[0], ttl[1], ttl[2])
 	y += fontH + pad
 
-	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	sep := r.Theme.Separator()
+	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, sep[0], sep[1], sep[2])
 	y += 1 + pad
 
-	r.DrawWrappedText(s.modal.body, boxX+pad, y, boxW-pad*2, lineH, 200, 200, 200)
+	mbody := r.Theme.ContrastText(r.Theme.ModalPanel())
+	r.DrawWrappedText(s.modal.body, boxX+pad, y, boxW-pad*2, lineH, mbody[0], mbody[1], mbody[2])
 	y += lineH*bodyLines + pad
 
-	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, sep[0], sep[1], sep[2])
 	y += 1 + pad
 
 	if s.modal.kind == modalKindDeleteConfirm {
-		r.DrawSmallTextCentered("A: confirm  B: cancel", boxX, y, boxW, 200, 100, 100)
+		cf := r.Theme.Error()
+		r.DrawSmallTextCentered("A: confirm  B: cancel", boxX, y, boxW, cf[0], cf[1], cf[2])
 	} else {
-		r.DrawSmallTextCentered("Press any button to dismiss", boxX, y, boxW, 120, 120, 120)
+		mu := r.Theme.Muted()
+		r.DrawSmallTextCentered("Press any button to dismiss", boxX, y, boxW, mu[0], mu[1], mu[2])
 	}
 }
 
@@ -706,25 +735,29 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 	blockH := fontH + pad + fontH + pad + 1 + pad + smallFH + pad + smallFH + pad + 1 + pad + fontH
 	y := (r.H - blockH) / 2
 
-	r.DrawTextCentered("[!]", 0, y, r.W, 240, 180, 60)
+	wn := r.Theme.Warning()
+	r.DrawTextCentered("[!]", 0, y, r.W, wn[0], wn[1], wn[2])
 	y += fontH + pad
 
-	r.DrawTextCentered("Content Warning", 0, y, r.W, 240, 180, 60)
+	r.DrawTextCentered("Content Warning", 0, y, r.W, wn[0], wn[1], wn[2])
 	y += fontH + pad
 
-	r.DrawRect(r.W/4, y, r.W/2, 1, 60, 60, 60)
+	sep := r.Theme.Separator()
+	r.DrawRect(r.W/4, y, r.W/2, 1, sep[0], sep[1], sep[2])
 	y += 1 + pad
 
-	r.DrawSmallTextCentered("This game contains content matched by one of your active filters.", 0, y, r.W, 180, 180, 180)
+	ht := r.Theme.HintText
+	r.DrawSmallTextCentered("This game contains content matched by one of your active filters.", 0, y, r.W, ht[0], ht[1], ht[2])
 	y += smallFH + pad
 
-	r.DrawSmallTextCentered("You can adjust your filters in Settings.", 0, y, r.W, 180, 180, 180)
+	r.DrawSmallTextCentered("You can adjust your filters in Settings.", 0, y, r.W, ht[0], ht[1], ht[2])
 	y += smallFH + pad
 
-	r.DrawRect(r.W/4, y, r.W/2, 1, 60, 60, 60)
+	r.DrawRect(r.W/4, y, r.W/2, 1, sep[0], sep[1], sep[2])
 	y += 1 + pad
 
-	r.DrawTextCentered("B  Go back", 0, y, r.W, 180, 80, 80)
+	bk := r.Theme.Error()
+	r.DrawTextCentered("B  Go back", 0, y, r.W, bk[0], bk[1], bk[2])
 
 	footerH := int32(52)
 	ftrY := r.DrawFooterBar(footerH)
@@ -772,8 +805,9 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 		qrY = y + vMargin
 	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
-	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, 120, 120, 120)
-	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, 120, 120, 120)
+	mu := r.Theme.Muted()
+	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])
+	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, mu[0], mu[1], mu[2])
 }
 
 // goBack destroys any cached SDL resources and returns the previous screen.

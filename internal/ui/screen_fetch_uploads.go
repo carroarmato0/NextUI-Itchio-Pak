@@ -176,6 +176,9 @@ func (s *FetchUploadsScreen) NeedsRedraw() bool {
 func (s *FetchUploadsScreen) HasPendingAnimation() bool { return false }
 
 func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	warn := r.Theme.Warning()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -212,15 +215,15 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 			ndLines := r.WrapText(noDownloadMsg, r.W-40)
 			ndH := int32(len(ndLines)) * (smallFH + 4)
 			startY := mid - (mainFH+10+ndH)/2
-			r.DrawTextCentered("No downloads available", 0, startY, r.W, 200, 160, 60)
+			r.DrawTextCentered("No downloads available", 0, startY, r.W, warn[0], warn[1], warn[2])
 			r.DrawWrappedText(noDownloadMsg, 20, startY+mainFH+10, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
 		} else {
 			msg := s.err.Error()
 			errLines := r.WrapText(msg, r.W-40)
 			errH := int32(len(errLines)) * (smallFH + 4)
 			startY := mid - (mainFH+10+errH)/2
-			r.DrawText("Could not fetch files:", 20, startY, 200, 60, 60)
-			r.DrawWrappedText(msg, 20, startY+mainFH+10, r.W-40, smallFH+4, 200, 100, 100)
+			r.DrawText("Could not fetch files:", 20, startY, bad[0], bad[1], bad[2])
+			r.DrawWrappedText(msg, 20, startY+mainFH+10, r.W-40, smallFH+4, badTx[0], badTx[1], badTx[2])
 		}
 
 	case fetchDone, fetchNeedsPurchasePick:

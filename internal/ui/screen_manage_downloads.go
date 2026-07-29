@@ -115,6 +115,10 @@ func hasFileType(files []inventory.DownloadedFile, ft string) bool {
 }
 
 func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	mu := r.Theme.Muted()
+	sep := r.Theme.Separator()
+	warn := r.Theme.Warning()
 	s.processAutoRepeat()
 	entry, ok := s.inv.Lookup(s.gameURL)
 	if !ok {
@@ -196,14 +200,14 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 		pathX := margin + nameW + 12
 		pathMaxW := r.W - pathX - margin
 		if pathMaxW > arrowW {
-			r.DrawSmallText(arrowLabel, pathX, y+(fontH-smallFH)/2, 120, 120, 120)
-			r.DrawSmallScrollingText(f.DestPath, pathX+arrowW, y+(fontH-smallFH)/2, pathMaxW-arrowW, 120, 120, 120)
+			r.DrawSmallText(arrowLabel, pathX, y+(fontH-smallFH)/2, mu[0], mu[1], mu[2])
+			r.DrawSmallScrollingText(f.DestPath, pathX+arrowW, y+(fontH-smallFH)/2, pathMaxW-arrowW, mu[0], mu[1], mu[2])
 		}
 	}
 
 	sepY := contentTop + int32(len(entry.Files))*rowH - pixelOffset
 	if sepY >= contentTop && sepY < bottomEdge {
-		r.DrawRect(margin, sepY, r.W-margin*2, 1, 50, 50, 50)
+		r.DrawRect(margin, sepY, r.W-margin*2, 1, sep[0], sep[1], sep[2])
 	}
 	actionY := sepY + 8
 	deleteAllIdx := len(entry.Files)
@@ -213,21 +217,21 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 			if s.cursor == deleteAllIdx && !s.confirmActive {
 				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 			}
-			r.DrawText("Delete ROM", margin, actionY, 200, 120, 80)
+			r.DrawText("Delete ROM", margin, actionY, warn[0], warn[1], warn[2])
 		}
 		actionY += rowH
 		if inView(actionY) {
 			if s.cursor == deleteAllIdx+1 && !s.confirmActive {
 				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 			}
-			r.DrawText("Delete Soundtrack", margin, actionY, 200, 120, 80)
+			r.DrawText("Delete Soundtrack", margin, actionY, warn[0], warn[1], warn[2])
 		}
 		actionY += rowH
 		if inView(actionY) {
 			if s.cursor == deleteAllIdx+2 && !s.confirmActive {
 				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 			}
-			r.DrawText("Delete all", margin, actionY, 200, 80, 80)
+			r.DrawText("Delete all", margin, actionY, bad[0], bad[1], bad[2])
 		}
 		actionY += rowH
 	} else {
@@ -235,14 +239,14 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 			if s.cursor == deleteAllIdx && !s.confirmActive {
 				r.DrawPill(4, actionY-4, r.W-8, rowH, ac[0], ac[1], ac[2])
 			}
-			r.DrawText("Delete all", margin, actionY, 200, 80, 80)
+			r.DrawText("Delete all", margin, actionY, bad[0], bad[1], bad[2])
 		}
 		actionY += rowH
 	}
 
 	sep2Y := actionY + 4
 	if sep2Y >= contentTop && sep2Y < bottomEdge {
-		r.DrawRect(margin, sep2Y, r.W-margin*2, 1, 50, 50, 50)
+		r.DrawRect(margin, sep2Y, r.W-margin*2, 1, sep[0], sep[1], sep[2])
 	}
 	toggleY := sep2Y + 8
 	toggleIdx := len(entry.Files) + extraActions
@@ -283,6 +287,13 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 }
 
 func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry inventory.Entry) {
+	badTx := r.Theme.ErrorText()
+	bd := r.Theme.ModalBorder()
+	bodyC := r.Theme.MainText
+	panel := r.Theme.ModalPanel()
+	scrim := r.Theme.ModalScrim()
+	sep := r.Theme.Separator()
+	warn := r.Theme.Warning()
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	pad := int32(16)
@@ -346,25 +357,25 @@ func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry i
 	boxX := (r.W - boxW) / 2
 	boxY := (r.H - boxH) / 2
 
-	r.DrawRect(0, 0, r.W, r.H, 10, 10, 15)
-	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, 70, 70, 70)
-	r.DrawRect(boxX, boxY, boxW, boxH, 25, 25, 35)
+	r.DrawRect(0, 0, r.W, r.H, scrim[0], scrim[1], scrim[2])
+	r.DrawRect(boxX-1, boxY-1, boxW+2, boxH+2, bd[0], bd[1], bd[2])
+	r.DrawRect(boxX, boxY, boxW, boxH, panel[0], panel[1], panel[2])
 
 	innerW := boxW - pad*2
 	y := boxY + pad
-	r.DrawTextCentered(truncateToWidth(r, title, innerW), boxX, y, boxW, 240, 180, 60)
+	r.DrawTextCentered(truncateToWidth(r, title, innerW), boxX, y, boxW, warn[0], warn[1], warn[2])
 	y += fontH + pad
-	r.DrawRect(boxX+pad, y, innerW, 1, 60, 60, 60)
+	r.DrawRect(boxX+pad, y, innerW, 1, sep[0], sep[1], sep[2])
 	y += 1 + pad
 
 	for _, line := range bodyLines {
-		r.DrawSmallText(truncateSmallToWidth(r, line, innerW), boxX+pad, y, 200, 200, 200)
+		r.DrawSmallText(truncateSmallToWidth(r, line, innerW), boxX+pad, y, bodyC[0], bodyC[1], bodyC[2])
 		y += lineH
 	}
 	y += pad
-	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, 60, 60, 60)
+	r.DrawRect(boxX+pad, y, boxW-pad*2, 1, sep[0], sep[1], sep[2])
 	y += 1 + pad
-	r.DrawSmallTextCentered("A: confirm  B: cancel", boxX, y, boxW, 200, 100, 100)
+	r.DrawSmallTextCentered("A: confirm  B: cancel", boxX, y, boxW, badTx[0], badTx[1], badTx[2])
 }
 
 func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {

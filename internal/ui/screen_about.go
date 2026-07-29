@@ -31,6 +31,7 @@ func (s *AboutScreen) NeedsRedraw() bool { return false }
 func (s *AboutScreen) HasPendingAnimation() bool { return false }
 
 func (s *AboutScreen) Draw(r *renderer.Renderer) {
+	mu := r.Theme.Muted()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -52,7 +53,7 @@ func (s *AboutScreen) Draw(r *renderer.Renderer) {
 	ht := r.Theme.HintText
 	r.DrawSmallTextCentered("Version "+appVersion, 0, y, r.W, ht[0], ht[1], ht[2])
 	y += smallFH + 10
-	r.DrawSmallTextCentered(appNote, 0, y, r.W, 100, 100, 100)
+	r.DrawSmallTextCentered(appNote, 0, y, r.W, mu[0], mu[1], mu[2])
 
 	// ── QR code centered in the remaining space ─────────────────
 	contentBottom := r.H - footerH - 4
@@ -76,7 +77,7 @@ func (s *AboutScreen) Draw(r *renderer.Renderer) {
 		qrY := qrAreaTop + (qrAreaH-qrSize-smallFH-6)/2
 		r.DrawTextureAt(tex, qrX, qrY, qrSize, qrSize)
 		tex.Destroy()
-		r.DrawSmallTextCentered("Scan to open project page", 0, qrY+qrSize+4, r.W, 120, 120, 120)
+		r.DrawSmallTextCentered("Scan to open project page", 0, qrY+qrSize+4, r.W, mu[0], mu[1], mu[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

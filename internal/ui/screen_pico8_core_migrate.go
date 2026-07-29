@@ -76,6 +76,9 @@ func (s *Pico8CoreMigrateScreen) NeedsRedraw() bool {
 func (s *Pico8CoreMigrateScreen) HasPendingAnimation() bool { return false }
 
 func (s *Pico8CoreMigrateScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	ok := r.Theme.Success()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -124,7 +127,7 @@ func (s *Pico8CoreMigrateScreen) Draw(r *renderer.Renderer) {
 		migrated := atomic.LoadInt32(&s.migrated)
 		totalH := fontH + 10 + smallFH
 		startY := mid - totalH/2
-		r.DrawTextCentered("Migration complete", 0, startY, r.W, 80, 200, 80)
+		r.DrawTextCentered("Migration complete", 0, startY, r.W, ok[0], ok[1], ok[2])
 		r.DrawSmallTextCentered(fmt.Sprintf("%d game(s) moved to %s", migrated, coreLabel(s.newCore)),
 			0, startY+fontH+10, r.W, ht[0], ht[1], ht[2])
 
@@ -135,9 +138,9 @@ func (s *Pico8CoreMigrateScreen) Draw(r *renderer.Renderer) {
 			errH = int32(len(errLines)) * (smallFH + 4)
 		}
 		startY := mid - (fontH+10+errH)/2
-		r.DrawTextCentered("Migration failed", 0, startY, r.W, 200, 60, 60)
+		r.DrawTextCentered("Migration failed", 0, startY, r.W, bad[0], bad[1], bad[2])
 		if s.err != nil {
-			r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, smallFH+4, 200, 100, 100)
+			r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, smallFH+4, badTx[0], badTx[1], badTx[2])
 		}
 	}
 

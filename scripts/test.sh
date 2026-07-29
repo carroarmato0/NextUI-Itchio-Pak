@@ -43,6 +43,9 @@ if [ -z "${IN_CONTAINER:-}" ]; then
         echo "note: skipping release-github_test.sh (jq not found on host)" >&2
     fi
 
+    echo "==> no-color-literals.sh"
+    "$SCRIPT_DIR/no-color-literals.sh" || exit 1
+
     mkdir -p "$CACHE_DIR"
     RUNTIME="$(detect_runtime)"
     if [ -z "$RUNTIME" ]; then

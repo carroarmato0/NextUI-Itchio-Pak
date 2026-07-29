@@ -77,6 +77,11 @@ func (t Theme) SuccessBG() [3]uint8 { return Mix(t.Background, t.Success(), stat
 func (t Theme) ErrorBG() [3]uint8   { return Mix(t.Background, t.Error(), statusBlend) }
 func (t Theme) WarningBG() [3]uint8 { return Mix(t.Background, t.Warning(), statusBlend) }
 
+// ErrorText is Error softened toward the body-text colour, for the multi-line
+// message under an error heading. Full-strength red over several wrapped lines
+// is tiring to read, but dropping the red entirely loses the signal.
+func (t Theme) ErrorText() [3]uint8 { return Mix(t.Error(), t.MainText, 45) }
+
 // Owned marks a game the user owns but has not downloaded. Deliberately a
 // different green from Success so the two badges stay tellable apart.
 func (t Theme) Owned() [3]uint8 { return t.Tone(baseOwned) }

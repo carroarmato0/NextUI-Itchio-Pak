@@ -75,6 +75,11 @@ func (s *MusicLocationPickerScreen) NeedsRedraw() bool        { return false }
 func (s *MusicLocationPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *MusicLocationPickerScreen) Draw(r *renderer.Renderer) {
+	info := r.Theme.Info()
+	ok := r.Theme.Success()
+	okBG := r.Theme.SuccessBG()
+	okBGd := r.Theme.ModalScrim()
+	okSep := r.Theme.SuccessBG()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -97,17 +102,17 @@ func (s *MusicLocationPickerScreen) Draw(r *renderer.Renderer) {
 	pathBarY := headerH + 2
 	pathBarH := smallFH + 10
 	r.DrawRect(0, pathBarY, r.W, pathBarH, hBG[0], hBG[1], hBG[2])
-	r.DrawSmallText(leftTruncatePath(r, s.currentDir, r.W-24), 12, pathBarY+5, 120, 160, 200)
+	r.DrawSmallText(leftTruncatePath(r, s.currentDir, r.W-24), 12, pathBarY+5, info[0], info[1], info[2])
 
 	confirmY := pathBarY + pathBarH
 	confirmH := mainFH + 10
 	if s.cursor == 0 {
-		r.DrawRect(0, confirmY, r.W, confirmH, 26, 58, 34)
+		r.DrawRect(0, confirmY, r.W, confirmH, okBG[0], okBG[1], okBG[2])
 	} else {
-		r.DrawRect(0, confirmY, r.W, confirmH, 15, 32, 22)
+		r.DrawRect(0, confirmY, r.W, confirmH, okBGd[0], okBGd[1], okBGd[2])
 	}
-	r.DrawText("[ ✓  Save here ]", 12, confirmY+5, 80, 200, 120)
-	r.DrawRect(0, confirmY+confirmH, r.W, 1, 28, 58, 28)
+	r.DrawText("[ ✓  Save here ]", 12, confirmY+5, ok[0], ok[1], ok[2])
+	r.DrawRect(0, confirmY+confirmH, r.W, 1, okSep[0], okSep[1], okSep[2])
 
 	listTop := confirmY + confirmH + 2
 	rowH := mainFH + 14
@@ -134,7 +139,7 @@ func (s *MusicLocationPickerScreen) Draw(r *renderer.Renderer) {
 			if selected {
 				tr, tg, tb = at[0], at[1], at[2]
 			} else {
-				tr, tg, tb = 100, 140, 180
+				tr, tg, tb = rgb(r.Theme.Info())
 			}
 			r.DrawSmallText("↑  .. (go up)", 20, y+(rowH-smallFH)/2, tr, tg, tb)
 		case rowEntry:

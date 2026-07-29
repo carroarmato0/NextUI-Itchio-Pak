@@ -59,6 +59,10 @@ func (s *KeyTestScreen) NeedsRedraw() bool { return s.state == keyTestRunning }
 func (s *KeyTestScreen) HasPendingAnimation() bool { return false }
 
 func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	mu := r.Theme.Muted()
+	ok := r.Theme.Success()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -82,18 +86,18 @@ func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
 		drawLoadingDots(r, mid+8)
 
 	case keyTestOK:
-		r.DrawTextCentered("API key valid", 0, mid-fontH-smallFH*2-12, r.W, 80, 200, 80)
+		r.DrawTextCentered("API key valid", 0, mid-fontH-smallFH*2-12, r.W, ok[0], ok[1], ok[2])
 		r.DrawSmallTextCentered(fmt.Sprintf("Authenticated as: %s", s.username), 0, mid-smallFH-4, r.W, ht[0], ht[1], ht[2])
 		r.DrawSmallTextCentered(fmt.Sprintf("%d owned game(s) found", s.ownedCount), 0, mid+smallFH+4, r.W, ht[0], ht[1], ht[2])
-		r.DrawSmallTextCentered("(full list written to debug log)", 0, mid+smallFH*2+8, r.W, 100, 100, 100)
+		r.DrawSmallTextCentered("(full list written to debug log)", 0, mid+smallFH*2+8, r.W, mu[0], mu[1], mu[2])
 
 	case keyTestFail:
 		errLines := r.WrapText(s.err.Error(), r.W-40)
 		errH := int32(len(errLines)) * (smallFH + 4)
 		totalH := fontH + 10 + errH
 		startY := mid - totalH/2
-		r.DrawTextCentered("API key invalid", 0, startY, r.W, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, smallFH+4, 200, 100, 100)
+		r.DrawTextCentered("API key invalid", 0, startY, r.W, bad[0], bad[1], bad[2])
+		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, smallFH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
