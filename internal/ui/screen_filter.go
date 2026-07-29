@@ -112,7 +112,10 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 	panelY := (r.H - panelH) / 2
 
 	// Panel fill + border
-	r.DrawRect(panelX, panelY, panelW, panelH, bg[0]+22, bg[1]+22, bg[2]+22)
+	// Was bg[n]+22 on a uint8. On every light palette that wrapped: Mustard
+	// Butter's #FBF3DC became #1109F2, a bright blue panel.
+	panel := r.Theme.ModalPanel()
+	r.DrawRect(panelX, panelY, panelW, panelH, panel[0], panel[1], panel[2])
 	r.DrawRect(panelX, panelY, panelW, 1, bd[0], bd[1], bd[2])
 	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, bd[0], bd[1], bd[2])
 	r.DrawRect(panelX, panelY, 1, panelH, bd[0], bd[1], bd[2])

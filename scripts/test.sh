@@ -46,6 +46,9 @@ if [ -z "${IN_CONTAINER:-}" ]; then
     echo "==> no-color-literals.sh"
     "$SCRIPT_DIR/no-color-literals.sh" || exit 1
 
+    echo "==> palette-audit.sh"
+    "$SCRIPT_DIR/palette-audit.sh" || exit 1
+
     mkdir -p "$CACHE_DIR"
     RUNTIME="$(detect_runtime)"
     if [ -z "$RUNTIME" ]; then

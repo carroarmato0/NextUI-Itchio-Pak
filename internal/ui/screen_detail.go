@@ -419,8 +419,13 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		s.drawQR(r, qrX, y, qrColW, imgBoxH)
 
 		y += imgBoxH + 6
-		mu := r.Theme.Muted()
-		r.DrawText(s.screenshotLabels[s.screenshotIdx], margin, y, mu[0], mu[1], mu[2])
+		// screenshotLabels is filled by the detail fetch, but this branch is
+		// entered on ScreenshotURLs. The two are indexed together and populated
+		// apart, so guard rather than trusting them to stay in step.
+		if s.screenshotIdx < len(s.screenshotLabels) {
+			mu := r.Theme.Muted()
+			r.DrawText(s.screenshotLabels[s.screenshotIdx], margin, y, mu[0], mu[1], mu[2])
+		}
 		y += fontH + 6
 	} else {
 		// No screenshots — show QR full-width at the same pixel size as the

@@ -31,3 +31,20 @@ if [ -n "$hits" ]; then
 fi
 
 printf 'ok   - no hardcoded color literals in drawing calls\n'
+
+# Channel arithmetic on a colour, e.g. `bg[0]+22`. These are uint8, so adding to
+# a light palette's channel wraps to near-black or, worse, to a saturated hue:
+# the filter panel spent a release rendering #1109F2 blue on Mustard Butter.
+# Use theme.Shade/Lighten/Darken/Mix, which saturate.
+ARITH='\[[0-9]\][[:space:]]*[-+][[:space:]]*[0-9]+'
+arith="$(grep -rnE "$ARITH" --include='*.go' internal cmd 2>/dev/null \
+    | grep -vE '_test\.go' \
+    | grep -E 'Draw|Clear|Color')"
+
+if [ -n "$arith" ]; then
+    printf 'FAIL - uint8 color channel arithmetic found (use theme.Shade/Mix, which saturate):\n'
+    printf '%s\n' "$arith" | sed 's/^/  /'
+    exit 1
+fi
+
+printf 'ok   - no uint8 color channel arithmetic in drawing calls\n'

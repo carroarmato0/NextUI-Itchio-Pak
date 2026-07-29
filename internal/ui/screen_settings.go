@@ -312,7 +312,15 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				stC := r.Theme.ContrastText([3]uint8{sR, sG, sB})
 				r.DrawSmallTextCenteredInRect(statusLabel, pillX, pillY, pillW, pillH, stC[0], stC[1], stC[2])
 			} else {
-				r.DrawText("(not set)", 20+labelW, y, mu[0], mu[1], mu[2])
+				// Muted is derived from the background, so on the selected row —
+				// which is filled with an Accent pill — it was unreadable: #867D8C
+				// on #D6559E is a contrast of 2 on Plum Magenta. De-emphasise
+				// relative to whatever this text actually sits on.
+				notSet := mu
+				if isSelected {
+					notSet = theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
+				}
+				r.DrawText("(not set)", 20+labelW, y, notSet[0], notSet[1], notSet[2])
 			}
 		}
 

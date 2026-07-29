@@ -58,6 +58,10 @@ type Renderer struct {
 	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
 	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
 	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
+
+	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
+	drawLog   []DrawLogEntry
+	drawLogOn bool
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -80,6 +84,14 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		return nil, fmt.Errorf("create renderer: %w", err)
 	}
 
+	return newWithTarget(win, ren, w, h, th)
+}
+
+// newWithTarget completes Renderer construction once a window and SDL renderer
+// exist. Shared by New (on-device, accelerated) and NewOffscreen (host, software)
+// so both go through exactly the same font loading and cache setup — the whole
+// point of the offscreen path is that it renders what the device renders.
+func newWithTarget(win *sdl.Window, ren *sdl.Renderer, w, h int, th theme.Theme) (*Renderer, error) {
 	// Scale font with screen height: h/22 gives ~35pt at 768.
 	// Clamp to a minimum of 22 so it stays readable on very small displays.
 	fontSize := h / 22
@@ -249,6 +261,11 @@ func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
 // and reused on every subsequent frame — eliminating the per-frame
 // RenderUTF8Blended → CreateTextureFromSurface → Destroy cycle.
 func (r *Renderer) drawRuns(text string, x, y int32, color sdl.Color, small, bold bool) {
+	// Sample the background before any glyph lands, so an audit sees what the
+	// text actually had to compete with. No-op unless BeginDrawLog was called.
+	if r.drawLogOn {
+		r.logTextDraw(text, x, y, [3]uint8{color.R, color.G, color.B}, small)
+	}
 	if bold {
 		r.Font.SetStyle(ttf.STYLE_BOLD)
 		defer r.Font.SetStyle(ttf.STYLE_NORMAL)
