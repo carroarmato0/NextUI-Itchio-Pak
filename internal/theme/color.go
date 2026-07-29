@@ -139,6 +139,25 @@ func (t Theme) Surface() [3]uint8 {
 // Separator returns the colour for hairlines and dividers.
 func (t Theme) Separator() [3]uint8 { return t.ShadeBG(3) }
 
+// TitlePillText returns the text colour for a pill filled with TitlePill.
+//
+// NextUI pairs its color2 title pill with color6, not color5 (nextui.c:2849).
+// The distinction is easy to get wrong and invisible in a dark-on-dark theme:
+// color5 is "list text selected", which belongs on the color1 pill. On
+// Catppuccin Macchiato, color5 is #24273A and color2 is #1E2030 — dark text on
+// a darker fill, which renders the pill unreadable.
+func (t Theme) TitlePillText() [3]uint8 { return t.HintText }
+
+// Contrast is the absolute difference in perceived brightness between two
+// colours. Around 60 is the point at which text stops being a strain to read.
+func Contrast(a, b [3]uint8) int {
+	d := Luma(a) - Luma(b)
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
 // chebyshev is the largest per-channel difference between two colours.
 func chebyshev(a, b [3]uint8) int {
 	worst := 0

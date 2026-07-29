@@ -527,7 +527,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			tp := r.Theme.TitlePill
 			sortBgR, sortBgG, sortBgB = tp[0], tp[1], tp[2]
 		}
-		aT := r.Theme.AccentText
+		// These header pills are NextUI's title-pill idiom, so they take its text
+		// colour (color6). AccentText is color5, which belongs on the color1
+		// selection pill — using it here renders dark-on-dark and unreadable on
+		// the Catppuccin palettes.
+		aT := r.Theme.TitlePillText()
 		r.DrawPill(sortPillX, pillY, sortPillW, pillH, sortBgR, sortBgG, sortBgB)
 		r.DrawTextCenteredInRect(sortLabel, sortPillX, pillY, sortPillW, pillH, aT[0], aT[1], aT[2])
 
