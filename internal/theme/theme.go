@@ -2,9 +2,7 @@ package theme
 
 import (
 	"bufio"
-	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -58,11 +56,18 @@ func Load(path string) (Theme, bool) {
 			continue
 		}
 
-		rgb, err := parseHex(v)
+		c, err := ParseColor(v)
 		if err != nil {
 			logger.Warn("theme: %s: bad value %q: %v", k, v, err)
 			continue
 		}
+		// The renderer draws every primitive opaque (SDL_BLENDMODE_NONE), so
+		// alpha is parsed only to be dropped. Log it so there is evidence if a
+		// palette ever ships a translucent colour.
+		if !c.Opaque() {
+			logger.Warn("theme: %s: alpha 0x%02X ignored, renderer is opaque", k, c.A())
+		}
+		rgb := c.RGB()
 		switch k {
 		case "color1":
 			th.MainText = rgb
@@ -88,6 +93,12 @@ func Load(path string) (Theme, bool) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		// A truncated read leaves us with whatever parsed so far; say so rather
+		// than reporting a partial palette as a clean load.
+		logger.Warn("theme: read %s: %v (colors parsed so far are kept)", path, err)
+	}
+
 	if foundAny {
 		logger.Info("theme: loaded from %s", path)
 		logger.Debug("theme: bg=#%02X%02X%02X accent=#%02X%02X%02X main=#%02X%02X%02X",
@@ -95,7 +106,13 @@ func Load(path string) (Theme, bool) {
 			th.Accent[0], th.Accent[1], th.Accent[2],
 			th.MainText[0], th.MainText[1], th.MainText[2])
 	} else {
-		logger.Debug("theme: %s found but no valid color fields, using defaults", path)
+		// Loud on purpose. This is exactly how the PR #762 regression presented:
+		// the file was there, every colour failed to parse, and the NextUI theme
+		// toggle silently vanished from Settings because themeAvailable is this
+		// return value. If upstream changes the colour format again, this is the
+		// line that will say so.
+		logger.Warn("theme: %s found but no color fields parsed, using defaults "+
+			"(NextUI theme toggle will be hidden)", path)
 	}
 
 	return th, foundAny
@@ -114,20 +131,4 @@ func Defaults() Theme {
 		HintText:   [3]uint8{0x8C, 0x8C, 0x8C}, // #8C8C8C
 		MainText:   [3]uint8{0xDC, 0xDC, 0xDC}, // #DCDCDC
 	}
-}
-
-// parseHex parses a "0xRRGGBB" string into an [R,G,B] triple.
-func parseHex(s string) ([3]uint8, error) {
-	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
-		return [3]uint8{}, fmt.Errorf("missing 0x prefix")
-	}
-	n, err := strconv.ParseUint(s[2:], 16, 32)
-	if err != nil {
-		return [3]uint8{}, err
-	}
-	if n > 0xFFFFFF {
-		return [3]uint8{}, fmt.Errorf("value %s out of 24-bit range", s)
-	}
-	return [3]uint8{uint8(n >> 16), uint8(n >> 8), uint8(n)}, nil
 }
