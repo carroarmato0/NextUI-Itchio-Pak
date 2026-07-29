@@ -32,19 +32,21 @@ import (
 
 func main() {
 	var (
-		sceneName  = flag.String("scene", "list", "scene to render (see --list)")
-		all        = flag.Bool("all", false, "render every scene")
-		palette    = flag.String("palette", "", "NextUI palette name, or \"default\" for the app's own theme")
-		palettes   = flag.String("palettes", "", "comma-separated palette names, or \"all\" for every shipped palette")
-		outDir     = flag.String("out-dir", "/tmp/itchio-screenshots/devshot", "output directory")
-		width      = flag.Int("width", 1024, "render width")
-		height     = flag.Int("height", 768, "render height")
-		full       = flag.Bool("full", false, "capture the whole scrollable page, not just the first screenful")
-		sheet      = flag.Bool("sheet", false, "write a contact sheet per scene tiling all palettes")
-		audit      = flag.Bool("audit", false, "check drawn text contrast and report unreadable combinations")
-		listOnly   = flag.Bool("list", false, "list available scenes and exit")
-		paletteDir = flag.String("palette-dir", "", "directory of NextUI palette .txt files (default: bundled fixtures, then the device path)")
-		verbose    = flag.Bool("v", false, "debug logging")
+		sceneName   = flag.String("scene", "list", "scene to render (see --list)")
+		all         = flag.Bool("all", false, "render every scene")
+		palette     = flag.String("palette", "", "NextUI palette name, or \"default\" for the app's own theme")
+		palettes    = flag.String("palettes", "", "comma-separated palette names, or \"all\" for every shipped palette")
+		outDir      = flag.String("out-dir", "/tmp/itchio-screenshots/devshot", "output directory")
+		width       = flag.Int("width", 1024, "render width")
+		height      = flag.Int("height", 768, "render height")
+		full        = flag.Bool("full", false, "capture the whole scrollable page, not just the first screenful")
+		sheet       = flag.Bool("sheet", false, "write a contact sheet per scene tiling all palettes")
+		sheetScenes = flag.Bool("sheet-scenes", false, "write a contact sheet per palette tiling all scenes")
+		sheetScale  = flag.Int("sheet-scale", 3, "contact sheet downscale factor; 1 = full resolution")
+		audit       = flag.Bool("audit", false, "check drawn text contrast and report unreadable combinations")
+		listOnly    = flag.Bool("list", false, "list available scenes and exit")
+		paletteDir  = flag.String("palette-dir", "", "directory of NextUI palette .txt files (default: bundled fixtures, then the device path)")
+		verbose     = flag.Bool("v", false, "debug logging")
 	)
 	flag.Parse()
 
@@ -73,6 +75,7 @@ func main() {
 
 	var findings []finding
 	sheets := map[string][]tile{}
+	byPalette := map[string][]tile{}
 
 	for _, p := range pals {
 		for _, sc := range scenes {
@@ -91,16 +94,28 @@ func main() {
 			if *sheet {
 				sheets[sc.Name] = append(sheets[sc.Name], tile{label: p.label, img: res.img})
 			}
+			if *sheetScenes {
+				byPalette[p.label] = append(byPalette[p.label], tile{label: sc.Name, img: res.img})
+			}
 		}
 	}
 
 	if *sheet {
 		for scName, tiles := range sheets {
 			out := filepath.Join(*outDir, scName+".sheet.png")
-			if err := renderer.WritePNG(out, buildSheet(tiles)); err != nil {
+			if err := renderer.WritePNG(out, buildSheet(tiles, *sheetScale)); err != nil {
 				fail(err)
 			}
 			fmt.Printf("==> contact sheet: %s (%d palettes)\n", out, len(tiles))
+		}
+	}
+	if *sheetScenes {
+		for palName, tiles := range byPalette {
+			out := filepath.Join(*outDir, "scenes@"+sanitise(palName)+".sheet.png")
+			if err := renderer.WritePNG(out, buildSheet(tiles, *sheetScale)); err != nil {
+				fail(err)
+			}
+			fmt.Printf("==> scene sheet: %s (%d scenes)\n", out, len(tiles))
 		}
 	}
 
@@ -231,14 +246,21 @@ type tile struct {
 
 // buildSheet tiles every palette's render of one scene into a single grid, so a
 // whole palette sweep can be judged in one look instead of eighteen files.
-func buildSheet(tiles []tile) image.Image {
+func buildSheet(tiles []tile, scale int) image.Image {
 	if len(tiles) == 0 {
 		return image.NewRGBA(image.Rect(0, 0, 1, 1))
 	}
+	if scale < 1 {
+		scale = 1
+	}
 	sort.Slice(tiles, func(i, j int) bool { return tiles[i].label < tiles[j].label })
 
-	const cols = 6
-	const scale = 3 // downscale factor; keeps a sheet legible but manageable
+	// Fewer columns when tiles are large, so a full-resolution sheet stays a
+	// shape a screen can actually show.
+	cols := 6
+	if scale <= 2 {
+		cols = 4
+	}
 	tw := tiles[0].img.Bounds().Dx() / scale
 	th := tiles[0].img.Bounds().Dy() / scale
 	rows := (len(tiles) + cols - 1) / cols
