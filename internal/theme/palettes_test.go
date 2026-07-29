@@ -194,6 +194,124 @@ func TestShippedPalettes_ChipIsVisible(t *testing.T) {
 	}
 }
 
+// TestShippedPalettes_SemanticColorsAreReadable checks every status hue against
+// every shipped background. Fixed literals fail this badly: raw amber
+// #F0B43C has luma 184 against Catppuccin Latte's 240, a gap of 56.
+func TestShippedPalettes_SemanticColorsAreReadable(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			for _, c := range []struct {
+				name string
+				got  [3]uint8
+			}{
+				{"Success", th.Success()},
+				{"Error", th.Error()},
+				{"Warning", th.Warning()},
+				{"Info", th.Info()},
+				{"Muted", th.Muted()},
+			} {
+				if got := Contrast(c.got, th.Background); got < minReadable {
+					t.Errorf("%s %v on Background %v: contrast %d, want >= %d",
+						c.name, c.got, th.Background, got, minReadable)
+				}
+			}
+		})
+	}
+}
+
+// TestShippedPalettes_SemanticColorsStayDistinct — the whole point of fixing the
+// hues rather than deriving them is that success never becomes error.
+func TestShippedPalettes_SemanticColorsStayDistinct(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			if th.Success() == th.Error() {
+				t.Errorf("Success() == Error() == %v", th.Success())
+			}
+			if th.Warning() == th.Error() {
+				t.Errorf("Warning() == Error() == %v", th.Warning())
+			}
+		})
+	}
+}
+
+// TestShippedPalettes_StatusBackingsAreReadable covers the tinted row backings.
+func TestShippedPalettes_StatusBackingsAreReadable(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			for _, c := range []struct {
+				name string
+				got  [3]uint8
+			}{
+				{"SuccessBG", th.SuccessBG()},
+				{"ErrorBG", th.ErrorBG()},
+				{"WarningBG", th.WarningBG()},
+				{"ProgressTrack", th.ProgressTrack()},
+			} {
+				if got := Contrast(c.got, th.ContrastText(c.got)); got < minReadable {
+					t.Errorf("%s %v vs its text: contrast %d, want >= %d",
+						c.name, c.got, got, minReadable)
+				}
+			}
+			if th.ProgressTrack() == th.ProgressFill() {
+				t.Errorf("ProgressTrack() == ProgressFill() — no progress visible")
+			}
+		})
+	}
+}
+
+// TestSemantic_DarkThemeIsIdentity pins that the app's shipping look does not
+// move: on the default dark theme every status hue is used verbatim.
+func TestSemantic_DarkThemeIsIdentity(t *testing.T) {
+	d := Defaults()
+	tests := []struct {
+		name string
+		got  [3]uint8
+		want [3]uint8
+	}{
+		{"Success", d.Success(), [3]uint8{80, 200, 80}},
+		{"Error", d.Error(), [3]uint8{200, 60, 60}},
+		{"Warning", d.Warning(), [3]uint8{240, 180, 60}},
+		{"Info", d.Info(), [3]uint8{80, 200, 220}},
+	}
+	for _, tc := range tests {
+		if tc.got != tc.want {
+			t.Errorf("%s = %v, want %v (dark themes must be untouched)", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+// TestTone_Terminates sweeps every possible grey background, including the
+// mid-greys where no amount of toning can reach minContrast, and asserts the
+// loop always ends and always moves in the correct direction.
+func TestTone_Terminates(t *testing.T) {
+	for v := 0; v <= 255; v++ {
+		bg := [3]uint8{uint8(v), uint8(v), uint8(v)}
+		th := Defaults()
+		th.Background = bg
+		for _, base := range [][3]uint8{baseSuccess, baseError, baseWarning, baseInfo} {
+			got := th.Tone(base)
+			if got == base {
+				continue // already readable; nothing to check
+			}
+			// Toning must push away from the background, never toward it.
+			if th.IsLightTheme() && Luma(got) > Luma(base) {
+				t.Fatalf("bg %v: light theme toned %v lighter to %v", bg, base, got)
+			}
+			if !th.IsLightTheme() && Luma(got) < Luma(base) {
+				t.Fatalf("bg %v: dark theme toned %v darker to %v", bg, base, got)
+			}
+			// And it must never make contrast worse than leaving it alone.
+			if Contrast(got, bg) < Contrast(base, bg) {
+				t.Fatalf("bg %v: toning %v -> %v reduced contrast %d -> %d",
+					bg, base, got, Contrast(base, bg), Contrast(got, bg))
+			}
+		}
+	}
+}
+
 // TestShippedPalettes_ContrastTextAlwaysReadable is the safety net: whatever
 // fill a screen invents, ContrastText must return something legible on it.
 func TestShippedPalettes_ContrastTextAlwaysReadable(t *testing.T) {
