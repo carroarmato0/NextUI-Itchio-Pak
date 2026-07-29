@@ -286,14 +286,20 @@ loop:
 }
 
 func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
-	r.Clear(20, 20, 20)
+	// This was the one draw path with no theme at all: a hardcoded #141414
+	// clear with light grey text. On a light palette it flashed a dark panel
+	// on the way to sleep.
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 	subtitle := "Finishing up before sleep…"
 	if action == power.ActionShutdown {
 		subtitle = "Finishing up before shutdown…"
 	}
 	_, mainH := r.TextSize("Ag")
 	mid := r.H / 2
-	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, 220, 220, 220)
-	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, 120, 120, 120)
+	mt := r.Theme.ContrastText(bg)
+	ht := r.Theme.HintText
+	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, mt[0], mt[1], mt[2])
+	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, ht[0], ht[1], ht[2])
 	r.Present()
 }

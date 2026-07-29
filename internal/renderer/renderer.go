@@ -1059,17 +1059,19 @@ func (r *Renderer) DrawModal(title, body string, hints []FooterHint) {
 	panelX := marginX
 	panelY := (r.H - panelH) / 2
 
-	bg := r.Theme.Background
-	// Fill
-	r.DrawRect(panelX, panelY, panelW, panelH, bg[0]+20, bg[1]+20, bg[2]+20)
+	// Fill. Was `bg[n]+20` on a uint8, which wrapped: on a light palette such as
+	// Catppuccin Latte that produced a near-black panel under near-black text.
+	panel := r.Theme.ModalPanel()
+	r.DrawRect(panelX, panelY, panelW, panelH, panel[0], panel[1], panel[2])
 	// Border (1px on each edge)
-	r.DrawRect(panelX, panelY, panelW, 1, 70, 70, 100)
-	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, 70, 70, 100)
-	r.DrawRect(panelX, panelY, 1, panelH, 70, 70, 100)
-	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, 70, 70, 100)
+	bd := r.Theme.ModalBorder()
+	r.DrawRect(panelX, panelY, panelW, 1, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX, panelY, 1, panelH, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, bd[0], bd[1], bd[2])
 
 	// Title
-	mt := r.Theme.MainText
+	mt := r.Theme.ContrastText(panel)
 	r.DrawTextCentered(title, panelX, panelY+pad, panelW, mt[0], mt[1], mt[2])
 
 	// Body

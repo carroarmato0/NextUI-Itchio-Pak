@@ -955,13 +955,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 			// Tags as pills (filteredTagsBuf already populated above).
 			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH {
-				ac := r.Theme.Accent
-				aT2 := r.Theme.AccentText
-				bgPill := [3]uint8{
-					uint8((int(ac[0]) + 35) / 2),
-					uint8((int(ac[1]) + 35) / 2),
-					uint8((int(ac[2]) + 35) / 2),
-				}
+				// Chip() is a raised surface derived from the palette; the old
+				// `(Accent+35)/2` blended toward a fixed constant and stopped
+				// meaning anything once Accent became color1.
+				bgPill := r.Theme.Chip()
+				aT2 := r.Theme.ContrastText(bgPill)
 				tagAreaH := r.H - footerH - metaY
 				if tagAreaH > 0 {
 					r.SetClipRect(rightX, metaY, rightW, tagAreaH)

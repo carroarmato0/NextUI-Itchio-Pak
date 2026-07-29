@@ -132,3 +132,84 @@ func TestShippedPalettes_SeparatorIsVisible(t *testing.T) {
 		})
 	}
 }
+
+// TestShippedPalettes_ModalPanelIsVisible is the light-theme regression: the
+// renderer used to fill the modal with a raw `bg[0]+20` on a uint8. On
+// Catppuccin Latte, background #EFF1F5, that wraps to #030509 — a near-black
+// panel with near-black text on it.
+func TestShippedPalettes_ModalPanelIsVisible(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			panel := th.ModalPanel()
+			if panel == th.Background {
+				t.Errorf("ModalPanel() == Background %v — the panel would not read", panel)
+			}
+			// The wrap always produced a huge swing; a correct shade never does.
+			if got := Contrast(panel, th.Background); got > 40 {
+				t.Errorf("ModalPanel() %v is %d luma from Background %v — looks like a wrap",
+					panel, got, th.Background)
+			}
+			if got := Contrast(panel, th.MainText); got < minReadable {
+				t.Errorf("ModalPanel() %v vs MainText %v: contrast %d, want >= %d",
+					panel, th.MainText, got, minReadable)
+			}
+		})
+	}
+}
+
+// TestShippedPalettes_ModalBorderIsVisible — a border that matches its own panel
+// is not a border.
+func TestShippedPalettes_ModalBorderIsVisible(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			if got := th.ModalBorder(); got == th.ModalPanel() {
+				t.Errorf("ModalBorder() == ModalPanel() %v", got)
+			}
+		})
+	}
+}
+
+// TestShippedPalettes_ChipIsVisible covers the tag pills, which used
+// `(Accent+35)/2` — arithmetic with no meaning once Accent became color1.
+func TestShippedPalettes_ChipIsVisible(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			chip := th.Chip()
+			if chip == th.Background {
+				t.Errorf("Chip() == Background %v", chip)
+			}
+			// Chips sit on Surface, so they have to read against it too.
+			if chip == th.Surface() {
+				t.Errorf("Chip() == Surface() %v — the pill shape would not read", chip)
+			}
+			// The label goes through ContrastText, which is what the call site uses.
+			if got := Contrast(chip, th.ContrastText(chip)); got < minReadable {
+				t.Errorf("Chip() %v vs its text %v: contrast %d, want >= %d",
+					chip, th.ContrastText(chip), got, minReadable)
+			}
+		})
+	}
+}
+
+// TestShippedPalettes_ContrastTextAlwaysReadable is the safety net: whatever
+// fill a screen invents, ContrastText must return something legible on it.
+func TestShippedPalettes_ContrastTextAlwaysReadable(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			for _, fill := range [][3]uint8{
+				th.Background, th.Surface(), th.Accent, th.TitlePill,
+				th.ModalPanel(), th.Chip(),
+				{0x00, 0x00, 0x00}, {0xFF, 0xFF, 0xFF}, {0x80, 0x80, 0x80},
+			} {
+				if got := Contrast(fill, th.ContrastText(fill)); got < minReadable {
+					t.Errorf("fill %v -> text %v: contrast %d, want >= %d",
+						fill, th.ContrastText(fill), got, minReadable)
+				}
+			}
+		})
+	}
+}

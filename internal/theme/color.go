@@ -158,6 +158,87 @@ func Contrast(a, b [3]uint8) int {
 	return d
 }
 
+// Lighten raises every channel by amount, saturating at 255.
+func Lighten(c [3]uint8, amount int) [3]uint8 {
+	return [3]uint8{clamp8(int(c[0]) + amount), clamp8(int(c[1]) + amount), clamp8(int(c[2]) + amount)}
+}
+
+// Darken lowers every channel by amount, saturating at 0.
+func Darken(c [3]uint8, amount int) [3]uint8 {
+	return [3]uint8{clamp8(int(c[0]) - amount), clamp8(int(c[1]) - amount), clamp8(int(c[2]) - amount)}
+}
+
+// Mix blends pct percent of b into a. pct is clamped to 0..100. Being a true
+// interpolation between two in-range colours, the result cannot overflow.
+func Mix(a, b [3]uint8, pct int) [3]uint8 {
+	switch {
+	case pct < 0:
+		pct = 0
+	case pct > 100:
+		pct = 100
+	}
+	var out [3]uint8
+	for i := range a {
+		out[i] = clamp8(int(a[i]) + (int(b[i])-int(a[i]))*pct/100)
+	}
+	return out
+}
+
+// minContrast is the luma gap below which text is a strain to read.
+const minContrast = 60
+
+// ContrastText returns a text colour legible on the given fill.
+//
+// It prefers the palette's own foregrounds so text keeps the theme's character,
+// and only falls back to black or white when neither clears minContrast — which
+// happens on mid-greys, where a palette simply has no suitable colour.
+func (t Theme) ContrastText(fill [3]uint8) [3]uint8 {
+	best, bestGap := t.MainText, Contrast(fill, t.MainText)
+	if gap := Contrast(fill, t.AccentText); gap > bestGap {
+		best, bestGap = t.AccentText, gap
+	}
+	if gap := Contrast(fill, t.HintText); gap > bestGap {
+		best, bestGap = t.HintText, gap
+	}
+	if bestGap >= minContrast {
+		return best
+	}
+	if IsLight(fill) {
+		return [3]uint8{0x00, 0x00, 0x00}
+	}
+	return [3]uint8{0xFF, 0xFF, 0xFF}
+}
+
+// ModalPanel returns the fill for a modal or raised panel.
+//
+// This replaces a literal `bg[0]+20` on a uint8, which wrapped: on Catppuccin
+// Latte (background #EFF1F5) it produced #030509, a near-black panel carrying
+// near-black text. On the app's own dark default, ShadeBG(2) is #282828 —
+// exactly what the old arithmetic produced, so nothing moves there.
+func (t Theme) ModalPanel() [3]uint8 { return t.ShadeBG(2) }
+
+// ModalBorder outlines a modal panel: one more step away from the background,
+// so it stays visible whichever direction the theme shades in.
+func (t Theme) ModalBorder() [3]uint8 { return t.Shade(t.ModalPanel(), 3) }
+
+// ModalScrim dims the screen behind a modal.
+func (t Theme) ModalScrim() [3]uint8 {
+	if t.IsLightTheme() {
+		return Lighten(t.Background, 30)
+	}
+	return Darken(t.Background, 10)
+}
+
+// Chip returns the fill for a small inline tag pill.
+//
+// Derived from Surface rather than Accent. Blending toward Accent seems natural
+// but is wrong: Accent is a full-strength selection colour, and on the MinUI
+// palette — where Accent is white and color3 a mid grey — it produced a #D1D1D1
+// chip carrying white text. A chip is a raised surface, not a selection.
+//
+// Pair with ContrastText(Chip()) for the label.
+func (t Theme) Chip() [3]uint8 { return t.Shade(t.Surface(), 2) }
+
 // chebyshev is the largest per-channel difference between two colours.
 func chebyshev(a, b [3]uint8) int {
 	worst := 0
