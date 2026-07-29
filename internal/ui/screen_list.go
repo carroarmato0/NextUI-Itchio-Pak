@@ -476,7 +476,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Ring
 		r.DrawPill(cx-outerR, cy-outerR, outerR*2, outerR*2, mt[0], mt[1], mt[2])
 		if innerR > 0 {
-			hBGinner := r.Theme.HeaderBG
+			hBGinner := r.Theme.Surface()
 			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, hBGinner[0], hBGinner[1], hBGinner[2])
 		}
 
@@ -487,7 +487,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
 		hw := float64(outerR) / 2.0      // arm half-width
 		R := float64(outerR) + 3.0       // extend past outer edge to cover fringe
-		hBG := r.Theme.HeaderBG
+		hBG := r.Theme.Surface()
 		fcx, fcy := float64(cx), float64(cy)
 		for i := 0; i < 3; i++ {
 			a := offset + float64(i)*2.0*math.Pi/3.0
@@ -521,8 +521,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		if s.sortMode == itchio.SortModeRSS {
 			sortBgR, sortBgG, sortBgB = 35, 50, 35
 		} else {
-			ac := r.Theme.Accent
-			sortBgR, sortBgG, sortBgB = ac[0]/2+18, ac[1]/2+18, ac[2]/2+18
+			// NextUI's color2 is exactly this: the title/status pill fill.
+			// Replaces an `Accent/2+18` fudge that no longer holds now that
+			// Accent is color1, a full-strength selection colour.
+			tp := r.Theme.TitlePill
+			sortBgR, sortBgG, sortBgB = tp[0], tp[1], tp[2]
 		}
 		aT := r.Theme.AccentText
 		r.DrawPill(sortPillX, pillY, sortPillW, pillH, sortBgR, sortBgG, sortBgB)

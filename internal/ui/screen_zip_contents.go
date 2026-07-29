@@ -155,7 +155,7 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := mainFH + smallFH + 16
 
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	at := r.Theme.AccentText
 	lt := r.Theme.ListText

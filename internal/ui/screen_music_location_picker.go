@@ -82,7 +82,7 @@ func (s *MusicLocationPickerScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	footerH := int32(52)
 	ac := r.Theme.Accent
-	hBG := r.Theme.HeaderBG
+	hBG := r.Theme.Surface()
 	mt := r.Theme.MainText
 	ht := r.Theme.HintText
 	at := r.Theme.AccentText

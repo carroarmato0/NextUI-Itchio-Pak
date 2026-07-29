@@ -70,3 +70,86 @@ func ParseColor(s string) (RGBA, error) {
 func isHexDigit(b byte) bool {
 	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
+
+const (
+	// shadeStep is one step of separation between stacked surfaces.
+	shadeStep = 10
+	// surfaceMinDelta is the smallest per-channel difference at which two
+	// colours read as distinct surfaces rather than one flat area.
+	surfaceMinDelta = 8
+)
+
+// clamp8 saturates v into a uint8 instead of wrapping. Every derived colour goes
+// through here: plain uint8 arithmetic silently wrapped a light background to
+// near-black, which is what made light palettes unusable.
+func clamp8(v int) uint8 {
+	switch {
+	case v < 0:
+		return 0
+	case v > 255:
+		return 255
+	}
+	return uint8(v)
+}
+
+// Luma returns the BT.601 perceived brightness of c, 0-255.
+func Luma(c [3]uint8) int {
+	return (299*int(c[0]) + 587*int(c[1]) + 114*int(c[2])) / 1000
+}
+
+// IsLight reports whether c reads as a light colour.
+func IsLight(c [3]uint8) bool { return Luma(c) >= 128 }
+
+// IsLightTheme reports whether this theme sits on a light background. NextUI
+// ships Catppuccin Latte, so this is a real case and not a hypothetical.
+func (t Theme) IsLightTheme() bool { return IsLight(t.Background) }
+
+// Shade moves c away from the theme background by the given number of steps:
+// lighter on a dark theme, darker on a light one. Saturating.
+func (t Theme) Shade(c [3]uint8, steps int) [3]uint8 {
+	delta := steps * shadeStep
+	if t.IsLightTheme() {
+		delta = -delta
+	}
+	return [3]uint8{
+		clamp8(int(c[0]) + delta),
+		clamp8(int(c[1]) + delta),
+		clamp8(int(c[2]) + delta),
+	}
+}
+
+// ShadeBG is Shade applied to the background — the usual way to raise a panel
+// off the backdrop.
+func (t Theme) ShadeBG(steps int) [3]uint8 { return t.Shade(t.Background, steps) }
+
+// Surface returns the fill for a bar or panel sitting on the background.
+//
+// It prefers color3, which is what a palette author would use for exactly this,
+// but only when that colour is actually distinguishable from the background.
+// In every palette NextUI ships, color3 is equal or near-equal to color7
+// (byte-identical in Catppuccin Mocha and Latte), so drawing it raw would make
+// the header and footer bars disappear.
+func (t Theme) Surface() [3]uint8 {
+	if chebyshev(t.HeaderBG, t.Background) >= surfaceMinDelta {
+		return t.HeaderBG
+	}
+	return t.ShadeBG(1)
+}
+
+// Separator returns the colour for hairlines and dividers.
+func (t Theme) Separator() [3]uint8 { return t.ShadeBG(3) }
+
+// chebyshev is the largest per-channel difference between two colours.
+func chebyshev(a, b [3]uint8) int {
+	worst := 0
+	for i := range a {
+		d := int(a[i]) - int(b[i])
+		if d < 0 {
+			d = -d
+		}
+		if d > worst {
+			worst = d
+		}
+	}
+	return worst
+}

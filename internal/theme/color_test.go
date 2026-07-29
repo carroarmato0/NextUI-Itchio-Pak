@@ -80,6 +80,125 @@ func TestParseColor_IgnoresTrailingGarbage(t *testing.T) {
 	}
 }
 
+func TestLuma_AndIsLight(t *testing.T) {
+	tests := []struct {
+		name    string
+		c       [3]uint8
+		isLight bool
+	}{
+		{"black", [3]uint8{0x00, 0x00, 0x00}, false},
+		{"white", [3]uint8{0xFF, 0xFF, 0xFF}, true},
+		{"catppuccin latte bg", [3]uint8{0xEF, 0xF1, 0xF5}, true},
+		{"catppuccin mocha bg", [3]uint8{0x1E, 0x1E, 0x2E}, false},
+		{"app default bg", [3]uint8{0x14, 0x14, 0x14}, false},
+		{"mid grey is light at the 128 boundary", [3]uint8{0x80, 0x80, 0x80}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsLight(tc.c); got != tc.isLight {
+				t.Errorf("IsLight(%v) = %v (luma %d), want %v", tc.c, got, Luma(tc.c), tc.isLight)
+			}
+		})
+	}
+}
+
+// TestShade_DarkTheme pins the arithmetic the renderer's modal fill relies on:
+// two steps from the default background must equal the old literal `bg+20`.
+func TestShade_DarkTheme(t *testing.T) {
+	th := Defaults()
+	if got := th.ShadeBG(2); got != [3]uint8{0x28, 0x28, 0x28} {
+		t.Errorf("ShadeBG(2) = %v, want [40 40 40] (the old bg+20)", got)
+	}
+	// Separator must land on the grey the screens hardcoded as 50,50,50.
+	if got := th.Separator(); got != [3]uint8{0x32, 0x32, 0x32} {
+		t.Errorf("Separator() = %v, want [50 50 50]", got)
+	}
+}
+
+// TestShade_LightTheme is the Catppuccin Latte case: shading must move *down*,
+// not up, or panels vanish into the background.
+func TestShade_LightTheme(t *testing.T) {
+	th := Defaults()
+	th.Background = [3]uint8{0xEF, 0xF1, 0xF5} // Latte
+	got := th.ShadeBG(2)
+	for i := range got {
+		if got[i] >= th.Background[i] {
+			t.Errorf("ShadeBG(2)[%d] = %d, want < %d (light theme must darken)",
+				i, got[i], th.Background[i])
+		}
+	}
+}
+
+// TestShade_NoWrap is the regression this whole helper exists for: the old
+// renderer did `bg[0]+20` on a uint8, which wraps to near-black on a light theme.
+func TestShade_NoWrap(t *testing.T) {
+	for _, bg := range [][3]uint8{
+		{0xFF, 0xFF, 0xFF},
+		{0x00, 0x00, 0x00},
+		{0xFA, 0x02, 0xFE},
+	} {
+		th := Defaults()
+		th.Background = bg
+		for steps := 1; steps <= 30; steps++ {
+			got := th.ShadeBG(steps)
+			for i := range got {
+				if th.IsLightTheme() && got[i] > bg[i] {
+					t.Fatalf("bg %v steps %d: channel %d rose to %d (wrapped)", bg, steps, i, got[i])
+				}
+				if !th.IsLightTheme() && got[i] < bg[i] {
+					t.Fatalf("bg %v steps %d: channel %d fell to %d (wrapped)", bg, steps, i, got[i])
+				}
+			}
+		}
+	}
+}
+
+// TestSurface_UsesHeaderBGWhenDistinct — the app's own default gives color3 a
+// real 10-per-channel separation from the background, so it is used as-is and
+// the bars render exactly as they always have.
+func TestSurface_UsesHeaderBGWhenDistinct(t *testing.T) {
+	th := Defaults()
+	if got := th.Surface(); got != th.HeaderBG {
+		t.Errorf("Surface() = %v, want HeaderBG %v", got, th.HeaderBG)
+	}
+}
+
+// TestSurface_FallsBackWhenHeaderBGMatchesBackground — in every palette NextUI
+// ships, color3 is equal or near-equal to color7 (byte-identical in Mocha and
+// Latte). Using it raw would make the header and footer bars invisible.
+func TestSurface_FallsBackWhenHeaderBGMatchesBackground(t *testing.T) {
+	tests := []struct {
+		name             string
+		headerBG, bg     [3]uint8
+		wantDistinctFrom bool
+	}{
+		{"mocha: color3 == color7", [3]uint8{0x1E, 0x1E, 0x2E}, [3]uint8{0x1E, 0x1E, 0x2E}, true},
+		{"latte: color3 == color7", [3]uint8{0xEF, 0xF1, 0xF5}, [3]uint8{0xEF, 0xF1, 0xF5}, true},
+		{"teal powder: 3 apart, under the threshold", [3]uint8{0x1A, 0x1A, 0x1A}, [3]uint8{0x1D, 0x1D, 0x1D}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			th := Defaults()
+			th.HeaderBG, th.Background = tc.headerBG, tc.bg
+			got := th.Surface()
+			if got == th.Background {
+				t.Errorf("Surface() = %v, same as Background — bars would be invisible", got)
+			}
+		})
+	}
+}
+
+// TestSurface_NextUIDefaultPaletteKeepsColor3 — NextUI's own Default.txt has a
+// genuinely distinct color3, which should be honoured rather than derived.
+func TestSurface_NextUIDefaultPaletteKeepsColor3(t *testing.T) {
+	th := Defaults()
+	th.HeaderBG = [3]uint8{0x1E, 0x23, 0x29} // Default.txt color3
+	th.Background = [3]uint8{0x00, 0x00, 0x00}
+	if got := th.Surface(); got != th.HeaderBG {
+		t.Errorf("Surface() = %v, want the palette's color3 %v", got, th.HeaderBG)
+	}
+}
+
 func TestRGBA_Accessors(t *testing.T) {
 	c := RGBA(0x11223344)
 	if rgb := c.RGB(); rgb != [3]uint8{0x11, 0x22, 0x33} {

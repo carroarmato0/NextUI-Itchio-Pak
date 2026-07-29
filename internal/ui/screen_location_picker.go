@@ -178,7 +178,7 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	footerH := int32(52)
 	ac := r.Theme.Accent
-	hBG := r.Theme.HeaderBG
+	hBG := r.Theme.Surface()
 
 	// ── Header ──────────────────────────────────────────────────────────────
 	headerH := mainFH + smallFH + 16

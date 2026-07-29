@@ -265,7 +265,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	_, mainFH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := mainFH + smallFH + 16 // 8px top + 4px gap + 4px bottom
-	hBG := r.Theme.HeaderBG
+	hBG := r.Theme.Surface()
 	ac := r.Theme.Accent
 	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])

@@ -166,7 +166,7 @@ func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
 	footerH := int32(52)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	mt := r.Theme.MainText
 	ht := r.Theme.HintText

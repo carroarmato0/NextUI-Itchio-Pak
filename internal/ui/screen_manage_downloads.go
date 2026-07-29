@@ -128,7 +128,7 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	headerH := fontH + smallFH + 16
 	r.DrawRect(0, 0, r.W, headerH, hdr[0], hdr[1], hdr[2])

@@ -48,7 +48,7 @@ func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	hBG := r.Theme.HeaderBG
+	hBG := r.Theme.Surface()
 	ac := r.Theme.Accent
 	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])

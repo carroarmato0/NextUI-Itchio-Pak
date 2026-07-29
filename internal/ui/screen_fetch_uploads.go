@@ -184,7 +184,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := mainFH + smallFH + 16
 
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	r.DrawRect(0, 0, r.W, headerH, hdr[0], hdr[1], hdr[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])

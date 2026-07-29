@@ -497,10 +497,13 @@ func (r *Renderer) SmallTextSize(text string) (int32, int32) {
 // DrawHeaderBar draws the header bar using theme colors and returns the
 // Y coordinate for vertically-centred single-line text.
 func (r *Renderer) DrawHeaderBar(h int32) int32 {
-	bg := r.Theme.HeaderBG
-	ac := r.Theme.Accent
+	bg := r.Theme.Surface()
+	// Separator, not Accent: Accent is NextUI's color1, the selection-pill fill.
+	// On several shipped palettes that is white or near-white, and a full-width
+	// 2px rule in it shouts over everything else on screen.
+	sep := r.Theme.Separator()
 	r.DrawRect(0, 0, r.W, h, bg[0], bg[1], bg[2])
-	r.DrawRect(0, h, r.W, 2, ac[0], ac[1], ac[2])
+	r.DrawRect(0, h, r.W, 2, sep[0], sep[1], sep[2])
 	_, fh := r.TextSize("Ag")
 	return (h - fh) / 2
 }
@@ -508,9 +511,9 @@ func (r *Renderer) DrawHeaderBar(h int32) int32 {
 // DrawFooterBar draws the footer bar using theme colors and returns the Y coordinate
 // for vertically-centred small hint text.
 func (r *Renderer) DrawFooterBar(h int32) int32 {
-	bg := r.Theme.HeaderBG
-	ac := r.Theme.Accent
-	r.DrawRect(0, r.H-h, r.W, 2, ac[0], ac[1], ac[2])
+	bg := r.Theme.Surface()
+	sep := r.Theme.Separator()
+	r.DrawRect(0, r.H-h, r.W, 2, sep[0], sep[1], sep[2])
 	r.DrawRect(0, r.H-h+2, r.W, h-2, bg[0], bg[1], bg[2])
 	_, fh := r.SmallTextSize("Ag")
 	return r.H - h + 2 + (h-2-fh)/2

@@ -987,7 +987,7 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	mt := r.Theme.MainText
 	ht := r.Theme.HintText
