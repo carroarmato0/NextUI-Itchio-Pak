@@ -262,23 +262,68 @@ func TestShippedPalettes_StatusBackingsAreReadable(t *testing.T) {
 	}
 }
 
-// TestSemantic_DarkThemeIsIdentity pins that the app's shipping look does not
-// move: on the default dark theme every status hue is used verbatim.
-func TestSemantic_DarkThemeIsIdentity(t *testing.T) {
+// TestSemantic_AlertsAreNeverBlended pins the half of the split that must not
+// move: an alert has to compete with the theme, not join it. On any background,
+// Warning and Error are the base hue unless Tone had to rescue contrast.
+func TestSemantic_AlertsAreNeverBlended(t *testing.T) {
 	d := Defaults()
-	tests := []struct {
-		name string
-		got  [3]uint8
-		want [3]uint8
-	}{
-		{"Success", d.Success(), [3]uint8{80, 200, 80}},
-		{"Error", d.Error(), [3]uint8{200, 60, 60}},
-		{"Warning", d.Warning(), [3]uint8{240, 180, 60}},
-		{"Info", d.Info(), [3]uint8{80, 200, 220}},
+	if got := d.Error(); got != [3]uint8{200, 60, 60} {
+		t.Errorf("Error() = %v, want the base hue verbatim on a dark theme", got)
 	}
-	for _, tc := range tests {
-		if tc.got != tc.want {
-			t.Errorf("%s = %v, want %v (dark themes must be untouched)", tc.name, tc.got, tc.want)
+	if got := d.Warning(); got != [3]uint8{240, 180, 60} {
+		t.Errorf("Warning() = %v, want the base hue verbatim on a dark theme", got)
+	}
+	for _, p := range shippedPalettes {
+		th := themeFor(t, p.colors)
+		for _, c := range []struct {
+			name      string
+			got, base [3]uint8
+		}{
+			{"Error", th.Error(), baseError},
+			{"Warning", th.Warning(), baseWarning},
+		} {
+			// Only Tone may alter an alert, and only when the raw hue is
+			// unreadable — never a blend toward the background.
+			if c.got != c.base && Contrast(c.base, th.Background) >= minContrast {
+				t.Errorf("%s on %s = %v, want base %v (readable already; must not blend)",
+					c.name, p.name, c.got, c.base)
+			}
+		}
+	}
+}
+
+// TestSemantic_RoutineBadgesAdaptToPalette is the bug this split fixes: the
+// routine badges used to render one identical colour on all eighteen palettes.
+func TestSemantic_RoutineBadgesAdaptToPalette(t *testing.T) {
+	for _, acc := range []struct {
+		name string
+		get  func(Theme) [3]uint8
+	}{
+		{"Success", Theme.Success},
+		{"Info", Theme.Info},
+		{"Owned", Theme.Owned},
+		{"Price", Theme.Price},
+	} {
+		seen := map[[3]uint8]int{}
+		for _, p := range shippedPalettes {
+			seen[acc.get(themeFor(t, p.colors))]++
+		}
+		// Palettes that share a background legitimately share a badge colour;
+		// requiring only a clear majority of distinct values keeps this honest.
+		if len(seen) < len(shippedPalettes)/2 {
+			t.Errorf("%s produced only %d distinct colours across %d palettes — not adapting",
+				acc.name, len(seen), len(shippedPalettes))
+		}
+	}
+}
+
+// TestSemantic_PriceIsNotWarning keeps "costs money" from shouting as loudly as
+// "needs your attention"; they were the same amber before.
+func TestSemantic_PriceIsNotWarning(t *testing.T) {
+	for _, p := range shippedPalettes {
+		th := themeFor(t, p.colors)
+		if th.Price() == th.Warning() {
+			t.Errorf("%s: Price() == Warning() == %v", p.name, th.Price())
 		}
 	}
 }

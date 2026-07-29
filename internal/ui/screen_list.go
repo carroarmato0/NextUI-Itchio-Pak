@@ -722,7 +722,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			badgeR, badgeG, badgeB = rgb(r.Theme.Success())
 		default:
 			badgeLabel = s.badgePrice(g.URL, g.Price)
-			badgeR, badgeG, badgeB = rgb(r.Theme.Warning())
+			badgeR, badgeG, badgeB = rgb(r.Theme.Price())
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
 		pillW := badgeW + 16 // 8px horizontal padding per side

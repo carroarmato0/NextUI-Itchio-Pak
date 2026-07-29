@@ -459,9 +459,9 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			pillH := smallFH + 4
 			pillX := r.W - margin - pillW
 			pillY := y + (fontH+4-pillH)/2
-			prBG := r.Theme.WarningBG()
+			prBG := r.Theme.PriceBG()
 			r.DrawPill(pillX, pillY, pillW, pillH, prBG[0], prBG[1], prBG[2])
-			prTx := r.Theme.Warning()
+			prTx := r.Theme.Price()
 			r.DrawSmallTextCenteredInRect(priceStr, pillX, pillY, pillW, pillH, prTx[0], prTx[1], prTx[2])
 		}
 		y += fontH + 14

@@ -43,7 +43,8 @@ trap 'rm -f "$log"' EXIT
 # shellcheck disable=SC2086
 if go run ./cmd/devshot --all --palettes all --out-dir "$OUT_DIR" --audit $EXTRA >"$log" 2>&1; then
     summary="$(grep -E 'finding\(s\)' "$log" | sed 's/^ *//')"
-    renders="$(grep -cE '\.png ' "$log")"
+    # Count renders only; --sheet adds one "contact sheet:" line per scene.
+    renders="$(grep -cE '^    [a-z].*\.png ' "$log")"
     printf 'ok   - palette audit: %s renders, %s\n' "$renders" "${summary:-no findings}"
     exit 0
 fi
