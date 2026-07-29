@@ -40,11 +40,25 @@ type Theme struct {
 // if the file was found and at least one valid color field was loaded.
 // Missing or unreadable files return defaults and false.
 func Load(path string) (Theme, bool) {
+	th, _, ok := LoadSettings(path)
+	return th, ok
+}
+
+// LoadSettings reads minuisettings.txt in a single pass, returning the theme,
+// the name of the NextUI palette currently selected, and whether any colour
+// field was found.
+//
+// The palette name is "" both when the user has edited individual colours —
+// NextUI writes an empty palette= for that and calls it "Custom" — and when the
+// firmware predates PR #787 and writes no palette= line at all. The two are not
+// worth distinguishing: neither names a palette.
+func LoadSettings(path string) (Theme, string, bool) {
 	th := Defaults()
+	var paletteName string
 	f, err := os.Open(path)
 	if err != nil {
 		logger.Debug("theme: configuration not found at %s, using defaults", path)
-		return th, false
+		return th, "", false
 	}
 	defer f.Close()
 
@@ -61,6 +75,13 @@ func Load(path string) (Theme, bool) {
 		}
 		k = strings.TrimSpace(k)
 		v = strings.TrimSpace(v)
+
+		// The palette name rides along in the same file; capture it here rather
+		// than opening minuisettings.txt twice.
+		if k == "palette" {
+			paletteName = v
+			continue
+		}
 
 		// Only parse recognized color fields to avoid log noise for other settings.
 		var isColorField bool
@@ -118,7 +139,7 @@ func Load(path string) (Theme, bool) {
 	}
 
 	if foundAny {
-		logger.Info("theme: loaded from %s", path)
+		logger.Info("theme: loaded from %s (palette %q)", path, PaletteLabel(paletteName))
 		logger.Debug("theme: bg=#%02X%02X%02X accent=#%02X%02X%02X main=#%02X%02X%02X",
 			th.Background[0], th.Background[1], th.Background[2],
 			th.Accent[0], th.Accent[1], th.Accent[2],
@@ -133,7 +154,7 @@ func Load(path string) (Theme, bool) {
 			"(NextUI theme toggle will be hidden)", path)
 	}
 
-	return th, foundAny
+	return th, paletteName, foundAny
 }
 
 // Defaults returns the static grayscale fallback values.

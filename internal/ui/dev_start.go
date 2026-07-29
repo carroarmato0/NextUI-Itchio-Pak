@@ -35,6 +35,7 @@ type devAutoDetailScreen struct {
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
 	themeAvailable bool
+	paletteName    string
 	onThemeToggle  func(bool)
 }
 
@@ -43,7 +44,7 @@ func newDevAutoDetailScreen(
 	cfgPath string, cache *renderer.ImageCache,
 	inv *inventory.Inventory, inventoryPath string,
 	nextUITheme theme.Theme, defaultTheme theme.Theme,
-	themeAvailable bool, onThemeToggle func(bool),
+	themeAvailable bool, paletteName string, onThemeToggle func(bool),
 ) *devAutoDetailScreen {
 	s := &devAutoDetailScreen{
 		list:           list,
@@ -57,6 +58,7 @@ func newDevAutoDetailScreen(
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
+		paletteName:    paletteName,
 		onThemeToggle:  onThemeToggle,
 	}
 	go s.pollForGames()
@@ -106,7 +108,7 @@ func (s *devAutoDetailScreen) HandleEvent(e sdl.Event) Screen {
 				s.client, s.cfg, s.cfgPath, s.cache,
 				s.list.viewGames[0], s.inv, s.inventoryPath, s.list,
 				nil,
-				s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle,
+				s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle,
 			)
 		}
 		return s.list
@@ -135,14 +137,15 @@ func NewDevStartScreen(
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
+	paletteName string,
 	onThemeToggle func(bool),
 ) Screen {
 	switch name {
 	case "settings":
 		// onRefreshGames is nil-safe inside SettingsScreen.
-		return NewSettingsScreen(client, cfg, cfgPath, inv, inventoryPath, cache, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, nil)
+		return NewSettingsScreen(client, cfg, cfgPath, inv, inventoryPath, cache, list, nil, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle, nil)
 	case "detail":
-		return newDevAutoDetailScreen(list, client, cfg, cfgPath, cache, inv, inventoryPath, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
+		return newDevAutoDetailScreen(list, client, cfg, cfgPath, cache, inv, inventoryPath, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle)
 	default:
 		return list
 	}

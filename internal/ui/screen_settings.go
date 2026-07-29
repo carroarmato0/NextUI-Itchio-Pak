@@ -59,6 +59,7 @@ type SettingsScreen struct {
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
 	themeAvailable bool
+	paletteName    string // active NextUI palette, "" == Custom
 	onThemeToggle  func(bool)
 	onOwnedReady   func([]itchio.OwnedGame)
 
@@ -84,6 +85,7 @@ func NewSettingsScreen(
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
+	paletteName string,
 	onThemeToggle func(bool),
 	onOwnedReady func([]itchio.OwnedGame),
 ) *SettingsScreen {
@@ -100,6 +102,7 @@ func NewSettingsScreen(
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
+		paletteName:    paletteName,
 		onThemeToggle:  onThemeToggle,
 		onOwnedReady:   onOwnedReady,
 	}
@@ -201,9 +204,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		logLevelLabel = "Debug"
 	}
 
+	// Naming the active palette turns "On" into something checkable: if this
+	// disagrees with NextUI's own Settings, the two are reading different files.
 	nextUIThemeLabel := "Off"
 	if s.cfg.NextUITheme {
-		nextUIThemeLabel = "On"
+		nextUIThemeLabel = "On (" + theme.PaletteLabel(s.paletteName) + ")"
 	}
 
 	type menuItem struct {

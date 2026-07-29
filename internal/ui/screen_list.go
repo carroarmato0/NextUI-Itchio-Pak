@@ -163,6 +163,7 @@ type ListScreen struct {
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
 	themeAvailable bool
+	paletteName    string // active NextUI palette, "" == Custom
 	onThemeToggle  func(bool)
 
 	// truncCache memoises per-frame title truncation; rebuilt on each rebuildView.
@@ -189,6 +190,7 @@ func NewListScreen(
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
+	paletteName string,
 	onThemeToggle func(bool),
 	ownedCachePath string,
 ) *ListScreen {
@@ -1123,10 +1125,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.K_RETURN:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
 		case sdl.K_TAB: // SELECT → filter overlay
 			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
 				func(platform, sort, query string) {
@@ -1213,12 +1215,12 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
 		case sdl.CONTROLLER_BUTTON_BACK: // SELECT → filter overlay
 			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
 				func(platform, sort, query string) {

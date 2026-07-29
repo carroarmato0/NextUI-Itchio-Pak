@@ -78,6 +78,7 @@ type DetailScreen struct {
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
 	themeAvailable bool
+	paletteName    string // active NextUI palette, "" == Custom
 	onThemeToggle  func(bool)
 }
 
@@ -101,6 +102,7 @@ func NewDetailScreen(
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
+	paletteName string,
 	onThemeToggle func(bool),
 ) *DetailScreen {
 	s := &DetailScreen{
@@ -118,6 +120,7 @@ func NewDetailScreen(
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
+		paletteName:    paletteName,
 		onThemeToggle:  onThemeToggle,
 		formattedPrice: "$" + strconv.FormatFloat(game.Price, 'f', 2, 64),
 	}
@@ -939,7 +942,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 				return s.startUnifiedNamingToggle()
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, nil)
 
 		}
 	case *sdl.ControllerButtonEvent:
@@ -984,7 +987,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, nil)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, nil)
 
 		}
 	}
