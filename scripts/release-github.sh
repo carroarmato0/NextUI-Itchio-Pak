@@ -38,10 +38,25 @@ prev_version() {
 }
 
 # bundle_version — the version embedded in the built .pakz artifact, or "" if unreadable.
+#
+# The glob matches one pak.json per platform (tg5040, tg5050, my355), so unzip
+# keeps streaming after the first match. Piping it straight into `grep -m1` let
+# grep close the pipe early, killing unzip with SIGPIPE; under `set -o pipefail`
+# that failed the whole script at line 88 — silently, and only when the timing
+# happened to land that way (~8 of 30 runs on this 37MB bundle). Read the stream
+# to completion first, then extract.
 bundle_version() {
-	unzip -p "$PAKZ" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null \
-		| grep -m1 '"version"' \
-		| sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+	local json versions
+	json="$(unzip -p "$PAKZ" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null || true)"
+	versions="$(printf '%s\n' "$json" \
+		| sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+		| sort -u)"
+	# Every platform bundle is packaged from the same pak.json, so more than one
+	# distinct version means release.sh shipped a stale platform directory.
+	if [ "$(printf '%s\n' "$versions" | grep -c .)" -gt 1 ]; then
+		err "mixed versions inside $PAKZ: $(printf '%s' "$versions" | tr '\n' ' ')— re-run scripts/release.sh"
+	fi
+	printf '%s\n' "$versions"
 }
 
 build_notes() {

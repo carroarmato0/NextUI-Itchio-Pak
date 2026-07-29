@@ -36,10 +36,38 @@ check "compare link ends at current version" "$notes" "...$VERSION"
 # --- --dry-run lists both artifacts and does not create a release ---
 # Requires built dist/ artifacts; skip when absent (e.g. a fresh CI checkout).
 if [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.zip" ]; then
-	dry="$("$SCRIPT" --dry-run 2>&1)"
+	dry="$("$SCRIPT" --dry-run 2>&1)"; dry_rc=$?
+	# Assert the exit status first. Without this, a script that dies early under
+	# `set -e` produces empty output and is reported as three confusing
+	# "missing: ..." failures instead of "it crashed".
+	if [ "$dry_rc" -eq 0 ]; then
+		printf 'ok   - dry-run exits 0\n'
+	else
+		printf 'FAIL - dry-run exits 0 (got %s, output: %s)\n' "$dry_rc" "${dry:-<empty>}"
+		fail=1
+	fi
 	check "dry-run mentions the .pakz artifact" "$dry" "Itch-io.pakz"
 	check "dry-run mentions the .pak.zip artifact" "$dry" "Itch-io.pak.zip"
 	check "dry-run announces itself" "$dry" "DRY RUN"
+
+	# Regression guard for the SIGPIPE race that used to live in bundle_version:
+	# it piped `unzip -p` into `grep -m1`, and since the glob matches one pak.json
+	# per platform, grep closed the pipe while unzip was still streaming. unzip
+	# died of SIGPIPE and `set -o pipefail` failed the whole script, silently.
+	#
+	# This is a structural check rather than a repeat-run loop on purpose. The
+	# race is timing-dependent: measured at 8-in-30 on a cold page cache but only
+	# ~1-in-50 once warm, so a loop that finishes in reasonable time catches a
+	# reintroduction well under half the time. Grepping for the shape is instant
+	# and deterministic.
+	# tr collapses the backslash continuations so the pipeline is one line.
+	if sed -n '/^bundle_version() {/,/^}/p' "$SCRIPT" | tr '\n' ' ' \
+		| grep -qE 'unzip[^|]*\|[^|]*(grep -m|head)'; then
+		printf 'FAIL - bundle_version pipes unzip into an early-exiting reader (SIGPIPE race)\n'
+		fail=1
+	else
+		printf 'ok   - bundle_version does not pipe unzip into an early-exiting reader\n'
+	fi
 else
 	printf 'skip - dry-run checks (no dist/ artifacts; run scripts/release.sh)\n'
 fi
