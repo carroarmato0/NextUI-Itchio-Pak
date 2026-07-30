@@ -101,6 +101,16 @@ func (t Theme) Error() [3]uint8 { return t.Tone(baseError) }
 // act on. Full strength for the same reason as Error.
 func (t Theme) Warning() [3]uint8 { return t.Tone(baseWarning) }
 
+// SuccessAction is the colour for an action label the user can act on right now
+// — "Download", "Download again" — as opposed to a status badge reporting a
+// fact.
+//
+// Not blended, unlike Success. Blending is right for a badge, which should sit
+// inside the theme, and wrong for a call to action, which should stand out from
+// it. It also costs contrast where it is least affordable: on Catppuccin Latte
+// the blended green measures 63 against the background, the plain hue 90.
+func (t Theme) SuccessAction() [3]uint8 { return t.Tone(baseSuccess) }
+
 // Muted is de-emphasised text: secondary labels, "(not set)", disabled rows.
 // On the app's default theme this is #787878, the grey those sites hardcoded.
 func (t Theme) Muted() [3]uint8 { return Mix(t.Background, t.ListText, 50) }

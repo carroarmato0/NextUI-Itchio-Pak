@@ -317,6 +317,25 @@ func TestSemantic_RoutineBadgesAdaptToPalette(t *testing.T) {
 	}
 }
 
+// TestSemantic_ActionLabelsAreNotBlended pins the carve-out: a badge reports a
+// fact and should sit inside the theme, an action label asks for a click and
+// should stand out from it. Blending also costs contrast exactly where it is
+// least affordable — on the light palettes.
+func TestSemantic_ActionLabelsAreNotBlended(t *testing.T) {
+	for _, p := range shippedPalettes {
+		th := themeFor(t, p.colors)
+		action, badge := th.SuccessAction(), th.Success()
+		// Unblended unless Tone had to rescue it.
+		if action != baseSuccess && Contrast(baseSuccess, th.Background) >= minContrast {
+			t.Errorf("%s: SuccessAction() = %v, want base %v", p.name, action, baseSuccess)
+		}
+		// An action label must never read worse than the badge it replaces.
+		if ca, cb := Contrast(action, th.Background), Contrast(badge, th.Background); ca < cb {
+			t.Errorf("%s: action contrast %d < badge contrast %d", p.name, ca, cb)
+		}
+	}
+}
+
 // TestSemantic_PriceIsNotWarning keeps "costs money" from shouting as loudly as
 // "needs your attention"; they were the same amber before.
 func TestSemantic_PriceIsNotWarning(t *testing.T) {

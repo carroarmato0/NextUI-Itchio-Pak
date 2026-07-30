@@ -476,12 +476,16 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		// Determine action label.
 		var actionLabel string
 		var actionR, actionG, actionB uint8
+		// Action labels take the unblended hues: they are calls to action, so
+		// they should stand out from the theme rather than settle into it.
+		act := r.Theme.SuccessAction()
+		warn := r.Theme.Warning()
 		if s.game.IsFree {
-			actionLabel, actionR, actionG, actionB = "Download again", 80, 200, 80
+			actionLabel, actionR, actionG, actionB = "Download again", act[0], act[1], act[2]
 		} else if s.cfg.APIKey == "" {
-			actionLabel, actionR, actionG, actionB = "Purchase required", 220, 180, 60
+			actionLabel, actionR, actionG, actionB = "Purchase required", warn[0], warn[1], warn[2]
 		} else {
-			actionLabel, actionR, actionG, actionB = "Download again", 80, 200, 80
+			actionLabel, actionR, actionG, actionB = "Download again", act[0], act[1], act[2]
 		}
 
 		// Draw action badge + label.
@@ -587,14 +591,18 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			y = rowY + rowH + 4
 		}
 	} else {
+		act := r.Theme.SuccessAction()
+		warn := r.Theme.Warning()
+		mut := r.Theme.Muted()
+		warnBG := r.Theme.WarningBG()
 		if s.detail != nil && s.detail.BrowserOnly {
-			drawActionRow("A", "Browser-only", 140, 140, 140, ac[0], ac[1], ac[2], 0)
+			drawActionRow("A", "Browser-only", mut[0], mut[1], mut[2], ac[0], ac[1], ac[2], 0)
 		} else if s.game.IsFree {
-			drawActionRow("A", "Download", 80, 200, 80, ac[0], ac[1], ac[2], 0)
+			drawActionRow("A", "Download", act[0], act[1], act[2], ac[0], ac[1], ac[2], 0)
 		} else if s.cfg.APIKey == "" {
-			drawActionRow("A", "Purchase required", 220, 180, 60, 100, 80, 20, s.game.Price)
+			drawActionRow("A", "Purchase required", warn[0], warn[1], warn[2], warnBG[0], warnBG[1], warnBG[2], s.game.Price)
 		} else {
-			drawActionRow("A", "Download", 80, 200, 80, ac[0], ac[1], ac[2], s.game.Price)
+			drawActionRow("A", "Download", act[0], act[1], act[2], ac[0], ac[1], ac[2], s.game.Price)
 		}
 		y += 4
 	}

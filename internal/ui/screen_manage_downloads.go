@@ -265,7 +265,7 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 		} else {
 			textColor := [3]uint8{lt[0], lt[1], lt[2]}
 			if !s.cfg.UnifiedNaming {
-				textColor = [3]uint8{80, 80, 80}
+				textColor = r.Theme.Muted()
 			}
 			r.DrawText(toggleLabel, margin, toggleY, textColor[0], textColor[1], textColor[2])
 			tw, _ := r.TextSize(toggleLabel)

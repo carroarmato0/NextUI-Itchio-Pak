@@ -1061,8 +1061,9 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 			r.DrawSmallTextCentered(more, 0, y, r.W, mu[0], mu[1], mu[2])
 		}
 		if s.musicFailed {
+			warn := r.Theme.Warning()
 			r.DrawSmallTextCentered("Note: music folder could not be created",
-				0, r.H-footerH-8-smallFH, r.W, 200, 160, 60)
+				0, r.H-footerH-8-smallFH, r.W, warn[0], warn[1], warn[2])
 		}
 
 	case zipDLError:

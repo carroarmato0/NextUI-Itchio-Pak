@@ -13,14 +13,31 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-# Drawing calls with three numeric arguments, and `x, y, z = 1, 2, 3` colour
-# assignments. Test files are exempt: fixtures are literals by nature.
-PATTERN='(Draw|Clear)[A-Za-z]*\(.*\b[0-9]{1,3}, ?[0-9]{1,3}, ?[0-9]{1,3}\)|= [0-9]{1,3}, ?[0-9]{1,3}, ?[0-9]{1,3}$'
+# Any run of three 0-255 integers, anywhere in the file. Earlier versions of
+# this check anchored on the triple being the final argument of a Draw call and
+# on assignments starting with a digit; both were wrong, and nine literals
+# survived a migration that claimed to be complete — including
+# `drawActionRow("A", "Download", 80, 200, 80, ...)`, where the triple is
+# mid-argument-list, and `label, r, g, b = "Download again", 80, 200, 80`,
+# where the assignment starts with a string.
+#
+# Casting a wide net means coordinates and sizes match too, so genuine non-colour
+# triples are listed in ALLOW below rather than excluded by a cleverer pattern.
+# A false positive costs one allowlist line; a false negative ships a colour that
+# ignores the palette.
 
-# SetDrawColor(0, 0, 0, 0) is a fully transparent clear, not a theme colour.
-ALLOW='SetDrawColor\(0, 0, 0, 0\)'
+# Known non-colour triples.
+#   SetDrawColor(0,0,0,0)  a fully transparent clear
+#   time.Date(...)         fixture timestamps
+#   Tone([3]uint8{...})    category hues already routed through the theme
+ALLOW='SetDrawColor\(0, 0, 0, 0\)|time\.Date\(|Theme\.Tone\(\[3\]uint8|image\.Rect\('
 
-hits="$(grep -rnE "$PATTERN" --include='*.go' internal cmd 2>/dev/null \
+# Scoped to the drawing code. internal/theme is where the base hues are defined
+# by design, and cmd/devshot is a development tool rather than shipped UI.
+SCOPE='internal/ui internal/renderer cmd/itchio-pak'
+
+# shellcheck disable=SC2086
+hits="$(grep -rnE '\b[0-9]{1,3}, ?[0-9]{1,3}, ?[0-9]{1,3}\b' --include='*.go' $SCOPE 2>/dev/null \
     | grep -vE '_test\.go' \
     | grep -vE "$ALLOW")"
 
@@ -37,7 +54,8 @@ printf 'ok   - no hardcoded color literals in drawing calls\n'
 # the filter panel spent a release rendering #1109F2 blue on Mustard Butter.
 # Use theme.Shade/Lighten/Darken/Mix, which saturate.
 ARITH='\[[0-9]\][[:space:]]*[-+][[:space:]]*[0-9]+'
-arith="$(grep -rnE "$ARITH" --include='*.go' internal cmd 2>/dev/null \
+# shellcheck disable=SC2086
+arith="$(grep -rnE "$ARITH" --include='*.go' $SCOPE 2>/dev/null \
     | grep -vE '_test\.go' \
     | grep -E 'Draw|Clear|Color')"
 
