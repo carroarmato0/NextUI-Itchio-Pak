@@ -59,9 +59,26 @@ bundle_version() {
 	printf '%s\n' "$versions"
 }
 
+# notes_file VERSION — path to a hand-written long-form note for this release,
+# if one exists. pak.json's changelog is shown on-device where space is tight, so
+# it stays short; the release page can afford the longer version.
+notes_file() { printf 'docs/release-notes/%s.md' "$1"; }
+
 build_notes() {
 	local v prev repo bullets
 	v="$(pak_version)"
+	# A long-form file, when present, replaces the generated notes entirely —
+	# including the heading, so it can be structured however it likes. The
+	# compare link is still appended.
+	if [ -f "$(notes_file "$v")" ]; then
+		cat "$(notes_file "$v")"
+		prev="$(prev_version "$v")"
+		repo="$(jq -r '.repo_url' "$PAK_JSON")"
+		if [ -n "$prev" ]; then
+			printf '\n**Full changelog:** %s/compare/%s...%s\n' "$repo" "$prev" "$v"
+		fi
+		return
+	fi
 	prev="$(prev_version "$v")"
 	repo="$(jq -r '.repo_url' "$PAK_JSON")"
 	bullets="$(changelog_entry "$v" | sed '/^[[:space:]]*$/d')"

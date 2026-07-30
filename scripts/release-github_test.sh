@@ -28,7 +28,17 @@ FIRST_BULLET="$(jq -r --arg v "$VERSION" '.changelog[$v]' "$PAK_JSON" | sed '/^[
 # --- --print-notes ---
 notes="$("$SCRIPT" --print-notes)"
 check "notes name the current version" "$notes" "$VERSION"
-check "notes include the changelog bullet" "$notes" "$FIRST_BULLET"
+# A hand-written docs/release-notes/<version>.md replaces the generated notes,
+# so the pak.json bullet is only expected when no such file exists. pak.json's
+# changelog is kept short for the on-device Settings screen; the release page
+# can afford the longer version.
+LONG_NOTES="$REPO_ROOT/docs/release-notes/$VERSION.md"
+if [ -f "$LONG_NOTES" ]; then
+	check "notes come from the long-form file" "$notes" "$(head -1 "$LONG_NOTES")"
+	printf 'ok   - pak.json bullet not required (long-form notes in use)\n'
+else
+	check "notes include the changelog bullet" "$notes" "$FIRST_BULLET"
+fi
 check "notes include a compare link" "$notes" "/compare/"
 check "compare link ends at current version" "$notes" "...$VERSION"
 [ -n "$PREV" ] && check "compare link starts at previous version" "$notes" "/compare/$PREV..."
