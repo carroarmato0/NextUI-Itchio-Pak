@@ -714,7 +714,9 @@ func (s *DetailScreen) drawModal(r *renderer.Renderer) {
 
 	y := boxY + pad
 
-	ttl := r.Theme.Warning()
+	// Toned against the panel, not the background: the panel is a raised
+	// surface and a colour toned only against the background drifts on it.
+	ttl := r.Theme.ToneOn(r.Theme.Warning(), panel)
 	r.DrawTextCentered(s.modal.title, boxX, y, boxW, ttl[0], ttl[1], ttl[2])
 	y += fontH + pad
 
@@ -730,10 +732,10 @@ func (s *DetailScreen) drawModal(r *renderer.Renderer) {
 	y += 1 + pad
 
 	if s.modal.kind == modalKindDeleteConfirm {
-		cf := r.Theme.Error()
+		cf := r.Theme.ToneOn(r.Theme.Error(), panel)
 		r.DrawSmallTextCentered("A: confirm  B: cancel", boxX, y, boxW, cf[0], cf[1], cf[2])
 	} else {
-		mu := r.Theme.Muted()
+		mu := r.Theme.MutedOn(panel)
 		r.DrawSmallTextCentered("Press any button to dismiss", boxX, y, boxW, mu[0], mu[1], mu[2])
 	}
 }

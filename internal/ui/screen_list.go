@@ -938,7 +938,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 			r.DrawRect(artX+2, metaY+2, artW-4, artH-4, bg[0], bg[1], bg[2])
 			ph := r.Theme.Chip()
 			r.DrawRect(artX+3, metaY+3, artW-6, artH-6, ph[0], ph[1], ph[2])
-			phT := r.Theme.Muted()
+			// The label sits on the placeholder fill, not on the background.
+			phT := r.Theme.MutedOn(ph)
 			r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 		}
 		metaY += artH + lyt.ContentGap

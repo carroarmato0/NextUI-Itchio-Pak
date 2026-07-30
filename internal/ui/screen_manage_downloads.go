@@ -287,13 +287,16 @@ func (s *ManageDownloadsScreen) Draw(r *renderer.Renderer) {
 }
 
 func (s *ManageDownloadsScreen) drawConfirmOverlay(r *renderer.Renderer, entry inventory.Entry) {
-	badTx := r.Theme.ErrorText()
-	bd := r.Theme.ModalBorder()
-	bodyC := r.Theme.MainText
 	panel := r.Theme.ModalPanel()
+	// Toned against the panel rather than the background: the panel is a raised
+	// surface, so a colour toned only against the background can land too close
+	// to it.
+	badTx := r.Theme.ToneOn(r.Theme.ErrorText(), panel)
+	bd := r.Theme.ModalBorder()
+	bodyC := r.Theme.ContrastText(panel)
 	scrim := r.Theme.ModalScrim()
 	sep := r.Theme.Separator()
-	warn := r.Theme.Warning()
+	warn := r.Theme.ToneOn(r.Theme.Warning(), panel)
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	pad := int32(16)

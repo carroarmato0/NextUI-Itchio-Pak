@@ -209,6 +209,42 @@ func (t Theme) ContrastText(fill [3]uint8) [3]uint8 {
 	return [3]uint8{0xFF, 0xFF, 0xFF}
 }
 
+// ToneOn adapts a hue to be readable on a specific surface, rather than on the
+// theme background.
+//
+// Tone only knows about Background, which is wrong the moment something is drawn
+// on a raised surface. A modal panel is shaded off the background by design, so
+// a colour toned against the background can still land too close to the panel:
+// on Catppuccin Macchiato the confirm hint drew Error #C83C3C on panel #383B4E,
+// a contrast of 41, and that string is the destructive-action prompt.
+func (t Theme) ToneOn(c, surface [3]uint8) [3]uint8 {
+	if Contrast(c, surface) >= minContrast {
+		return c
+	}
+	target := [3]uint8{0xFF, 0xFF, 0xFF}
+	if IsLight(surface) {
+		target = [3]uint8{0x00, 0x00, 0x00}
+	}
+	for pct := toneStep; pct <= toneMaxPct; pct += toneStep {
+		if out := Mix(c, target, pct); Contrast(out, surface) >= minContrast {
+			return out
+		}
+	}
+	return Mix(c, target, toneMaxPct)
+}
+
+// MutedOn is de-emphasised text on a specific surface, for the same reason
+// ToneOn exists: Muted is mixed from the background and drifts on a panel.
+//
+// It mixes halfway toward whatever reads on that surface rather than toward
+// ListText. Mixing toward ListText assumes ListText is readable there, and on
+// the MinUI palette — white text, mid-grey chip — that produced #D6D6D6 on
+// #ADADAD, a contrast of 41. On Background the two definitions agree, so
+// MutedOn(Background) is still Muted().
+func (t Theme) MutedOn(surface [3]uint8) [3]uint8 {
+	return Mix(surface, t.ContrastText(surface), 50)
+}
+
 // ModalPanel returns the fill for a modal or raised panel.
 //
 // This replaces a literal `bg[0]+20` on a uint8, which wrapped: on Catppuccin

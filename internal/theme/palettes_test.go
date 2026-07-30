@@ -336,6 +336,46 @@ func TestSemantic_ActionLabelsAreNotBlended(t *testing.T) {
 	}
 }
 
+// TestToneOn_ReadableOnAnySurface is the fix for the whole modal cluster. Tone
+// only knows about Background, so a colour toned against it could still land too
+// close to a raised surface — Error on a modal panel measured 41 on Catppuccin
+// Macchiato, and that string is the destructive-action prompt.
+func TestToneOn_ReadableOnAnySurface(t *testing.T) {
+	for _, p := range shippedPalettes {
+		th := themeFor(t, p.colors)
+		for _, surface := range [][3]uint8{
+			th.Background, th.ModalPanel(), th.Surface(), th.Chip(),
+			{0x00, 0x00, 0x00}, {0xFF, 0xFF, 0xFF}, {0x80, 0x80, 0x80},
+		} {
+			for _, hue := range [][3]uint8{baseError, baseWarning, baseSuccess, baseInfo} {
+				got := th.ToneOn(hue, surface)
+				if c := Contrast(got, surface); c < minReadable {
+					t.Errorf("%s: ToneOn(%v, %v) = %v, contrast %d < %d",
+						p.name, hue, surface, got, c, minReadable)
+				}
+			}
+			if c := Contrast(th.MutedOn(surface), surface); c < 30 {
+				t.Errorf("%s: MutedOn(%v) contrast %d — de-emphasised is not invisible",
+					p.name, surface, c)
+			}
+		}
+	}
+}
+
+// TestMutedOn_MatchesMutedOnBackground keeps the two definitions consistent, so
+// MutedOn is a generalisation rather than a second opinion.
+func TestMutedOn_MatchesMutedOnBackground(t *testing.T) {
+	for _, p := range shippedPalettes {
+		th := themeFor(t, p.colors)
+		if a, b := th.MutedOn(th.Background), th.Muted(); a != b {
+			t.Errorf("%s: MutedOn(Background) = %v, Muted() = %v", p.name, a, b)
+		}
+	}
+	if got := Defaults().Muted(); got != [3]uint8{0x78, 0x78, 0x78} {
+		t.Errorf("Defaults().Muted() = %v, want #787878", got)
+	}
+}
+
 // TestSemantic_PriceIsNotWarning keeps "costs money" from shouting as loudly as
 // "needs your attention"; they were the same amber before.
 func TestSemantic_PriceIsNotWarning(t *testing.T) {

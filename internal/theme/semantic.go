@@ -52,21 +52,7 @@ const (
 // Returns c unchanged when it already reads well, which is the case for every
 // hue on a dark background — so this is the identity function on the app's own
 // default theme and on most NextUI palettes.
-func (t Theme) Tone(c [3]uint8) [3]uint8 {
-	if Contrast(c, t.Background) >= minContrast {
-		return c
-	}
-	target := [3]uint8{0xFF, 0xFF, 0xFF}
-	if t.IsLightTheme() {
-		target = [3]uint8{0x00, 0x00, 0x00}
-	}
-	for pct := toneStep; pct <= toneMaxPct; pct += toneStep {
-		if out := Mix(c, target, pct); Contrast(out, t.Background) >= minContrast {
-			return out
-		}
-	}
-	return Mix(c, target, toneMaxPct)
-}
+func (t Theme) Tone(c [3]uint8) [3]uint8 { return t.ToneOn(c, t.Background) }
 
 // themed pulls a fixed hue toward the palette background so it belongs to the
 // theme, then lets Tone restore contrast if the blend went too far. Because Tone
