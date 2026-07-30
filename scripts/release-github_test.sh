@@ -35,7 +35,25 @@ check "compare link ends at current version" "$notes" "...$VERSION"
 
 # --- --dry-run lists both artifacts and does not create a release ---
 # Requires built dist/ artifacts; skip when absent (e.g. a fresh CI checkout).
-if [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.zip" ]; then
+#
+# Also skip when the artifacts are stale. release.sh runs this suite before
+# build.sh, so immediately after a version bump the built bundle still carries
+# the old version and release-github.sh correctly refuses. Failing here would
+# deadlock the one command that fixes it: the release cannot be built because
+# the artifacts are old, and the artifacts stay old because the release cannot
+# be built. A stale bundle is not a code defect.
+#
+# Read the stream to completion before extracting — `unzip -p | grep -m1` is the
+# SIGPIPE race this script has a regression guard for further down.
+_bundle_json="$(unzip -p "$REPO_ROOT/dist/Itch-io.pakz" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null || true)"
+_bundle_vers="$(printf '%s\n' "$_bundle_json" \
+    | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sort -u)"
+BUNDLE_VER="${_bundle_vers%%$'\n'*}"
+
+if [ -n "$BUNDLE_VER" ] && [ "$BUNDLE_VER" != "$VERSION" ]; then
+	printf 'skip - dry-run checks (dist/ holds %s, pak.json is %s; run scripts/release.sh)\n' \
+		"$BUNDLE_VER" "$VERSION"
+elif [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.zip" ]; then
 	dry="$("$SCRIPT" --dry-run 2>&1)"; dry_rc=$?
 	# Assert the exit status first. Without this, a script that dies early under
 	# `set -e` produces empty output and is reported as three confusing
