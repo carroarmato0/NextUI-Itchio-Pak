@@ -40,6 +40,7 @@ func (s *ROMPickerScreen) NeedsRedraw() bool { return false }
 func (s *ROMPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
+	mu := r.Theme.Muted()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -48,7 +49,7 @@ func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	hBG := r.Theme.HeaderBG
+	hBG := r.Theme.Surface()
 	ac := r.Theme.Accent
 	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
@@ -60,7 +61,7 @@ func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 
 	// Subheader label
 	contentTop := headerH + 10
-	r.DrawSmallText("Select file to download:", 20, contentTop, 180, 180, 180)
+	r.DrawSmallText("Select file to download:", 20, contentTop, mu[0], mu[1], mu[2])
 	contentTop += smallFH + 10
 
 	rowH := fontH + 14

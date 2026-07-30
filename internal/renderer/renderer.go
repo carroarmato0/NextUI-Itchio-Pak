@@ -58,6 +58,10 @@ type Renderer struct {
 	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
 	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
 	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
+
+	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
+	drawLog   []DrawLogEntry
+	drawLogOn bool
 }
 
 func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
@@ -80,6 +84,14 @@ func New(title string, w, h int, th theme.Theme) (*Renderer, error) {
 		return nil, fmt.Errorf("create renderer: %w", err)
 	}
 
+	return newWithTarget(win, ren, w, h, th)
+}
+
+// newWithTarget completes Renderer construction once a window and SDL renderer
+// exist. Shared by New (on-device, accelerated) and NewOffscreen (host, software)
+// so both go through exactly the same font loading and cache setup — the whole
+// point of the offscreen path is that it renders what the device renders.
+func newWithTarget(win *sdl.Window, ren *sdl.Renderer, w, h int, th theme.Theme) (*Renderer, error) {
 	// Scale font with screen height: h/22 gives ~35pt at 768.
 	// Clamp to a minimum of 22 so it stays readable on very small displays.
 	fontSize := h / 22
@@ -249,6 +261,11 @@ func (r *Renderer) DrawRect(x, y, w, h int32, red, green, blue uint8) {
 // and reused on every subsequent frame — eliminating the per-frame
 // RenderUTF8Blended → CreateTextureFromSurface → Destroy cycle.
 func (r *Renderer) drawRuns(text string, x, y int32, color sdl.Color, small, bold bool) {
+	// Sample the background before any glyph lands, so an audit sees what the
+	// text actually had to compete with. No-op unless BeginDrawLog was called.
+	if r.drawLogOn {
+		r.logTextDraw(text, x, y, [3]uint8{color.R, color.G, color.B}, small)
+	}
 	if bold {
 		r.Font.SetStyle(ttf.STYLE_BOLD)
 		defer r.Font.SetStyle(ttf.STYLE_NORMAL)
@@ -497,10 +514,13 @@ func (r *Renderer) SmallTextSize(text string) (int32, int32) {
 // DrawHeaderBar draws the header bar using theme colors and returns the
 // Y coordinate for vertically-centred single-line text.
 func (r *Renderer) DrawHeaderBar(h int32) int32 {
-	bg := r.Theme.HeaderBG
-	ac := r.Theme.Accent
+	bg := r.Theme.Surface()
+	// Separator, not Accent: Accent is NextUI's color1, the selection-pill fill.
+	// On several shipped palettes that is white or near-white, and a full-width
+	// 2px rule in it shouts over everything else on screen.
+	sep := r.Theme.Separator()
 	r.DrawRect(0, 0, r.W, h, bg[0], bg[1], bg[2])
-	r.DrawRect(0, h, r.W, 2, ac[0], ac[1], ac[2])
+	r.DrawRect(0, h, r.W, 2, sep[0], sep[1], sep[2])
 	_, fh := r.TextSize("Ag")
 	return (h - fh) / 2
 }
@@ -508,9 +528,9 @@ func (r *Renderer) DrawHeaderBar(h int32) int32 {
 // DrawFooterBar draws the footer bar using theme colors and returns the Y coordinate
 // for vertically-centred small hint text.
 func (r *Renderer) DrawFooterBar(h int32) int32 {
-	bg := r.Theme.HeaderBG
-	ac := r.Theme.Accent
-	r.DrawRect(0, r.H-h, r.W, 2, ac[0], ac[1], ac[2])
+	bg := r.Theme.Surface()
+	sep := r.Theme.Separator()
+	r.DrawRect(0, r.H-h, r.W, 2, sep[0], sep[1], sep[2])
 	r.DrawRect(0, r.H-h+2, r.W, h-2, bg[0], bg[1], bg[2])
 	_, fh := r.SmallTextSize("Ag")
 	return r.H - h + 2 + (h-2-fh)/2
@@ -1056,17 +1076,19 @@ func (r *Renderer) DrawModal(title, body string, hints []FooterHint) {
 	panelX := marginX
 	panelY := (r.H - panelH) / 2
 
-	bg := r.Theme.Background
-	// Fill
-	r.DrawRect(panelX, panelY, panelW, panelH, bg[0]+20, bg[1]+20, bg[2]+20)
+	// Fill. Was `bg[n]+20` on a uint8, which wrapped: on a light palette such as
+	// Catppuccin Latte that produced a near-black panel under near-black text.
+	panel := r.Theme.ModalPanel()
+	r.DrawRect(panelX, panelY, panelW, panelH, panel[0], panel[1], panel[2])
 	// Border (1px on each edge)
-	r.DrawRect(panelX, panelY, panelW, 1, 70, 70, 100)
-	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, 70, 70, 100)
-	r.DrawRect(panelX, panelY, 1, panelH, 70, 70, 100)
-	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, 70, 70, 100)
+	bd := r.Theme.ModalBorder()
+	r.DrawRect(panelX, panelY, panelW, 1, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX, panelY, 1, panelH, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, bd[0], bd[1], bd[2])
 
 	// Title
-	mt := r.Theme.MainText
+	mt := r.Theme.ContrastText(panel)
 	r.DrawTextCentered(title, panelX, panelY+pad, panelW, mt[0], mt[1], mt[2])
 
 	// Body

@@ -163,6 +163,7 @@ type ListScreen struct {
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
 	themeAvailable bool
+	paletteName    string // active NextUI palette, "" == Custom
 	onThemeToggle  func(bool)
 
 	// truncCache memoises per-frame title truncation; rebuilt on each rebuildView.
@@ -189,6 +190,7 @@ func NewListScreen(
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
+	paletteName string,
 	onThemeToggle func(bool),
 	ownedCachePath string,
 ) *ListScreen {
@@ -476,7 +478,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// Ring
 		r.DrawPill(cx-outerR, cy-outerR, outerR*2, outerR*2, mt[0], mt[1], mt[2])
 		if innerR > 0 {
-			hBGinner := r.Theme.HeaderBG
+			hBGinner := r.Theme.Surface()
 			r.DrawPill(cx-innerR, cy-innerR, innerR*2, innerR*2, hBGinner[0], hBGinner[1], hBGinner[2])
 		}
 
@@ -487,7 +489,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
 		hw := float64(outerR) / 2.0      // arm half-width
 		R := float64(outerR) + 3.0       // extend past outer edge to cover fringe
-		hBG := r.Theme.HeaderBG
+		hBG := r.Theme.Surface()
 		fcx, fcy := float64(cx), float64(cy)
 		for i := 0; i < 3; i++ {
 			a := offset + float64(i)*2.0*math.Pi/3.0
@@ -519,12 +521,19 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		sortPillX := r.W - sortPillW - 10
 		var sortBgR, sortBgG, sortBgB uint8
 		if s.sortMode == itchio.SortModeRSS {
-			sortBgR, sortBgG, sortBgB = 35, 50, 35
+			sortBgR, sortBgG, sortBgB = rgb(r.Theme.SuccessBG())
 		} else {
-			ac := r.Theme.Accent
-			sortBgR, sortBgG, sortBgB = ac[0]/2+18, ac[1]/2+18, ac[2]/2+18
+			// NextUI's color2 is exactly this: the title/status pill fill.
+			// Replaces an `Accent/2+18` fudge that no longer holds now that
+			// Accent is color1, a full-strength selection colour.
+			tp := r.Theme.TitlePill
+			sortBgR, sortBgG, sortBgB = tp[0], tp[1], tp[2]
 		}
-		aT := r.Theme.AccentText
+		// These header pills are NextUI's title-pill idiom, so they take its text
+		// colour (color6). AccentText is color5, which belongs on the color1
+		// selection pill — using it here renders dark-on-dark and unreadable on
+		// the Catppuccin palettes.
+		aT := r.Theme.TitlePillText()
 		r.DrawPill(sortPillX, pillY, sortPillW, pillH, sortBgR, sortBgG, sortBgB)
 		r.DrawTextCenteredInRect(sortLabel, sortPillX, pillY, sortPillW, pillH, aT[0], aT[1], aT[2])
 
@@ -535,9 +544,9 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		platPillX := sortPillX - platPillW - 6
 		var platBgR, platBgG, platBgB uint8
 		if s.platformFilter == "" {
-			platBgR, platBgG, platBgB = 30, 40, 55
+			platBgR, platBgG, platBgB = rgb(r.Theme.Chip())
 		} else {
-			platBgR, platBgG, platBgB = 30, 55, 80
+			platBgR, platBgG, platBgB = rgb(theme.Mix(r.Theme.Chip(), r.Theme.Info(), 40))
 		}
 		r.DrawPill(platPillX, pillY, platPillW, pillH, platBgR, platBgG, platBgB)
 		r.DrawTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
@@ -555,10 +564,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		_, fontH := r.TextSize("Ag")
 		mid := r.H / 2
 		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
-			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-4, r.W, 200, 100, 50)
-			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then press A to retry.", 20, mid+4, r.W-40, fontH+4, 200, 160, 100)
+			er := r.Theme.Error()
+			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-4, r.W, er[0], er[1], er[2])
+			ht := r.Theme.HintText
+			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then press A to retry.", 20, mid+4, r.W-40, fontH+4, ht[0], ht[1], ht[2])
 		} else {
-			r.DrawText("Error: "+s.err.Error(), 20, mid, 200, 50, 50)
+			er := r.Theme.Error()
+			r.DrawText("Error: "+s.err.Error(), 20, mid, er[0], er[1], er[2])
 		}
 		ftrY := r.DrawFooterBar(52)
 		r.DrawFooterHints([]renderer.FooterHint{
@@ -581,7 +593,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	if len(s.viewGames) == 0 && s.cacheReady {
 		ht := r.Theme.HintText
 		r.DrawTextCentered("No games match the active filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
-		r.DrawTextCentered("Press SELECT to change filters.", 0, r.H/2+4, leftW, 80, 160, 180)
+		nf := r.Theme.Info()
+			r.DrawTextCentered("Press SELECT to change filters.", 0, r.H/2+4, leftW, nf[0], nf[1], nf[2])
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
@@ -694,22 +707,22 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		switch {
 		case isPendingUpdate:
 			badgeLabel = "UP"
-			badgeR, badgeG, badgeB = 240, 160, 40
+			badgeR, badgeG, badgeB = rgb(r.Theme.Warning())
 		case isRemovedGame:
 			badgeLabel = "!"
-			badgeR, badgeG, badgeB = 200, 60, 60
+			badgeR, badgeG, badgeB = rgb(r.Theme.Error())
 		case isPresent:
 			badgeLabel = "DL"
-			badgeR, badgeG, badgeB = 80, 200, 220
+			badgeR, badgeG, badgeB = rgb(r.Theme.Info())
 		case isOwned:
 			badgeLabel = "OWNED"
-			badgeR, badgeG, badgeB = 60, 200, 120
+			badgeR, badgeG, badgeB = rgb(r.Theme.Owned())
 		case g.IsFree:
 			badgeLabel = "Free"
-			badgeR, badgeG, badgeB = 80, 200, 80
+			badgeR, badgeG, badgeB = rgb(r.Theme.Success())
 		default:
 			badgeLabel = s.badgePrice(g.URL, g.Price)
-			badgeR, badgeG, badgeB = 220, 180, 60
+			badgeR, badgeG, badgeB = rgb(r.Theme.Price())
 		}
 		badgeW, _ := r.SmallTextSize(badgeLabel)
 		pillW := badgeW + 16 // 8px horizontal padding per side
@@ -781,7 +794,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		pillH := smallFH + 4
 		pillY := y + (fontH-pillH)/2
 		r.DrawPill(badgeX, pillY, pillW, pillH, badgeR, badgeG, badgeB)
-		r.DrawSmallTextCenteredInRect(badgeLabel, badgeX, pillY, pillW, pillH, 20, 20, 20)
+		badgeTxt := r.Theme.ContrastText([3]uint8{badgeR, badgeG, badgeB})
+		r.DrawSmallTextCenteredInRect(badgeLabel, badgeX, pillY, pillW, pillH, badgeTxt[0], badgeTxt[1], badgeTxt[2])
 	}
 
 	// Draw the DL-mode group separator AFTER all row content so it renders
@@ -792,8 +806,10 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		if sepRowIdx >= 0 {
 			sepBarY := contentTop + int32(sepRowIdx+1)*rowH
 			if sepBarY < r.H-footerH {
-				r.DrawRect(0, sepBarY, leftW, dlSepBarH, 40, 40, 40)
-				r.DrawSmallTextCentered("— downloaded —", 0, sepBarY+(dlSepBarH-smallFH)/2, leftW, 100, 100, 100)
+				sep := r.Theme.Separator()
+				r.DrawRect(0, sepBarY, leftW, dlSepBarH, sep[0], sep[1], sep[2])
+				mu := r.Theme.Muted()
+				r.DrawSmallTextCentered("— downloaded —", 0, sepBarY+(dlSepBarH-smallFH)/2, leftW, mu[0], mu[1], mu[2])
 			}
 		}
 	}
@@ -884,19 +900,19 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					var textR, textG, textB uint8
 					if s.inv.HasPendingUpdates(g.URL) {
 						pillLabel = "UPDATE"
-						pillR, pillG, pillB = 240, 160, 40
-						shadowR, shadowG, shadowB = 160, 96, 16
-						textR, textG, textB = 20, 20, 20
+						pillR, pillG, pillB = rgb(r.Theme.Warning())
+						shadowR, shadowG, shadowB = rgb(theme.Shadow(r.Theme.Warning()))
+						textR, textG, textB = rgb(r.Theme.ContrastText(r.Theme.Warning()))
 					} else if s.inv.IsRemoved(g.URL) {
 						pillLabel = "REMOVED"
-						pillR, pillG, pillB = 200, 60, 60
-						shadowR, shadowG, shadowB = 122, 16, 16
-						textR, textG, textB = 255, 255, 255
+						pillR, pillG, pillB = rgb(r.Theme.Error())
+						shadowR, shadowG, shadowB = rgb(theme.Shadow(r.Theme.Error()))
+						textR, textG, textB = rgb(r.Theme.ContrastText(r.Theme.Error()))
 					} else {
 						pillLabel = "DL"
-						pillR, pillG, pillB = 80, 200, 220
-						shadowR, shadowG, shadowB = 30, 130, 150
-						textR, textG, textB = 20, 20, 20
+						pillR, pillG, pillB = rgb(r.Theme.Info())
+						shadowR, shadowG, shadowB = rgb(theme.Shadow(r.Theme.Info()))
+						textR, textG, textB = rgb(r.Theme.ContrastText(r.Theme.Info()))
 					}
 					lw, lh := r.SmallTextSize(pillLabel)
 					const overlayPad = int32(8)
@@ -912,14 +928,19 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 					r.DrawSmallTextCenteredInRect(pillLabel, overlayPillX, overlayPillY, overlayPillW, overlayPillH, textR, textG, textB)
 				}
 			} else if s.cache.Failed(g.CoverURL) {
-				r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, 80, 80, 80)
+				phT := r.Theme.Muted()
+				r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 			} else {
-				r.DrawTextCenteredInRect("Loading...", artX, metaY, artW, artH, 80, 80, 80)
+				phT := r.Theme.Muted()
+				r.DrawTextCenteredInRect("Loading...", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 			}
 		} else {
 			r.DrawRect(artX+2, metaY+2, artW-4, artH-4, bg[0], bg[1], bg[2])
-			r.DrawRect(artX+3, metaY+3, artW-6, artH-6, 35, 35, 35)
-			r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, 80, 80, 80)
+			ph := r.Theme.Chip()
+			r.DrawRect(artX+3, metaY+3, artW-6, artH-6, ph[0], ph[1], ph[2])
+			// The label sits on the placeholder fill, not on the background.
+			phT := r.Theme.MutedOn(ph)
+			r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 		}
 		metaY += artH + lyt.ContentGap
 
@@ -948,13 +969,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 
 			// Tags as pills (filteredTagsBuf already populated above).
 			if len(filteredTagsBuf) > 0 && metaY < r.H-footerH {
-				ac := r.Theme.Accent
-				aT2 := r.Theme.AccentText
-				bgPill := [3]uint8{
-					uint8((int(ac[0]) + 35) / 2),
-					uint8((int(ac[1]) + 35) / 2),
-					uint8((int(ac[2]) + 35) / 2),
-				}
+				// Chip() is a raised surface derived from the palette; the old
+				// `(Accent+35)/2` blended toward a fixed constant and stopped
+				// meaning anything once Accent became color1.
+				bgPill := r.Theme.Chip()
+				aT2 := r.Theme.ContrastText(bgPill)
 				tagAreaH := r.H - footerH - metaY
 				if tagAreaH > 0 {
 					r.SetClipRect(rightX, metaY, rightW, tagAreaH)
@@ -1107,10 +1126,10 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.K_RETURN:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
 			}
 		case sdl.K_s:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
 		case sdl.K_TAB: // SELECT → filter overlay
 			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
 				func(platform, sort, query string) {
@@ -1197,12 +1216,12 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case sdl.CONTROLLER_BUTTON_B:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle)
+				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
 			}
 		case sdl.CONTROLLER_BUTTON_A:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
-			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.onThemeToggle, s.onOwnedReady)
+			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
 		case sdl.CONTROLLER_BUTTON_BACK: // SELECT → filter overlay
 			return NewFilterScreen(s, s.platformFilter, string(s.sortMode), s.searchQuery,
 				func(platform, sort, query string) {

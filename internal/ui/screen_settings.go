@@ -59,6 +59,7 @@ type SettingsScreen struct {
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
 	themeAvailable bool
+	paletteName    string // active NextUI palette, "" == Custom
 	onThemeToggle  func(bool)
 	onOwnedReady   func([]itchio.OwnedGame)
 
@@ -84,6 +85,7 @@ func NewSettingsScreen(
 	nextUITheme theme.Theme,
 	defaultTheme theme.Theme,
 	themeAvailable bool,
+	paletteName string,
 	onThemeToggle func(bool),
 	onOwnedReady func([]itchio.OwnedGame),
 ) *SettingsScreen {
@@ -100,6 +102,7 @@ func NewSettingsScreen(
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
+		paletteName:    paletteName,
 		onThemeToggle:  onThemeToggle,
 		onOwnedReady:   onOwnedReady,
 	}
@@ -182,6 +185,7 @@ func (s *SettingsScreen) NeedsRedraw() bool {
 func (s *SettingsScreen) HasPendingAnimation() bool { return false }
 
 func (s *SettingsScreen) Draw(r *renderer.Renderer) {
+	mu := r.Theme.Muted()
 	s.processAutoRepeat()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
@@ -200,9 +204,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		logLevelLabel = "Debug"
 	}
 
+	// Naming the active palette turns "On" into something checkable: if this
+	// disagrees with NextUI's own Settings, the two are reading different files.
 	nextUIThemeLabel := "Off"
 	if s.cfg.NextUITheme {
-		nextUIThemeLabel = "On"
+		nextUIThemeLabel = "On (" + theme.PaletteLabel(s.paletteName) + ")"
 	}
 
 	type menuItem struct {
@@ -287,11 +293,14 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				var sR, sG, sB uint8
 				switch s.client.GetAPIKeyStatus() {
 				case itchio.APIKeyStatusWorking:
-					statusLabel, sR, sG, sB = "WORKING", 80, 200, 80
+					ok := r.Theme.Success()
+					statusLabel, sR, sG, sB = "WORKING", ok[0], ok[1], ok[2]
 				case itchio.APIKeyStatusRejected:
-					statusLabel, sR, sG, sB = "REJECTED", 200, 60, 60
+					bad := r.Theme.Error()
+					statusLabel, sR, sG, sB = "REJECTED", bad[0], bad[1], bad[2]
 				default:
-					statusLabel, sR, sG, sB = "PRESENT", 140, 140, 140
+					mu2 := r.Theme.Muted()
+					statusLabel, sR, sG, sB = "PRESENT", mu2[0], mu2[1], mu2[2]
 				}
 				sw, sh := r.SmallTextSize(statusLabel)
 				const sp = int32(8) // padding to match tag list
@@ -300,9 +309,18 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				pillX := 20 + labelW + 12
 				pillY := y - 4 + (rowH-pillH)/2
 				r.DrawPill(pillX, pillY, pillW, pillH, sR, sG, sB)
-				r.DrawSmallTextCenteredInRect(statusLabel, pillX, pillY, pillW, pillH, 20, 20, 20)
+				stC := r.Theme.ContrastText([3]uint8{sR, sG, sB})
+				r.DrawSmallTextCenteredInRect(statusLabel, pillX, pillY, pillW, pillH, stC[0], stC[1], stC[2])
 			} else {
-				r.DrawText("(not set)", 20+labelW, y, 120, 120, 120)
+				// Muted is derived from the background, so on the selected row —
+				// which is filled with an Accent pill — it was unreadable: #867D8C
+				// on #D6559E is a contrast of 2 on Plum Magenta. De-emphasise
+				// relative to whatever this text actually sits on.
+				notSet := mu
+				if isSelected {
+					notSet = theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
+				}
+				r.DrawText("(not set)", 20+labelW, y, notSet[0], notSet[1], notSet[2])
 			}
 		}
 
@@ -313,9 +331,9 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			ax := r.W - aw - 20
 			var aR, aG, aB uint8
 			if s.updateSvc.IsRunning() {
-				aR, aG, aB = 240, 160, 40
+				aR, aG, aB = rgb(r.Theme.Warning())
 			} else {
-				aR, aG, aB = 100, 100, 100
+				aR, aG, aB = rgb(r.Theme.Muted())
 			}
 			_, fh := r.TextSize("Ag")
 			_, sh := r.SmallTextSize(annotation)

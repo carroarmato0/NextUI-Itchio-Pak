@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 )
 
 // formatKB formats a byte count as a human-readable KB or MB string.
@@ -39,10 +40,11 @@ func drawLoadingDots(r *renderer.Renderer, y int32) {
 		if i == active {
 			dr, dg, db = ac[0], ac[1], ac[2]
 		} else {
-			// Blend accent 1/3 toward background for a subtle unlit dot.
-			dr = uint8((int(ac[0]) + int(bg[0])*2) / 3)
-			dg = uint8((int(ac[1]) + int(bg[1])*2) / 3)
-			db = uint8((int(ac[2]) + int(bg[2])*2) / 3)
+			// A third of the way from the background toward the accent, for a
+			// subtle unlit dot. Same result as the arithmetic it replaces, but
+			// via a helper that cannot overflow.
+			unlit := theme.Mix(bg, ac, 33)
+			dr, dg, db = unlit[0], unlit[1], unlit[2]
 		}
 		dotX := startX + int32(i)*(dotDiam+dotGap)
 		r.DrawPill(dotX, y, dotDiam, dotDiam, dr, dg, db)

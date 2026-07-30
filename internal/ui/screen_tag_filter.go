@@ -192,6 +192,7 @@ func (s *TagFilterScreen) NeedsRedraw() bool {
 func (s *TagFilterScreen) HasPendingAnimation() bool { return false }
 
 func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
+	mu := r.Theme.Muted()
 	s.processAutoRepeat()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
@@ -207,7 +208,7 @@ func (s *TagFilterScreen) Draw(r *renderer.Renderer) {
 	// Warning note (small font) just below header
 	_, smallFH := r.SmallTextSize("Ag")
 	noteY := headerH + 8
-	r.DrawSmallText("Note: coverage depends on creators' tagging.", 20, noteY, 110, 110, 110)
+	r.DrawSmallText("Note: coverage depends on creators' tagging.", 20, noteY, mu[0], mu[1], mu[2])
 
 	// Master toggle row
 	ac := r.Theme.Accent

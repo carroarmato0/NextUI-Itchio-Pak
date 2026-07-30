@@ -79,6 +79,8 @@ func (s *FilterScreen) NeedsRedraw() bool        { return false }
 func (s *FilterScreen) HasPendingAnimation() bool { return false }
 
 func (s *FilterScreen) Draw(r *renderer.Renderer) {
+	bd := r.Theme.ModalBorder()
+	field := r.Theme.ModalScrim()
 	lyt := LayoutFor(r.W, r.H)
 
 	bg := r.Theme.Background
@@ -110,11 +112,14 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 	panelY := (r.H - panelH) / 2
 
 	// Panel fill + border
-	r.DrawRect(panelX, panelY, panelW, panelH, bg[0]+22, bg[1]+22, bg[2]+22)
-	r.DrawRect(panelX, panelY, panelW, 1, 70, 70, 100)
-	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, 70, 70, 100)
-	r.DrawRect(panelX, panelY, 1, panelH, 70, 70, 100)
-	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, 70, 70, 100)
+	// Was bg[n]+22 on a uint8. On every light palette that wrapped: Mustard
+	// Butter's #FBF3DC became #1109F2, a bright blue panel.
+	panel := r.Theme.ModalPanel()
+	r.DrawRect(panelX, panelY, panelW, panelH, panel[0], panel[1], panel[2])
+	r.DrawRect(panelX, panelY, panelW, 1, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX, panelY+panelH-1, panelW, 1, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX, panelY, 1, panelH, bd[0], bd[1], bd[2])
+	r.DrawRect(panelX+panelW-1, panelY, 1, panelH, bd[0], bd[1], bd[2])
 
 	// Panel title
 	mt := r.Theme.MainText
@@ -134,7 +139,7 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 			ac := r.Theme.Accent
 			r.DrawRect(panelX, y, 3, smallFH, ac[0], ac[1], ac[2])
 		} else {
-			lr, lg, lb = 160, 175, 200
+			lr, lg, lb = rgb(r.Theme.MainText)
 		}
 		r.DrawSmallText(label, panelX+pad, y, lr, lg, lb)
 		y += labelH
@@ -167,11 +172,11 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 				aT := r.Theme.AccentText
 				fgR, fgG, fgB = aT[0], aT[1], aT[2]
 			case isCursor:
-				bgR, bgG, bgB = 50, 50, 70
-				fgR, fgG, fgB = 200, 200, 220
+				bgR, bgG, bgB = rgb(r.Theme.Chip())
+				fgR, fgG, fgB = rgb(r.Theme.ContrastText(r.Theme.Chip()))
 			default:
-				bgR, bgG, bgB = 30, 30, 45
-				fgR, fgG, fgB = 120, 120, 140
+				bgR, bgG, bgB = rgb(r.Theme.ShadeBG(1))
+				fgR, fgG, fgB = rgb(r.Theme.Muted())
 			}
 			r.DrawPill(x, y, pw, ph, bgR, bgG, bgB)
 			r.DrawSmallTextCenteredInRect(label, x, y, pw, ph, fgR, fgG, fgB)
@@ -188,9 +193,9 @@ func (s *FilterScreen) Draw(r *renderer.Renderer) {
 		ac := r.Theme.Accent
 		sfR, sfG, sfB = ac[0], ac[1], ac[2]
 	} else {
-		sfR, sfG, sfB = 60, 60, 80
+		sfR, sfG, sfB = rgb(r.Theme.Chip())
 	}
-	r.DrawRect(panelX+pad, y, panelW-pad*2, fieldH, 22, 22, 35)
+	r.DrawRect(panelX+pad, y, panelW-pad*2, fieldH, field[0], field[1], field[2])
 	r.DrawRect(panelX+pad, y, panelW-pad*2, 1, sfR, sfG, sfB)
 	r.DrawRect(panelX+pad, y+fieldH-1, panelW-pad*2, 1, sfR, sfG, sfB)
 	if s.query == "" {

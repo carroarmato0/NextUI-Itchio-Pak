@@ -141,6 +141,11 @@ func (s *DownloadScreen) NeedsRedraw() bool {
 func (s *DownloadScreen) HasPendingAnimation() bool { return false }
 
 func (s *DownloadScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
+	mu := r.Theme.Muted()
+	ok := r.Theme.Success()
+	track := r.Theme.ProgressTrack()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -148,7 +153,7 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 	_, fontH := r.TextSize("Ag")
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	r.DrawRect(0, 0, r.W, headerH, hdr[0], hdr[1], hdr[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
@@ -168,15 +173,15 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 		mid := headerH + contentH/2
 		r.DrawSmallText(s.upload.Filename, 20, contentTop+4, ht[0], ht[1], ht[2])
 		barW := r.W - 80
-		r.DrawRect(40, mid-10, barW, 20, 60, 60, 60)
+		r.DrawRect(40, mid-10, barW, 20, track[0], track[1], track[2])
 		if tot > 0 {
 			filled := int32(float64(barW) * float64(dl) / float64(tot))
-			r.DrawRect(40, mid-10, filled, 20, 80, 200, 80)
+			r.DrawRect(40, mid-10, filled, 20, ok[0], ok[1], ok[2])
 			r.DrawText(fmt.Sprintf("%d%%  (%s / %s)", dl*100/tot, humanBytes(dl), humanBytes(tot)),
 				40, mid+18, mt[0], mt[1], mt[2])
 		} else {
 			if dl > 0 {
-				r.DrawRect(40, mid-10, barW/3, 20, 80, 200, 80)
+				r.DrawRect(40, mid-10, barW/3, 20, ok[0], ok[1], ok[2])
 			}
 			r.DrawText(humanBytes(dl)+" downloaded", 40, mid+18, mt[0], mt[1], mt[2])
 		}
@@ -189,26 +194,26 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 		// Total height: title + filename + "Saved to:" + dir + file
 		totalH := fontH + rowGap + smallFH + rowGap*2 + smallFH + rowGap + smallFH + rowGap + smallFH
 		y := mid - totalH/2
-		r.DrawTextCentered("Download complete!", 0, y, r.W, 80, 200, 80)
+		r.DrawTextCentered("Download complete!", 0, y, r.W, ok[0], ok[1], ok[2])
 		y += fontH + rowGap
 		r.DrawSmallTextCentered(s.upload.Filename, 0, y, r.W, ht[0], ht[1], ht[2])
 		y += smallFH + rowGap*2
-		r.DrawSmallTextCentered("Saved to:", 0, y, r.W, 120, 120, 120)
+		r.DrawSmallTextCentered("Saved to:", 0, y, r.W, mu[0], mu[1], mu[2])
 		y += smallFH + rowGap
 		dir := truncateSmallToWidth(r, filepath.Dir(s.dest)+"/", maxPathW)
-		r.DrawSmallTextCentered(dir, 0, y, r.W, 80, 80, 80)
+		r.DrawSmallTextCentered(dir, 0, y, r.W, mu[0], mu[1], mu[2])
 		y += smallFH + rowGap
 		file := truncateSmallToWidth(r, filepath.Base(s.dest), maxPathW)
-		r.DrawSmallTextCentered(file, 0, y, r.W, 120, 120, 120)
+		r.DrawSmallTextCentered(file, 0, y, r.W, mu[0], mu[1], mu[2])
 
 	case dlError:
 		// Layout from top of content area: error title, message, then QR centered
 		// in the remaining space with label below it.
 		y := contentTop + 8
-		r.DrawText("Download failed:", 20, y, 200, 60, 60)
+		r.DrawText("Download failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
 		msg := s.err.Error()
-		msgH := r.DrawWrappedText(msg, 20, y, r.W-40, fontH+4, 200, 100, 100)
+		msgH := r.DrawWrappedText(msg, 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 		y += msgH + 16
 
 		// QR code: fill the remaining content area generously.

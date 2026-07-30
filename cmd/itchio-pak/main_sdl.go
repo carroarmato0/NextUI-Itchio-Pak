@@ -78,15 +78,24 @@ func runSDL() {
 	}
 	logger.Info("display: %dx%d", w, h)
 
-	const miniSettingsPath = "/mnt/SDCARD/.userdata/shared/minuisettings.txt"
-	nextUITheme, themeAvailable := theme.Load(miniSettingsPath)
+	// theme.SettingsPath is the same file inventory.NXSettingsPath names; both
+	// point at NextUI's shared minuisettings.txt.
+	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(theme.SettingsPath)
 	defaultTheme := theme.Defaults()
 
 	activeTheme := defaultTheme
 	if cfg.NextUITheme && themeAvailable {
 		activeTheme = nextUITheme
 	}
-	logger.Info("theme: available=%v, active=%v", themeAvailable, cfg.NextUITheme && themeAvailable)
+	logger.Info("theme: available=%v, active=%v, palette=%q, light=%v",
+		themeAvailable, cfg.NextUITheme && themeAvailable,
+		theme.PaletteLabel(paletteName), nextUITheme.IsLightTheme())
+
+	// Not used to pick a palette — the active one is already baked into
+	// minuisettings.txt — but it records in the log what a user actually has
+	// installed, which is the first thing worth knowing when a theme bug is
+	// reported.
+	theme.EnumeratePalettes(theme.BuiltinPaletteDir, theme.UserPaletteDir)
 
 	r, err := renderer.New("Itch.io", int(w), int(h), activeTheme)
 	if err != nil {
@@ -127,11 +136,11 @@ func runSDL() {
 	})
 	powerMgr.Start()
 
-	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle, ownedCachePath)
+	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle, ownedCachePath)
 	var current ui.Screen
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
-		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, onThemeToggle)
+		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle)
 	} else {
 		current = listScreen
 	}
@@ -286,14 +295,20 @@ loop:
 }
 
 func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
-	r.Clear(20, 20, 20)
+	// This was the one draw path with no theme at all: a hardcoded #141414
+	// clear with light grey text. On a light palette it flashed a dark panel
+	// on the way to sleep.
+	bg := r.Theme.Background
+	r.Clear(bg[0], bg[1], bg[2])
 	subtitle := "Finishing up before sleep…"
 	if action == power.ActionShutdown {
 		subtitle = "Finishing up before shutdown…"
 	}
 	_, mainH := r.TextSize("Ag")
 	mid := r.H / 2
-	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, 220, 220, 220)
-	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, 120, 120, 120)
+	mt := r.Theme.ContrastText(bg)
+	ht := r.Theme.HintText
+	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, mt[0], mt[1], mt[2])
+	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, ht[0], ht[1], ht[2])
 	r.Present()
 }

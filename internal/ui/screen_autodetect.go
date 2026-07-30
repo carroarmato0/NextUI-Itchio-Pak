@@ -147,6 +147,8 @@ func (s *AutoDetectScreen) NeedsRedraw() bool        { return s.loadState() == a
 func (s *AutoDetectScreen) HasPendingAnimation() bool { return false }
 
 func (s *AutoDetectScreen) Draw(r *renderer.Renderer) {
+	bad := r.Theme.Error()
+	badTx := r.Theme.ErrorText()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -155,7 +157,7 @@ func (s *AutoDetectScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	hdr := r.Theme.HeaderBG
+	hdr := r.Theme.Surface()
 	ac := r.Theme.Accent
 	mt := r.Theme.MainText
 	ht := r.Theme.HintText
@@ -176,8 +178,8 @@ func (s *AutoDetectScreen) Draw(r *renderer.Renderer) {
 		errH := int32(len(errLines)) * (fontH + 4)
 		totalH := fontH + 10 + errH
 		startY := mid - totalH/2
-		r.DrawText("Detection failed:", 20, startY, 200, 60, 60)
-		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, fontH+4, 200, 100, 100)
+		r.DrawText("Detection failed:", 20, startY, bad[0], bad[1], bad[2])
+		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

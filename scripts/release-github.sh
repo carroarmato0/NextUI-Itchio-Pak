@@ -38,15 +38,47 @@ prev_version() {
 }
 
 # bundle_version — the version embedded in the built .pakz artifact, or "" if unreadable.
+#
+# The glob matches one pak.json per platform (tg5040, tg5050, my355), so unzip
+# keeps streaming after the first match. Piping it straight into `grep -m1` let
+# grep close the pipe early, killing unzip with SIGPIPE; under `set -o pipefail`
+# that failed the whole script at line 88 — silently, and only when the timing
+# happened to land that way (~8 of 30 runs on this 37MB bundle). Read the stream
+# to completion first, then extract.
 bundle_version() {
-	unzip -p "$PAKZ" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null \
-		| grep -m1 '"version"' \
-		| sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+	local json versions
+	json="$(unzip -p "$PAKZ" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null || true)"
+	versions="$(printf '%s\n' "$json" \
+		| sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+		| sort -u)"
+	# Every platform bundle is packaged from the same pak.json, so more than one
+	# distinct version means release.sh shipped a stale platform directory.
+	if [ "$(printf '%s\n' "$versions" | grep -c .)" -gt 1 ]; then
+		err "mixed versions inside $PAKZ: $(printf '%s' "$versions" | tr '\n' ' ')— re-run scripts/release.sh"
+	fi
+	printf '%s\n' "$versions"
 }
+
+# notes_file VERSION — path to a hand-written long-form note for this release,
+# if one exists. pak.json's changelog is shown on-device where space is tight, so
+# it stays short; the release page can afford the longer version.
+notes_file() { printf 'docs/release-notes/%s.md' "$1"; }
 
 build_notes() {
 	local v prev repo bullets
 	v="$(pak_version)"
+	# A long-form file, when present, replaces the generated notes entirely —
+	# including the heading, so it can be structured however it likes. The
+	# compare link is still appended.
+	if [ -f "$(notes_file "$v")" ]; then
+		cat "$(notes_file "$v")"
+		prev="$(prev_version "$v")"
+		repo="$(jq -r '.repo_url' "$PAK_JSON")"
+		if [ -n "$prev" ]; then
+			printf '\n**Full changelog:** %s/compare/%s...%s\n' "$repo" "$prev" "$v"
+		fi
+		return
+	fi
 	prev="$(prev_version "$v")"
 	repo="$(jq -r '.repo_url' "$PAK_JSON")"
 	bullets="$(changelog_entry "$v" | sed '/^[[:space:]]*$/d')"

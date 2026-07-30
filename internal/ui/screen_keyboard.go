@@ -78,6 +78,7 @@ func (s *KeyboardScreen) NeedsRedraw() bool        { return true }
 func (s *KeyboardScreen) HasPendingAnimation() bool { return false }
 
 func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
+	field := r.Theme.ModalScrim()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -108,13 +109,13 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 	fieldX := int32(8)
 	fieldW := r.W - 16
 
-	r.DrawRect(fieldX, contentY, fieldW, fieldH, 25, 25, 38)
+	r.DrawRect(fieldX, contentY, fieldW, fieldH, field[0], field[1], field[2])
 	var bR, bG, bB uint8
 	if s.row == -1 {
 		ac := r.Theme.Accent
 		bR, bG, bB = ac[0], ac[1], ac[2]
 	} else {
-		bR, bG, bB = 60, 60, 80
+		bR, bG, bB = rgb(r.Theme.Chip())
 	}
 	r.DrawRect(fieldX, contentY, fieldW, 1, bR, bG, bB)
 	r.DrawRect(fieldX, contentY+fieldH-1, fieldW, 1, bR, bG, bB)
@@ -140,7 +141,8 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 			r.DrawRect(tx, contentY, tabW, tabH, ac[0], ac[1], ac[2])
 			r.DrawSmallTextCentered(label, tx, contentY+(tabH-smallFH)/2, tabW, aT[0], aT[1], aT[2])
 		} else {
-			r.DrawSmallTextCentered(label, tx, contentY+(tabH-smallFH)/2, tabW, 80, 80, 100)
+			tabC := r.Theme.Muted()
+			r.DrawSmallTextCentered(label, tx, contentY+(tabH-smallFH)/2, tabW, tabC[0], tabC[1], tabC[2])
 		}
 	}
 	contentY += tabH + 4
@@ -169,7 +171,7 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 				ac := r.Theme.Accent
 				cellR, cellG, cellB = ac[0], ac[1], ac[2]
 			} else {
-				cellR, cellG, cellB = 28, 28, 42
+				cellR, cellG, cellB = rgb(r.Theme.ModalPanel())
 			}
 			r.DrawRect(cx+1, cy+1, cellW-2, cellH-2, cellR, cellG, cellB)
 
@@ -178,7 +180,7 @@ func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
 				aT := r.Theme.AccentText
 				fR, fG, fB = aT[0], aT[1], aT[2]
 			} else {
-				fR, fG, fB = 190, 190, 210
+				fR, fG, fB = rgb(r.Theme.MainText)
 			}
 			r.DrawSmallTextCenteredInRect(ch, cx+1, cy+1, cellW-2, cellH-2, fR, fG, fB)
 		}

@@ -131,6 +131,7 @@ func (s *FormatPickerScreen) NeedsRedraw() bool { return false }
 func (s *FormatPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
+	warn := r.Theme.Warning()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
@@ -139,7 +140,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	_, smallFH := r.SmallTextSize("Ag")
 	headerH := fontH + smallFH + 16
 
-	hBG := r.Theme.HeaderBG
+	hBG := r.Theme.Surface()
 	ac := r.Theme.Accent
 	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
 	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
@@ -150,7 +151,7 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 	r.DrawSmallText("by "+s.game.Author, 12, 8+fontH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 8
-	r.DrawSmallText("Select file to download (auto-detect enabled):", 12, contentTop, 180, 160, 100)
+	r.DrawSmallText("Select file to download (auto-detect enabled):", 12, contentTop, warn[0], warn[1], warn[2])
 	contentTop += smallFH + 10
 
 	rowH := fontH + 12 // matches list screen row height
@@ -184,24 +185,25 @@ func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
 		var fR, fG, fB uint8
 		switch f {
 		case formatAuto:
-			fR, fG, fB = 160, 160, 160 // neutral gray
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{160, 160, 160})) // neutral gray
 		case formatP8PNG, formatP8:
-			fR, fG, fB = 255, 100, 80 // Pico-8 red/orange
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{255, 100, 80})) // Pico-8 red/orange
 		case formatGB:
-			fR, fG, fB = 120, 220, 120
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{120, 220, 120}))
 		case formatGBC:
-			fR, fG, fB = 80, 180, 255
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{80, 180, 255}))
 		case formatGBA:
-			fR, fG, fB = 200, 100, 240
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{200, 100, 240}))
 		case formatNES:
-			fR, fG, fB = 220, 80, 80
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{220, 80, 80}))
 		case formatMD:
-			fR, fG, fB = 80, 200, 200
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{80, 200, 200}))
 		case formatZIP:
-			fR, fG, fB = 220, 180, 80
+			fR, fG, fB = rgb(r.Theme.Tone([3]uint8{220, 180, 80}))
 		}
 		r.DrawPill(tagX, badgeY, badgeW, badgeH, fR, fG, fB)
-		r.DrawSmallTextCenteredInRect(lbl, tagX, badgeY, badgeW, badgeH, 20, 20, 20)
+		lblC := r.Theme.ContrastText([3]uint8{fR, fG, fB})
+		r.DrawSmallTextCenteredInRect(lbl, tagX, badgeY, badgeW, badgeH, lblC[0], lblC[1], lblC[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
