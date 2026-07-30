@@ -15,7 +15,7 @@
   ],
   "platforms": ["tg5040", "tg5050", "my355"],
   "changelog": {
-    "v1.0.21": "\n• Fix NextUI theme support: recent NextUI versions changed the colour format, which stopped the theme loading and hid the setting.\n• Match NextUI's own colour roles so the Pak looks native alongside it.\n• Support NextUI's light colour palettes such as Catppuccin Latte.\n• Show the active palette name next to the NextUI Theme setting.\n• Status badges now follow the selected palette; update and error badges keep their colour so they still stand out.",
+    "v1.0.21": "\n• Fix NextUI theme support: recent NextUI versions changed the colour format, which stopped the theme loading and hid the setting.\n• Match NextUI's own colour roles so the Pak looks native alongside it.\n• Support NextUI's light colour palettes such as Catppuccin Latte.\n• Show the active palette name next to the NextUI Theme setting.\n• Status badges now follow the selected palette; update and error badges keep their colour so they still stand out.\n• Let you choose which ROM to download when a game offers several builds for the same system, instead of downloading all of them.\n• Fix multiple downloads for one game overwriting each other, which could leave an older build installed in place of the newer one.",
     "v1.0.20": "\n• Fix games being wrongly marked as removed after a version update was published.",
     "v1.0.19": "\n• Add gbstudio tag to find more GB games.\n• Fix nested zip archives from being recognized as candidate roms.",
     "v1.0.18": "\n• Various Pico-8 fixes.",
