@@ -46,10 +46,13 @@ func main() {
 		audit       = flag.Bool("audit", false, "check drawn text contrast and report unreadable combinations")
 		listOnly    = flag.Bool("list", false, "list available scenes and exit")
 		paletteDir  = flag.String("palette-dir", "", "directory of NextUI palette .txt files (default: bundled fixtures, then the device path)")
+		coverURL    = flag.String("cover-url", "", "URL serving a cover image, so scenes render with real art instead of placeholders")
+		settle      = flag.Duration("settle", 0, "wait this long per render for cover art to load and redraw (e.g. 2s)")
 		verbose     = flag.Bool("v", false, "debug logging")
 	)
 	flag.Parse()
 
+	ui.DevCoverURL = *coverURL
 	logger.SetLevel(logger.LevelInfo)
 	if *verbose {
 		logger.SetLevel(logger.LevelDebug)
@@ -79,7 +82,7 @@ func main() {
 
 	for _, p := range pals {
 		for _, sc := range scenes {
-			res, err := render(sc, p, *width, *height, *full, *audit)
+			res, err := render(sc, p, *width, *height, *full, *audit, *settle)
 			if err != nil {
 				fail(fmt.Errorf("%s@%s: %w", sc.Name, p.label, err))
 			}

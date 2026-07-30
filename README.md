@@ -126,6 +126,33 @@ When **Use game title as filename** is enabled (the default), downloaded ROMs ar
   your filters.
 - Filters are configured in **Settings** (press Start from any screen).
 
+### Theming
+
+The Pak can follow NextUI's own colour palette, so it looks like part of the
+system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
+
+<img src="docs/screenshots/theme-macchiato.png" alt="Itch.io Pak using the Catppuccin Macchiato palette" width="800"/>
+
+- Reads the active palette from NextUI's own settings — no configuration in the Pak
+- Works with every palette NextUI ships, including the light ones, and with any
+  custom palette you drop into `Palettes/` on the SD card
+- The Settings row names the palette in use, e.g. `NextUI Theme: On (Catppuccin Macchiato)`
+- Selection highlights, list text, header and footer bars, pills and hint text all
+  follow the palette; status badges tint to it too
+- Update (`[UP]`) and error (`[!]`) badges deliberately keep their amber and red so
+  they still stand out whatever the palette
+- Switch palettes in NextUI and the Pak picks up the change the next time it starts
+- Leave the setting off to keep the Pak's own dark theme
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/themes-mosaic.png" alt="The game list shown in four different NextUI palettes" width="960"/><br/>
+      <sub>The same screen under four NextUI palettes — Catppuccin Macchiato, Catppuccin Latte, Catppuccin Mocha and Teal Powder</sub>
+    </td>
+  </tr>
+</table>
+
 ### Power management
 
 The power button behaves the same way it does with emulators on NextUI:
@@ -147,6 +174,9 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
   Switching cores instantly moves all previously downloaded Pico-8 files (ROMs and cover art) to the new folder — no manual file management needed. Switching back moves them back.
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
+- **NextUI Theme** — when `On`, the Pak follows the colour palette configured in
+  NextUI, and the row shows which one is active. Only appears when NextUI's
+  settings file is present. Defaults to `Off`
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Refresh Game List** — re-fetches the full game list from itch.io across all platform feeds with a live progress screen showing how many games have been retrieved; the cache is updated on completion. Press **B** at any time to cancel the fetch cleanly — no partial cache is written
@@ -285,6 +315,10 @@ are preparing an SD card that will be used across multiple device types.
     <td align="center">
       <img src="docs/screenshots/delete.png" alt="Delete confirmation" width="480"/><br/>
       <sub>Delete confirmation — shown before removing a ROM from the device</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/theme-macchiato.png" alt="NextUI theme applied" width="480"/><br/>
+      <sub>NextUI theme — the Pak following the device's Catppuccin Macchiato palette</sub>
     </td>
   </tr>
 </table>

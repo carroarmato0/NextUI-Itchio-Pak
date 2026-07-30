@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -28,7 +29,7 @@ type result struct {
 // A fresh Renderer per render is deliberate. SDL caches textures per renderer,
 // and the pill cache is keyed on colour, so reusing one across palettes would
 // leak the previous palette's pills into the next render.
-func render(sc ui.Scene, p palChoice, w, h int, full, audit bool) (result, error) {
+func render(sc ui.Scene, p palChoice, w, h int, full, audit bool, settle time.Duration) (result, error) {
 	dir, err := os.MkdirTemp("", "devshot-*")
 	if err != nil {
 		return result{}, err
@@ -63,6 +64,19 @@ func render(sc ui.Scene, p palChoice, w, h int, full, audit bool) (result, error
 	// One draw always happens: it produces the image, and for scrollable screens
 	// it is also what populates the content/viewport extents.
 	screen.Draw(r)
+
+	// Cover art is fetched in the background, so a single draw catches only the
+	// "Loading…" placeholder. Pump the image cache and redraw until the textures
+	// land. Off by default: the audit does not care about artwork and this would
+	// add seconds per render across the matrix.
+	if settle > 0 {
+		deadline := time.Now().Add(settle)
+		for time.Now().Before(deadline) {
+			time.Sleep(80 * time.Millisecond)
+			deps.Cache.ProcessPending(r)
+			screen.Draw(r)
+		}
+	}
 
 	res := result{note: ""}
 	if full {

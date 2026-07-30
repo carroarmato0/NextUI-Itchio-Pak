@@ -52,13 +52,21 @@ type Scene struct {
 	Build func(SceneDeps) Screen
 }
 
+// DevCoverURL, when set, replaces the fixture cover and screenshot URLs.
+//
+// The fixtures point at example.invalid so scenes render offline and
+// deterministically, which is right for an audit but leaves every cover as a
+// "No Image" placeholder. Screenshots meant for humans need real art, so point
+// this at a locally served image.
+var DevCoverURL string
+
 // DevFixtureGames returns a deterministic game list chosen to exercise the
 // layout rather than to look tidy: a very long title that must truncate, a
 // non-Latin title that needs the fallback fonts, a free game, a paid one, and
 // one with an unusually long tag list.
 func DevFixtureGames() []itchio.Game {
 	base := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
-	return []itchio.Game{
+	games := []itchio.Game{
 		{
 			Title: "Tobu Tobu Girl Deluxe", Author: "tangramgames",
 			URL: "https://tangramgames.itch.io/tobu-tobu-girl-deluxe", IsFree: true,
@@ -91,6 +99,12 @@ func DevFixtureGames() []itchio.Game {
 			Tags: []string{"shooter"}, PublishedAt: base.Add(-5 * time.Hour), Platform: "GBC",
 		},
 	}
+	if DevCoverURL != "" {
+		for i := range games {
+			games[i].CoverURL = DevCoverURL
+		}
+	}
+	return games
 }
 
 // DevFixtureDetail returns a detail page with enough description and tags to
@@ -110,7 +124,7 @@ func DevFixtureDetail(g itchio.Game) *itchio.GameDetail {
 			"past the bottom of the display, which is exactly the content the " +
 			"full-height capture is meant to reveal. Everything below the first " +
 			"fold is invisible on a single device screenshot.",
-		ScreenshotURLs: []string{"https://example.invalid/1.png", "https://example.invalid/2.png"},
+		ScreenshotURLs: devScreenshotURLs(),
 		PageTags: []string{"2d", "bird", "gameboy", "gbc", "gbstudio", "photography",
 			"pixel-art", "retro", "platformer", "arcade", "cute", "chiptune"},
 		Uploads: []itchio.Upload{
@@ -120,6 +134,14 @@ func DevFixtureDetail(g itchio.Game) *itchio.GameDetail {
 		},
 		GameID: "123456",
 	}
+}
+
+// devScreenshotURLs returns the gallery URLs, honouring DevCoverURL.
+func devScreenshotURLs() []string {
+	if DevCoverURL != "" {
+		return []string{DevCoverURL, DevCoverURL}
+	}
+	return []string{"https://example.invalid/1.png", "https://example.invalid/2.png"}
 }
 
 // DevSetup writes fixture state into dir and returns deps pointing at it.
