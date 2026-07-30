@@ -99,3 +99,46 @@ func isNumberedSlot(base, stem, ext string) bool {
 	}
 	return true
 }
+
+// UnifiedCollisions returns the unified destination paths that more than one of
+// paths would resolve to, given a single game title.
+//
+// Unified naming derives a filename from the game title, so every ROM belonging
+// to one game maps to the same name. That is the whole point when a game ships
+// one ROM, and data loss when it ships several: downloading Capybara Village
+// renamed both "Capybara-Village-Update1.gb" and
+// "Game-Jam-Submission-Version.gb" to "Capybara Village.gb", and the second
+// silently replaced the first — leaving the older build installed.
+//
+// Only genuine clashes are reported. Uploads that differ by extension, such as
+// a .gb and a .gbc build, resolve to different names and are left alone.
+func UnifiedCollisions(paths []string, gameTitle string) map[string]bool {
+	seen := make(map[string]int, len(paths))
+	for _, p := range paths {
+		if t := unifiedTarget(p, gameTitle); t != "" {
+			seen[t]++
+		}
+	}
+	out := make(map[string]bool)
+	for t, n := range seen {
+		if n > 1 {
+			out[t] = true
+		}
+	}
+	return out
+}
+
+// unifiedTarget is the path unified naming would derive for one file, ignoring
+// what already exists on disk. Empty when no rename would apply.
+func unifiedTarget(path, gameTitle string) string {
+	ext := ROMExt(filepath.Base(path))
+	candidate := SanitiseFilename(gameTitle, ext)
+	if candidate == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(path), candidate)
+}
+
+// UnifiedTargetFor exposes unifiedTarget for callers deciding whether a planned
+// download participates in a collision.
+func UnifiedTargetFor(path, gameTitle string) string { return unifiedTarget(path, gameTitle) }

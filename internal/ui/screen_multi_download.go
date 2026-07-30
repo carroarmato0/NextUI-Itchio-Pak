@@ -78,6 +78,14 @@ func (s *MultiROMDownloadScreen) loadState() multiDLState {
 func (s *MultiROMDownloadScreen) runDownloads() {
 	defer func() { sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT}) }()
 
+	// Worked out up front: a collision is a property of the batch, not of any
+	// one file, and it must be known before the first rename.
+	destPaths := make([]string, 0, len(s.downloads))
+	for _, dl := range s.downloads {
+		destPaths = append(destPaths, dl.DestPath)
+	}
+	collides := roms.UnifiedCollisions(destPaths, s.game.Title)
+
 	for i, dl := range s.downloads {
 		atomic.StoreInt32(&s.currentIdx, int32(i))
 		atomic.StoreInt64(&s.dlProgress, 0)
@@ -115,6 +123,17 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 		if s.cfg.UnifiedNaming {
 			entry, entryExists := s.inv.Lookup(s.game.URL)
 			disabled := entryExists && entry.UnifiedNamingDisabled
+			// Unified naming derives the filename from the game title, so every
+			// ROM in this batch maps to the same name and each rename replaces
+			// the previous file. Downloading Capybara Village left only the
+			// older of its two builds installed. Where that would happen, keep
+			// the upstream filenames: they are what tells the builds apart, and
+			// there is no single correct name for several ROMs of one game.
+			if collides[roms.UnifiedTargetFor(dl.DestPath, s.game.Title)] {
+				logger.Info("unified-naming: keeping %q — %d files in this download share the unified name",
+					filepath.Base(dl.DestPath), len(s.downloads))
+				disabled = true
+			}
 			if !disabled {
 				newDest, didRename := roms.ResolveUnifiedDest(dl.DestPath, s.game.Title, true)
 				if didRename {
@@ -162,7 +181,7 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 	atomic.StoreInt32(&s.state, int32(multiDLDone))
 }
 
-func (s *MultiROMDownloadScreen) NeedsRedraw() bool        { return true }
+func (s *MultiROMDownloadScreen) NeedsRedraw() bool         { return true }
 func (s *MultiROMDownloadScreen) HasPendingAnimation() bool { return false }
 
 func (s *MultiROMDownloadScreen) Draw(r *renderer.Renderer) {

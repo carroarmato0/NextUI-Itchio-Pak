@@ -153,3 +153,51 @@ func TestResolveUnifiedDest_EmptyTitle_NoRename(t *testing.T) {
 		t.Error("empty title: renamed should be false")
 	}
 }
+
+// TestUnifiedCollisions_RealCase reproduces the Capybara Village report: two
+// ROM uploads for one game, both renamed to the game title, the second
+// overwriting the first and leaving the older build installed.
+func TestUnifiedCollisions_RealCase(t *testing.T) {
+	dir := "/mnt/SDCARD/Roms/Game Boy (GB)"
+	paths := []string{
+		filepath.Join(dir, "Capybara-Village-Update1.gb"),
+		filepath.Join(dir, "Game-Jam-Submission-Version.gb"),
+	}
+	got := roms.UnifiedCollisions(paths, "Capybara Village")
+	want := filepath.Join(dir, "Capybara Village.gb")
+	if !got[want] {
+		t.Errorf("UnifiedCollisions = %v, want %q flagged", got, want)
+	}
+}
+
+// A single upload is the normal case and must still be unified.
+func TestUnifiedCollisions_SingleFile(t *testing.T) {
+	got := roms.UnifiedCollisions([]string{"/roms/GB/whatever.gb"}, "Some Game")
+	if len(got) != 0 {
+		t.Errorf("UnifiedCollisions = %v, want none for a single file", got)
+	}
+}
+
+// Uploads that differ by extension resolve to different names, so they are not
+// a collision and keep their unified names.
+func TestUnifiedCollisions_DifferentExtensions(t *testing.T) {
+	got := roms.UnifiedCollisions([]string{"/roms/x/a.gb", "/roms/x/b.gbc"}, "Some Game")
+	if len(got) != 0 {
+		t.Errorf("UnifiedCollisions = %v, want none across extensions", got)
+	}
+}
+
+// Same name, different destination folders is also not a collision.
+func TestUnifiedCollisions_DifferentDirs(t *testing.T) {
+	got := roms.UnifiedCollisions([]string{"/roms/GB/a.gb", "/roms/GBC/b.gb"}, "Some Game")
+	if len(got) != 0 {
+		t.Errorf("UnifiedCollisions = %v, want none across directories", got)
+	}
+}
+
+func TestUnifiedCollisions_EmptyTitle(t *testing.T) {
+	got := roms.UnifiedCollisions([]string{"/roms/x/a.gb", "/roms/x/b.gb"}, "")
+	if len(got) != 0 {
+		t.Errorf("UnifiedCollisions = %v, want none when the title is empty", got)
+	}
+}
