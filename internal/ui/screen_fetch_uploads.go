@@ -65,7 +65,7 @@ func NewFetchUploadsScreen(
 		client: client, cfg: cfg, cfgPath: cfgPath,
 		cache: cache, game: game, detail: detail, prev: prev,
 		state: fetchLoading,
-		inv: inv, inventoryPath: inventoryPath,
+		inv:   inv, inventoryPath: inventoryPath,
 	}
 	go func() {
 		if detail != nil && detail.BrowserOnly {
@@ -323,11 +323,31 @@ func (s *FetchUploadsScreen) nextScreen() Screen {
 				break
 			}
 		}
-		if hasArchive {
-			// Mixed set with archives — let the user pick which file to download.
+		// Several ROMs bound for the same system folder are alternative builds of
+		// one game — an update alongside the original jam release, say — not
+		// companion files. Fetching every one leaves several entries for a single
+		// game and no way to say which was wanted, so let the user choose.
+		// Uploads for different systems are genuinely separate and still come
+		// down together.
+		perDest := make(map[string]int, len(known))
+		for _, u := range known {
+			ext := strings.ToLower(roms.ROMExt(u.Filename))
+			perDest[roms.DestinationDir(ext, s.cfg.Pico8Core)]++
+		}
+		sameSystem := false
+		for dir, n := range perDest {
+			if n > 1 {
+				logger.Info("fetch: %d ROMs target %s — offering a choice", n, dir)
+				sameSystem = true
+				break
+			}
+		}
+		if hasArchive || sameSystem {
+			// Mixed set with archives, or alternative builds of one game — let
+			// the user pick which file to download.
 			return NewROMPickerScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, known, s.inv, s.inventoryPath, s.prev)
 		}
-		// All known uploads are direct ROM files — download all automatically.
+		// Remaining uploads target distinct systems — download them all.
 		var downloads []romDownload
 		for _, u := range known {
 			ext := strings.ToLower(roms.ROMExt(u.Filename))
