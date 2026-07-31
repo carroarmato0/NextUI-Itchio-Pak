@@ -47,13 +47,16 @@ type ZIPDownloadScreen struct {
 	inv     *inventory.Inventory
 	invPath string
 
-	state       zipDLState
-	downloaded  int64
-	total       int64
-	extracted   []string
-	skipped     []string
-	musicFailed bool
-	err         error
+	state      zipDLState
+	downloaded int64
+	total      int64
+	extracted  []string
+	skipped    []string
+	// unifiedClaimed tracks which unified destinations this extraction has
+	// already handed out; see claimUnifiedDest.
+	unifiedClaimed map[string]bool
+	musicFailed    bool
+	err            error
 }
 
 func (s *ZIPDownloadScreen) loadState() zipDLState {
@@ -409,7 +412,7 @@ func (s *ZIPDownloadScreen) extractPico8_7z(r *sevenzip.ReadCloser, now time.Tim
 		finalDest := dest
 		unifiedName := false
 		if ext == ".p8.png" && unifyP8PNG {
-			if newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true); didRename {
+			if newDest, didRename := s.claimUnifiedDest(dest); didRename {
 				if err := os.Rename(dest, newDest); err != nil {
 					logger.Warn("7z-download: pico8 unified rename: %v", err)
 				} else {
@@ -472,7 +475,7 @@ func (s *ZIPDownloadScreen) extractROMFromOpener(open func() (io.ReadCloser, err
 		entry, entryExists := s.inv.Lookup(s.game.URL)
 		disabled := entryExists && entry.UnifiedNamingDisabled
 		if !disabled {
-			newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true)
+			newDest, didRename := s.claimUnifiedDest(dest)
 			if didRename {
 				if err := os.Rename(dest, newDest); err != nil {
 					logger.Warn("7z-download: unified rename: %v", err)
@@ -615,6 +618,36 @@ func classifyWithMagic(baseName string, open func() (io.ReadCloser, error)) (rom
 	return roms.KindROM, stem + detected
 }
 
+// claimUnifiedDest resolves the unified destination for one extracted ROM and
+// refuses to hand the same name to two files from the same archive.
+//
+// Unified naming derives the filename from the game title, so every ROM in an
+// archive maps to the same name and each rename replaces the one before it.
+// ZIPInspectScreen normally prevents that by routing an archive holding several
+// ROMs of one extension to the picker — but that check reads the manifest's
+// filenames, while extraction re-classifies each entry by its magic bytes. Two
+// entries that looked like different types by name can both come out as the
+// same one, slipping past the picker and reaching here.
+//
+// The upstream filename is kept for the loser, exactly as the multi-ROM download
+// path does: there is no single correct name for several ROMs of one game.
+func (s *ZIPDownloadScreen) claimUnifiedDest(dest string) (string, bool) {
+	target := roms.UnifiedTargetFor(dest, s.game.Title)
+	if target == "" {
+		return dest, false
+	}
+	if s.unifiedClaimed == nil {
+		s.unifiedClaimed = make(map[string]bool)
+	}
+	if s.unifiedClaimed[target] {
+		logger.Info("zip-download: keeping %q — %q already taken by another ROM in this archive",
+			filepath.Base(dest), filepath.Base(target))
+		return dest, false
+	}
+	s.unifiedClaimed[target] = true
+	return roms.ResolveUnifiedDest(dest, s.game.Title, true)
+}
+
 func (s *ZIPDownloadScreen) shouldExtractROM(name string) bool {
 	if !s.plan.DownloadROMs {
 		return false
@@ -663,7 +696,7 @@ func (s *ZIPDownloadScreen) extractROM(f *zip.File, baseName string, now time.Ti
 		entry, entryExists := s.inv.Lookup(s.game.URL)
 		disabled := entryExists && entry.UnifiedNamingDisabled
 		if !disabled {
-			newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true)
+			newDest, didRename := s.claimUnifiedDest(dest)
 			if didRename {
 				if err := os.Rename(dest, newDest); err != nil {
 					logger.Warn("zip-download: unified rename: %v", err)
@@ -809,7 +842,7 @@ func (s *ZIPDownloadScreen) extractPico8ZIP(r *zip.Reader, now time.Time) {
 		finalDest := dest
 		unifiedName := false
 		if ext == ".p8.png" && unifyP8PNG {
-			if newDest, didRename := roms.ResolveUnifiedDest(dest, s.game.Title, true); didRename {
+			if newDest, didRename := s.claimUnifiedDest(dest); didRename {
 				if err := os.Rename(dest, newDest); err != nil {
 					logger.Warn("zip-download: pico8 unified rename: %v", err)
 				} else {
