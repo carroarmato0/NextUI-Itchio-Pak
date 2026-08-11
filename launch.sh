@@ -46,4 +46,4 @@ if [ -f "$PAK_DIR/.profile-flags" ]; then
     PROFILE_FLAGS="$(cat "$PAK_DIR/.profile-flags")"
 fi
 # shellcheck disable=SC2086
-exec "$PAK_DIR/itchio-pak" $PROFILE_FLAGS "$@"
+exec "$PAK_DIR/itchio" $PROFILE_FLAGS "$@"

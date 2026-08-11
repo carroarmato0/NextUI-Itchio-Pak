@@ -9,7 +9,7 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 Usage: test.sh [--coverage]
 
 Run the full test suite inside a container using the headless build tag (no SDL2).
-The dev container (itchio-pak-dev) is built automatically on first run.
+The dev container (itchio-dev) is built automatically on first run.
 
 Options:
   --coverage    Generate an HTML coverage report at coverage.html
@@ -30,7 +30,7 @@ detect_runtime() {
     else echo ""; fi
 }
 
-IMAGE="itchio-pak-dev"
+IMAGE="itchio-dev"
 CACHE_DIR="$(pwd)/.go_cache"
 if [ -z "${IN_CONTAINER:-}" ]; then
     # Host-side shell-tooling tests (release scripts). These exercise host tools

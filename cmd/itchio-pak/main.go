@@ -52,7 +52,7 @@ func main() {
 		}
 	}()
 
-	logger.Info("itchio-pak %s starting", version)
+	logger.Info("itchio %s starting", version)
 	logger.Info("git commit: %s", gitCommit)
 	p := readPlatform()
 	logger.Info("platform:   %s (%s)", p, platformDescription(p))
@@ -156,14 +156,14 @@ func main() {
 // On device, NextUI sets PLATFORM (e.g. "tg5040") and logs are written to the
 // conventional location used by other Paks:
 //
-//	/mnt/SDCARD/.userdata/<PLATFORM>/logs/itchio-pak.log
+//	/mnt/SDCARD/.userdata/<PLATFORM>/logs/itchio.log
 //
-// When PLATFORM is unset (development / CI), it falls back to $HOME/itchio-pak.log.
+// When PLATFORM is unset (development / CI), it falls back to $HOME/itchio.log.
 func logFilePath() string {
 	if platform := os.Getenv("PLATFORM"); platform != "" {
-		return filepath.Join("/mnt/SDCARD/.userdata", platform, "logs", "itchio-pak.log")
+		return filepath.Join("/mnt/SDCARD/.userdata", platform, "logs", "itchio.log")
 	}
-	return filepath.Join(os.Getenv("HOME"), "itchio-pak.log")
+	return filepath.Join(os.Getenv("HOME"), "itchio.log")
 }
 
 // readPlatform returns the PLATFORM env var, or "unknown" if unset.

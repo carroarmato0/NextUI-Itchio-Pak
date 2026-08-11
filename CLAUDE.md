@@ -6,8 +6,9 @@ Unofficial NextUI Pak that lets users browse and download GB/GBC games from Itch
 
 - **Target arch:** ARM64 only — no x86 binaries ship to devices
 - **No X11/Wayland/PulseAudio** on devices — SDL2 runs in raw framebuffer mode
-- **Cross-compile required** for device targets — use the container scripts, never `go build` directly for tg5040/tg5050/my355
-- **Single binary** covers all three platforms; only the bundled SDL2 `.so` files differ per platform
+- **Cross-compile required** for device targets — use the container scripts, never `go build` directly
+- **Build targets are `<firmware>/<device>`** — declared once in `scripts/targets.sh`, which every script and the Makefile source. Adding a firmware is a one-row change there.
+- **Single binary** covers all platforms; only the bundled SDL2 `.so` files differ. The `nextui/tg5040` build is the portable one (GLIBC_2.17 ceiling, enforced by `build.sh`) and is what ships in the pak zip
 - **CGo is required** — SDL2 bindings use CGo; pure-Go-only builds use the `headless` build tag (CI only)
 
 ## Supported Platforms
@@ -23,8 +24,9 @@ Unofficial NextUI Pak that lets users browse and download GB/GBC games from Itch
 ```sh
 ./scripts/test.sh                  # Run tests (containerised)
 ./scripts/build.sh native          # Build for host (containerised)
-./scripts/build.sh tg5040          # Cross-compile for TrimUI
-./scripts/build.sh all             # Cross-compile all three platforms
+./scripts/build.sh nextui/tg5040   # Cross-compile one target
+./scripts/build.sh nextui          # Cross-compile every target of one firmware
+./scripts/build.sh all             # Cross-compile every target
 ./scripts/release.sh               # Build + package dist/ artifacts
 ./scripts/deploy.sh                # Push to connected device via ADB
 ./scripts/debug.sh logs            # Stream device log live
@@ -69,14 +71,14 @@ startup and the framebuffer survives a relaunch.
 ## Key Directories
 
 ```
-cmd/itchio-pak/    Entry point (main.go, main_sdl.go, main_headless.go)
+cmd/itchio-pak/    Entry point (main.go, main_sdl.go, main_headless.go); builds to `itchio`
 internal/itchio/   HTTP client, RSS feed, scraper, download flows
 internal/ui/       Screen definitions (screen_*.go)
 internal/renderer/ SDL2 drawing layer + LRU image cache
 internal/roms/     ROM type detection, destination folder logic
 internal/settings/ JSON config read/write
 internal/inventory/Owned/downloaded game tracking, update detection
-internal/logger/   Levelled file logger → $HOME/itchio-pak.log
+internal/logger/   Levelled file logger → $HOME/itchio.log
 internal/power/    Sleep/wake/shutdown handling
 assets/            font.ttf + 4 fallback fonts, ca-certificates.crt
 testdata/          HTML/RSS fixtures for offline unit tests

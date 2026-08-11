@@ -10,6 +10,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+. "$SCRIPT_DIR/adb.sh"
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
 Usage: screenshot.sh [--platform tg5040|tg5050|my355] [output.png]
@@ -43,6 +45,10 @@ while [ $# -gt 0 ]; do
 done
 
 OUT="${OUT:-screenshot.png}"
+
+# Framebuffer capture is firmware-agnostic, so no firmware hint here: with more
+# than one handheld attached, pick it with ADB_SERIAL.
+adb_use
 
 # ── Platform detection ────────────────────────────────────────────────────────
 if [ -n "$PLATFORM_OVERRIDE" ]; then

@@ -177,7 +177,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 - **NextUI Theme** — when `On`, the Pak follows the colour palette configured in
   NextUI, and the row shows which one is active. Only appears when NextUI's
   settings file is present. Defaults to `Off`
-- **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
+- **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Refresh Game List** — re-fetches the full game list from itch.io across all platform feeds with a live progress screen showing how many games have been retrieved; the cache is updated on completion. Press **B** at any time to cancel the fetch cleanly — no partial cache is written
 - **Update Inventory** — manually triggers a background check for new upstream files, removed games, and missing cover art across all inventory entries; the right side of the row shows when the last check ran (`just now`, `Xm ago`, `Xh ago`, or `Xd ago`) or `never` if no check has run yet
@@ -206,41 +206,45 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
 ## Installation
 
-There are two release files on the [Releases](../../releases) page. Both support
-all devices — the difference is the directory structure inside:
+Release files on the [Releases](../../releases) page are named after the firmware
+they are for. Pick the row that matches your device:
 
-| File | What's inside | Use when |
-|---|---|---|
-| `Itch-io.pak.zip` | Pak files only (no folder wrapper) | Pak Store install, or manual install where you place it in the right platform folder yourself |
-| `Itch-io.pakz` | Full `Tools/<platform>/Itch-io.pak/` tree | Manual install — extract to SD card root and all platforms are set up at once |
+| File | Firmware | What's inside | Use when |
+|---|---|---|---|
+| `Itch-io.pak.zip` | NextUI | Pak files only (no folder wrapper) | Pak Store install |
+| `Itch-io.NextUI.<version>.pak.zip` | NextUI | Pak files only (no folder wrapper) | Manual install where you place the files in the right platform folder yourself |
+| `Itch-io.NextUI.<version>.pakz` | NextUI | Full `Tools/<platform>/Itch-io.pak/` tree | Manual install — extract to SD card root and all platforms are set up at once |
+
+The two NextUI `.pak.zip` files are identical; the unversioned name exists
+because that is what the Pak Store fetches.
 
 ### Via the Pak Store (recommended)
 
 Open the Pak Store on your device, find **Itch-io**, and press **A** to install.
 The Pak Store downloads and installs `Itch-io.pak.zip` automatically.
 
-### Manual install — `Itch-io.pak.zip`
+### Manual install — `Itch-io.NextUI.<version>.pak.zip`
 
 Use this if you want to install without the Pak Store and prefer to place files
 yourself.
 
-1. Download `Itch-io.pak.zip` from the [Releases](../../releases) page.
+1. Download `Itch-io.NextUI.<version>.pak.zip` from the [Releases](../../releases) page.
 2. Create the destination folder on your SD card for your device:
    - TrimUI Brick / Smart Pro: `Tools/tg5040/Itch-io.pak/`
    - TrimUI Smart Pro S: `Tools/tg5050/Itch-io.pak/`
    - Miyoo Flip: `Tools/my355/Itch-io.pak/`
 3. Extract the contents of the zip **into** that folder (the folder should contain
-   `launch.sh`, `itchio-pak`, `pak.json`, etc. directly — not a nested subfolder).
+   `launch.sh`, `itchio`, `pak.json`, etc. directly — not a nested subfolder).
 4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
 5. Connect to WiFi before launching.
 
-### Manual install — `Itch-io.pakz` (all platforms at once)
+### Manual install — `Itch-io.NextUI.<version>.pakz` (all platforms at once)
 
 Use this if you want to set up all supported platforms in one step, or if you
 are preparing an SD card that will be used across multiple device types.
 
-1. Download `Itch-io.pakz` from the [Releases](../../releases) page.
-2. Rename it to `Itch-io.pakz.zip` (most tools require a `.zip` extension to extract).
+1. Download `Itch-io.NextUI.<version>.pakz` from the [Releases](../../releases) page.
+2. Rename it to end in `.zip` (most tools require a `.zip` extension to extract).
 3. Extract the contents directly to the **root** of your SD card. The archive
    already contains the correct `Tools/<platform>/Itch-io.pak/` structure.
 4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
@@ -519,8 +523,12 @@ make test
 # Build native binary (requires local SDL2 dev libs)
 make build-native
 
-# Cross-compile for all supported platforms
+# Cross-compile every target (all firmwares, all devices)
 make build-all
+
+# Cross-compile one firmware, or one target
+./scripts/build.sh nextui
+./scripts/build.sh nextui/tg5040
 
 # Assemble release zips in dist/
 make release
@@ -547,9 +555,11 @@ internal/
   roms/               — ROM type detection, destination folder mapping
   settings/           — JSON config read/write
   ui/                 — screen-based UI (list, detail, fetch, ROM picker, download, settings)
-lib/{tg5040,my355}/   — bundled SDL2 .so files (tg5050 shares tg5040's libs)
+bin/<firmware>/<device>/ — built binaries, e.g. bin/nextui/tg5040/itchio
+lib/<toolchain>/      — SDL2 .so files harvested from each toolchain sysroot
 docs/                 — interaction flow reference and screenshots
 scripts/              — build, test, release, deploy, debug, screenshot helpers
+scripts/targets.sh    — single source of truth for firmware x device build targets
 docker/               — cross-compilation container image
 assets/               — font.ttf, CA certificate bundle
 testdata/             — captured HTML/RSS fixtures for offline unit tests
