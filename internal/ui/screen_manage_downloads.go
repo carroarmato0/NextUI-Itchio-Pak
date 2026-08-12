@@ -622,7 +622,7 @@ func (s *ManageDownloadsScreen) startUnifiedNamingMigration(entry inventory.Entr
 	}
 	newDisabled := !entry.UnifiedNamingDisabled
 	s.inv.SetUnifiedNamingDisabled(s.gameURL, newDisabled)
-	formats := inventory.ReadMigrateFormats(inventory.NXSettingsPath)
+	formats := inventory.ReadMigrateFormats(inventory.SettingsPath())
 	return NewMigrateFlowScreen(s.inv, s.inventoryPath, s.gameURL, entry.Title,
 		entry.Files[0], !newDisabled, formats, s)
 }

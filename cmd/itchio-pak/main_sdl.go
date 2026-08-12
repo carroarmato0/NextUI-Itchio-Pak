@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -25,9 +26,14 @@ const (
 )
 
 func runSDL() {
-	cfgPath := os.Getenv("HOME") + "/config.json"
-	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
-	ownedCachePath := filepath.Join(filepath.Dir(cfgPath), "owned_cache.json")
+	env := firmware.Active()
+
+	// All mutable app state lives in one directory chosen by the firmware, so a
+	// launcher can put it somewhere that survives a firmware update.
+	dataDir := env.DataDir()
+	cfgPath := filepath.Join(dataDir, "config.json")
+	cachePath := filepath.Join(dataDir, "games_cache.json")
+	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
@@ -39,7 +45,7 @@ func runSDL() {
 	}
 	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
 
-	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
+	inventoryPath := filepath.Join(dataDir, "inventory.json")
 	inv, _ := inventory.Load(inventoryPath)
 	inv.VerifyAndClean(inventoryPath)
 
@@ -78,9 +84,10 @@ func runSDL() {
 	}
 	logger.Info("display: %dx%d", w, h)
 
-	// theme.SettingsPath is the same file inventory.NXSettingsPath names; both
-	// point at NextUI's shared minuisettings.txt.
-	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(theme.SettingsPath)
+	// The firmware's own settings file — NextUI's minuisettings.txt. Empty on
+	// firmware with no palette system, where LoadSettings reports unavailable
+	// and the app falls back to its own theme.
+	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(env.SettingsFile())
 	defaultTheme := theme.Defaults()
 
 	activeTheme := defaultTheme
@@ -95,7 +102,7 @@ func runSDL() {
 	// minuisettings.txt — but it records in the log what a user actually has
 	// installed, which is the first thing worth knowing when a theme bug is
 	// reported.
-	theme.EnumeratePalettes(theme.BuiltinPaletteDir, theme.UserPaletteDir)
+	theme.EnumeratePalettes(env.PaletteDirs())
 
 	r, err := renderer.New("Itch.io", int(w), int(h), activeTheme)
 	if err != nil {
@@ -151,8 +158,10 @@ func runSDL() {
 		pendingAction = power.ActionSleep
 	)
 
-	platform := readPlatform()
-	if platform == "my355" {
+	// Keyed off the firmware's device code rather than the PLATFORM variable
+	// directly: only NextUI exports PLATFORM, and this workaround is about the
+	// hardware, not the firmware that happens to be on it.
+	if env.Device() == "my355" {
 		const joyTypePath = "/sys/class/miyooio_chr_dev/joy_type"
 		logger.Debug("input: checking for my355 joy_type workaround at %s", joyTypePath)
 		if _, err := os.Stat(joyTypePath); err == nil {
@@ -258,8 +267,10 @@ loop:
 					}
 					break loop // exit cleanly; NextUI detects /tmp/poweroff and shuts down
 				}
-				suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
-				if _, err := os.Stat(suspendPath); err != nil {
+				// Empty when the firmware suspends the app itself rather than
+				// exposing a script for it.
+				suspendPath := env.SuspendCmd()
+				if _, err := os.Stat(suspendPath); suspendPath == "" || err != nil {
 					logger.Warn("power: suspend script not found at %s, exiting instead", suspendPath)
 					current = nil
 				} else {

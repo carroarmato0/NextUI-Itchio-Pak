@@ -140,7 +140,7 @@ func (s *ZIPContentsScreen) resolveLastGBADir() string {
 			s.cfg.Save(s.cfgPath) //nolint:errcheck — best-effort cleanup
 		}
 	}
-	return roms.GBADir
+	return roms.GBADir()
 }
 
 func (s *ZIPContentsScreen) NeedsRedraw() bool        { return true }
@@ -235,7 +235,7 @@ func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {
 			r.DrawText(label+val, 20, y, tr, tg, tb)
 		case zipRowGBADir:
 			var dirLabel string
-			if row.gbaDir == roms.GBAMGBADir {
+			if row.gbaDir == roms.GBAMGBADir() {
 				dirLabel = "Game Boy Advance (MGBA)"
 			} else {
 				dirLabel = "Game Boy Advance (GBA)"
@@ -313,10 +313,10 @@ func (s *ZIPContentsScreen) activate() {
 	case zipRowMusicToggle:
 		s.rows[s.cursor].toggled = !s.rows[s.cursor].toggled
 	case zipRowGBADir:
-		if s.rows[s.cursor].gbaDir == roms.GBADir {
-			s.rows[s.cursor].gbaDir = roms.GBAMGBADir
+		if s.rows[s.cursor].gbaDir == roms.GBADir() {
+			s.rows[s.cursor].gbaDir = roms.GBAMGBADir()
 		} else {
-			s.rows[s.cursor].gbaDir = roms.GBADir
+			s.rows[s.cursor].gbaDir = roms.GBADir()
 		}
 	}
 }

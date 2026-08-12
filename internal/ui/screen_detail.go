@@ -1033,7 +1033,7 @@ func (s *DetailScreen) startUnifiedNamingToggle() Screen {
 	}
 	newDisabled := !entry.UnifiedNamingDisabled
 	s.inv.SetUnifiedNamingDisabled(s.game.URL, newDisabled)
-	formats := inventory.ReadMigrateFormats(inventory.NXSettingsPath)
+	formats := inventory.ReadMigrateFormats(inventory.SettingsPath())
 	return NewMigrateFlowScreen(s.inv, s.inventoryPath, s.game.URL, s.game.Title,
 		entry.Files[0], !newDisabled, formats, s)
 }

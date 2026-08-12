@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
@@ -27,13 +28,18 @@ var version = "dev"
 var gitCommit = "unknown"
 
 func main() {
-	headless    := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
-	cpuProfile  := flag.String("cpuprofile", "", "write CPU profile to `file`")
-	memProfile  := flag.String("memprofile", "", "write memory profile to `file` on exit")
-	pprofAddr   := flag.String("pprof", "", "start pprof HTTP server on `addr` (e.g. :6060)")
+	headless := flag.Bool("headless", false, "skip SDL2 init (CI mode)")
+	cpuProfile := flag.String("cpuprofile", "", "write CPU profile to `file`")
+	memProfile := flag.String("memprofile", "", "write memory profile to `file` on exit")
+	pprofAddr := flag.String("pprof", "", "start pprof HTTP server on `addr` (e.g. :6060)")
 	flag.Parse()
 
-	logPath := logFilePath()
+	// Resolve the firmware before anything touches a device path: the log
+	// location, ROM destinations and available features all hang off this.
+	env := firmware.Detect()
+	firmware.SetActive(env)
+
+	logPath := env.LogPath()
 	_ = os.MkdirAll(filepath.Dir(logPath), 0755)
 	rotateLog(logPath)
 	logFile, err := os.OpenFile(logPath,
@@ -54,9 +60,9 @@ func main() {
 
 	logger.Info("itchio %s starting", version)
 	logger.Info("git commit: %s", gitCommit)
-	p := readPlatform()
-	logger.Info("platform:   %s (%s)", p, platformDescription(p))
-	logger.Info("nextui:     %s", readNextUIVersion())
+	logger.Info("firmware:   %s", env.Kind())
+	logger.Info("device:     %s (%s)", deviceOrUnknown(env.Device()), env.DeviceLabel())
+	logger.Info("fw version: %s", env.FirmwareVersion())
 	profilingDesc := "off"
 	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {
 		var parts []string
@@ -152,55 +158,11 @@ func main() {
 	}
 }
 
-// logFilePath returns the path for the log file.
-// On device, NextUI sets PLATFORM (e.g. "tg5040") and logs are written to the
-// conventional location used by other Paks:
-//
-//	/mnt/SDCARD/.userdata/<PLATFORM>/logs/itchio.log
-//
-// When PLATFORM is unset (development / CI), it falls back to $HOME/itchio.log.
-func logFilePath() string {
-	if platform := os.Getenv("PLATFORM"); platform != "" {
-		return filepath.Join("/mnt/SDCARD/.userdata", platform, "logs", "itchio.log")
-	}
-	return filepath.Join(os.Getenv("HOME"), "itchio.log")
-}
-
-// readPlatform returns the PLATFORM env var, or "unknown" if unset.
-func readPlatform() string {
-	if p := os.Getenv("PLATFORM"); p != "" {
-		return p
-	}
-	return "unknown"
-}
-
-// platformDescription returns a human-readable device name for a NextUI platform code.
-func platformDescription(platform string) string {
-	switch platform {
-	case "tg5040":
-		return "TrimUI Brick / Smart Pro"
-	case "tg5050":
-		return "TrimUI Smart Pro S"
-	case "my355":
-		return "Miyoo Flip"
-	default:
-		return "unknown device"
-	}
-}
-
-// readNextUIVersion reads the first non-empty line of the NextUI version file.
-// Returns "unknown" if the file is absent, empty, or unreadable — absence is
-// expected when running outside NextUI (dev machine, other launchers).
-func readNextUIVersion() string {
-	data, err := os.ReadFile("/mnt/SDCARD/.system/version.txt")
-	if err != nil {
+// deviceOrUnknown keeps the startup log readable when the firmware could not
+// name the hardware, which is the normal case on a development machine.
+func deviceOrUnknown(device string) string {
+	if device == "" {
 		return "unknown"
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line
-		}
-	}
-	return "unknown"
+	return device
 }

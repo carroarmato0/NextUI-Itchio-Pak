@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
@@ -61,19 +62,19 @@ type UpstreamFile struct {
 }
 
 type Entry struct {
-	GameURL            string         `json:"game_url"`
-	Title              string         `json:"title"`
-	Author             string         `json:"author"`
-	CoverURL           string         `json:"cover_url"`
-	Files              []DownloadedFile `json:"files"`
-	VerifiedAt         time.Time      `json:"verified_at,omitempty"`
-	IsFree             bool           `json:"is_free,omitempty"`
-	KnownUpstreamFiles []UpstreamFile `json:"known_upstream_files,omitempty"`
-	UpdateCheckedAt    time.Time      `json:"update_checked_at,omitempty"`
-	UpdateDismissedAt  time.Time      `json:"update_dismissed_at,omitempty"`
-	GameRemovedAt      time.Time      `json:"game_removed_at,omitempty"`
-	RemovalDismissedAt time.Time      `json:"removal_dismissed_at,omitempty"`
-	UnifiedNamingDisabled bool           `json:"unified_naming_disabled,omitempty"`
+	GameURL               string           `json:"game_url"`
+	Title                 string           `json:"title"`
+	Author                string           `json:"author"`
+	CoverURL              string           `json:"cover_url"`
+	Files                 []DownloadedFile `json:"files"`
+	VerifiedAt            time.Time        `json:"verified_at,omitempty"`
+	IsFree                bool             `json:"is_free,omitempty"`
+	KnownUpstreamFiles    []UpstreamFile   `json:"known_upstream_files,omitempty"`
+	UpdateCheckedAt       time.Time        `json:"update_checked_at,omitempty"`
+	UpdateDismissedAt     time.Time        `json:"update_dismissed_at,omitempty"`
+	GameRemovedAt         time.Time        `json:"game_removed_at,omitempty"`
+	RemovalDismissedAt    time.Time        `json:"removal_dismissed_at,omitempty"`
+	UnifiedNamingDisabled bool             `json:"unified_naming_disabled,omitempty"`
 }
 
 type Inventory struct {
@@ -455,17 +456,15 @@ func (inv *Inventory) AllURLs() []string {
 
 // CoverArtPath returns the filesystem path for the cover art of a downloaded ROM,
 // mirroring the naming convention used by itchio.DownloadCoverArt.
-// Cover art is always stored as .jpg using the exact ROM filename stem so it
-// matches NextUI's cover art lookup (which uses the full filename including
-// bracket/paren tags like [v1.2]).
+// Cover art is stored under the exact ROM filename stem so it matches the
+// firmware's art lookup (which uses the full filename including bracket/paren
+// tags like [v1.2]).
 // Returns "" if either argument is empty.
 func CoverArtPath(coverURL, romDestPath string) string {
 	if coverURL == "" || romDestPath == "" {
 		return ""
 	}
-	base := strings.TrimSuffix(filepath.Base(romDestPath), filepath.Ext(romDestPath))
-	dir := filepath.Dir(romDestPath)
-	return filepath.Join(dir, ".media", base+".png")
+	return firmware.Active().CoverArtPath(romDestPath)
 }
 
 // SetUnifiedNamingDisabled sets the per-game unified-naming opt-out flag.
