@@ -1,14 +1,14 @@
-# Itch.io Pak for NextUI
+# Itch-io — browse and download itch.io games on your handheld
 
 ![CI](../../actions/workflows/ci.yml/badge.svg)
 [![Ko-Fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/carroarmato0)
 
 <img src="docs/screenshots/main.png" alt="Game list" width="800"/>
 
-An unofficial community Pak for NextUI on TrimUI and Miyoo Flip handheld gaming
-devices. Browse, discover, and download homebrew ROM games for Game Boy, Game
-Boy Color, Game Boy Advance, NES/Famicom, Sega Genesis, and Pico-8 directly
-from itch.io — all on-device, no PC required.
+An unofficial community app for **NextUI** and **muOS** on TrimUI and Miyoo Flip
+handheld gaming devices. Browse, discover, and download homebrew ROM games for
+Game Boy, Game Boy Color, Game Boy Advance, NES/Famicom, Sega Genesis, and
+Pico-8 directly from itch.io — all on-device, no PC required.
 
 > **Disclaimer:** This is an unofficial community project, not affiliated with
 > or endorsed by itch.io.
@@ -20,7 +20,9 @@ from itch.io — all on-device, no PC required.
 
 ---
 
-## Supported Devices
+## Supported Firmware and Devices
+
+### NextUI
 
 | Device | Platform code | Status |
 |---|---|---|
@@ -28,6 +30,31 @@ from itch.io — all on-device, no PC required.
 | TrimUI Smart Pro | `tg5040` | Tested |
 | TrimUI Smart Pro S | `tg5050` | Tested |
 | Miyoo Flip | `my355` | Tested |
+
+### muOS
+
+One ARM64 build covers every muOS device, because muOS ships its own SDL2 and
+the binary needs nothing newer than glibc 2.17.
+
+| Device | Status |
+|---|---|
+| TrimUI Smart Pro | Tested |
+| Other muOS devices | Should work; untested |
+
+muOS differs from NextUI in ways you will notice:
+
+- **ROM folders.** muOS has no required folder names, so Itch-io looks for a
+  folder you already have — `gb`, `Nintendo Game Boy`, `Game Boy`, and so on —
+  and only creates muOS's short name (`gb`, `gbc`, `gba`, `nes`, `md`, `pico8`)
+  when there is nothing to adopt. Both SD cards are searched.
+- **A new folder has no emulator assigned.** That is muOS's own behaviour: it
+  asks you to pick a core the first time you launch something from it.
+- **Box art** goes into muOS's catalogue (`MUOS/info/catalogue/<System>/box/`)
+  rather than a `.media` folder beside the ROM.
+- **Some features are switched off**, because muOS has no equivalent: the NextUI
+  colour palette, save and save-state migration, the GBA emulator choice, and
+  the Pico-8 core choice. They are hidden rather than approximated — guessing
+  where a save file goes would write it somewhere you would never find it.
 
 ---
 
@@ -214,6 +241,7 @@ they are for. Pick the row that matches your device:
 | `Itch-io.pak.zip` | NextUI | Pak files only (no folder wrapper) | Pak Store install |
 | `Itch-io.NextUI.<version>.pak.zip` | NextUI | Pak files only (no folder wrapper) | Manual install where you place the files in the right platform folder yourself |
 | `Itch-io.NextUI.<version>.pakz` | NextUI | Full `Tools/<platform>/Itch-io.pak/` tree | Manual install — extract to SD card root and all platforms are set up at once |
+| `Itch-io.muOS.<version>.muxapp` | muOS | The application directory | Install through muOS's Archive Manager |
 
 The two NextUI `.pak.zip` files are identical; the unversioned name exists
 because that is what the Pak Store fetches.
@@ -249,6 +277,20 @@ are preparing an SD card that will be used across multiple device types.
    already contains the correct `Tools/<platform>/Itch-io.pak/` structure.
 4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
 5. Connect to WiFi before launching.
+
+### muOS install
+
+1. Download `Itch-io.muOS.<version>.muxapp` from the [Releases](../../releases) page.
+2. Copy it into the `ARCHIVE` folder on your SD card — do not rename it or
+   unpack it; muOS installs it as-is.
+3. On the device: **Applications → Archive Manager**, select the file, press **A**.
+4. **Itch.io** now appears under Applications.
+5. Connect to Wi-Fi before launching.
+
+Updating works the same way: install the new `.muxapp` over the old one. Your
+settings, inventory and caches live in the application's own `data/` folder and
+survive both an update and a muOS system update.
+
 
 ---
 
