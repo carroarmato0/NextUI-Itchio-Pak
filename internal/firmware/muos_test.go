@@ -199,6 +199,55 @@ func TestMuOSCoverArtUsesCatalogue(t *testing.T) {
 	}
 }
 
+// muOS displays a system under one name and files its artwork under another.
+// The NES is "Nintendo Entertainment System" in a content list but
+// "Nintendo NES - Famicom" in the catalogue, and art written under the display
+// name lands in a directory muOS never reads — silently, with no error and no
+// artwork. These strings are the catalogue directories a muOS 2601.0 device
+// creates for itself.
+func TestMuOSCoverArtUsesCatalogueNamesNotDisplayNames(t *testing.T) {
+	t.Setenv("PLATFORM", "")
+	prefix := muosFixture(t, "gb", "gbc", "gba", "nes", "md", "pico8")
+
+	// muOS pre-creates a catalogue directory per system it knows.
+	for _, name := range []string{
+		"Nintendo Game Boy", "Nintendo Game Boy Color", "Nintendo Game Boy Advance",
+		"Nintendo NES - Famicom", "Sega Mega Drive - Genesis", "PICO-8",
+	} {
+		mkdirAll(t, filepath.Join(prefix, "run/muos/storage/info/catalogue", name, "box"))
+	}
+
+	e := DetectIn(prefix)
+	for _, tc := range []struct{ ext, folder, catalogue string }{
+		{".gb", "gb", "Nintendo Game Boy"},
+		{".gbc", "gbc", "Nintendo Game Boy Color"},
+		{".gba", "gba", "Nintendo Game Boy Advance"},
+		{".nes", "nes", "Nintendo NES - Famicom"},
+		{".md", "md", "Sega Mega Drive - Genesis"},
+		{".p8", "pico8", "PICO-8"},
+	} {
+		rom := filepath.Join(prefix, "mnt/mmc/ROMS", tc.folder, "Game"+tc.ext)
+		want := filepath.Join(prefix, "run/muos/storage/info/catalogue", tc.catalogue, "box", "Game.png")
+		if got := e.CoverArtPath(rom); got != want {
+			t.Errorf("%s art -> %q, want %q", tc.ext, got, want)
+		}
+	}
+}
+
+// With none of the catalogue directories present, the most likely name is still
+// used rather than the display name.
+func TestMuOSCataloguePrefersItsOwnNamesWithoutTheDirectories(t *testing.T) {
+	t.Setenv("PLATFORM", "")
+	prefix := muosFixture(t, "nes")
+	e := DetectIn(prefix)
+
+	rom := filepath.Join(prefix, "mnt/mmc/ROMS/nes/Game.nes")
+	want := filepath.Join(prefix, "run/muos/storage/info/catalogue/Nintendo NES - Famicom/box/Game.png")
+	if got := e.CoverArtPath(rom); got != want {
+		t.Errorf("CoverArtPath = %q, want %q", got, want)
+	}
+}
+
 // An unmapped folder name is used verbatim, which is what muOS itself does.
 func TestMuOSCatalogueFallsBackToFolderName(t *testing.T) {
 	t.Setenv("PLATFORM", "")

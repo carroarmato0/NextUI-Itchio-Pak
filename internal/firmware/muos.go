@@ -42,8 +42,9 @@ var muosROMAliases = map[string][]string{
 }
 
 // muosDefaultDisplayNames mirrors the entries of muOS's own
-// MUOS/info/name/folder.json that we care about. It is the fallback for naming
-// the box-art catalogue directory when that file cannot be read.
+// MUOS/info/name/folder.json that we care about. These name a system in the
+// content list; they are NOT catalogue directory names — see
+// muosCatalogueNames, which is a different mapping with different strings.
 var muosDefaultDisplayNames = map[string]string{
 	"gb":      "Nintendo Game Boy",
 	"gbc":     "Nintendo Game Boy Color",
@@ -52,6 +53,24 @@ var muosDefaultDisplayNames = map[string]string{
 	"fc":      "Nintendo Famicom",
 	"md":      "SEGA Mega Drive",
 	"genesis": "SEGA Genesis",
+}
+
+// muosCatalogueNames maps a system to the catalogue directory muOS files its
+// box art under, most likely first.
+//
+// These are deliberately not the folder.json display names. muOS calls the NES
+// "Nintendo Entertainment System" in a content list but files its artwork under
+// "Nintendo NES - Famicom", and the same split applies to the Mega Drive and
+// Pico-8. Writing art under the display name puts it in a directory muOS never
+// reads, with nothing to show for it and no error. Verified against the
+// catalogue directories a muOS 2601.0 device creates for itself.
+var muosCatalogueNames = map[string][]string{
+	SysGB:      {"Nintendo Game Boy"},
+	SysGBC:     {"Nintendo Game Boy Color"},
+	SysGBA:     {"Nintendo Game Boy Advance"},
+	SysNES:     {"Nintendo NES - Famicom", "Nintendo Entertainment System", "Nintendo Famicom"},
+	SysGenesis: {"Sega Mega Drive - Genesis", "SEGA Mega Drive", "Sega Genesis"},
+	SysPico8:   {"PICO-8", "Pico-8"},
 }
 
 // muosDeviceLabels names the boards we have been able to verify. Anything else
@@ -85,6 +104,7 @@ func newMuOS(prefix string) *Env {
 
 	store := filepath.Join(prefix, muosStoreDir)
 	data := dataDirFor()
+	romDirs := resolveMuOSROMDirs(prefix, roots)
 
 	return &Env{
 		kind:        KindMuOS,
@@ -93,7 +113,7 @@ func newMuOS(prefix string) *Env {
 		prefix:      prefix,
 
 		root:    filepath.Join(prefix, romMount),
-		romDirs: resolveMuOSROMDirs(prefix, roots),
+		romDirs: romDirs,
 
 		musicRoot:       filepath.Join(store, "music") + "/",
 		browseRoot:      filepath.Join(prefix, romMount),
@@ -101,7 +121,9 @@ func newMuOS(prefix string) *Env {
 
 		catalogueDir: filepath.Join(store, "info", "catalogue"),
 		displayNames: loadMuOSDisplayNames(store),
-		versionFile:  filepath.Join(prefix, muosGlobalConf, "system", "version"),
+		catalogueByDir: resolveMuOSCatalogues(
+			filepath.Join(store, "info", "catalogue"), romDirs),
+		versionFile: filepath.Join(prefix, muosGlobalConf, "system", "version"),
 
 		dataDir: data,
 		logPath: filepath.Join(data, "itchio.log"),
@@ -204,4 +226,29 @@ func muosVar(prefix, base, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// resolveMuOSCatalogues decides which catalogue directory each system's box art
+// belongs in, keyed by the ROM directory it will be written beside.
+//
+// A candidate that already exists always wins: muOS pre-creates the catalogue
+// for every system it knows, so the directory on disk is a better answer than
+// anything compiled in, and it keeps working if a future release renames one.
+func resolveMuOSCatalogues(catalogueDir string, romDirs map[string]string) map[string]string {
+	out := make(map[string]string, len(romDirs))
+	for key, romDir := range romDirs {
+		candidates := muosCatalogueNames[key]
+		if len(candidates) == 0 || romDir == "" {
+			continue
+		}
+		chosen := candidates[0]
+		for _, name := range candidates {
+			if isDir(filepath.Join(catalogueDir, name)) {
+				chosen = name
+				break
+			}
+		}
+		out[strings.TrimRight(romDir, "/")] = chosen
+	}
+	return out
 }

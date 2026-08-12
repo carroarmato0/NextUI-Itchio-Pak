@@ -179,9 +179,15 @@ func logRomDirs(env *firmware.Env) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if dirs[k] != "" {
-			logger.Debug("roms: %-10s -> %s", k, dirs[k])
+		if dirs[k] == "" {
+			continue
 		}
+		// The art destination is logged beside the ROM destination because it is
+		// derived separately and can be wrong on its own: muOS files box art
+		// under different system names than it displays, so a mismatch here
+		// shows up as silently missing artwork and nothing else.
+		logger.Debug("roms: %-10s -> %s", k, dirs[k])
+		logger.Debug("art:  %-10s -> %s", k, env.CoverArtDirFor(dirs[k]))
 	}
 }
 

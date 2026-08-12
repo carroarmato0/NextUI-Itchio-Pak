@@ -94,9 +94,13 @@ type Env struct {
 	// catalogueDir is muOS's box-art root. Empty on firmware that keeps art in
 	// a .media/ directory beside the ROM instead.
 	catalogueDir string
-	// displayNames maps a ROM folder name to the system name the firmware shows,
-	// which is also the catalogue directory art is filed under.
+	// displayNames maps a ROM folder name to the system name the firmware shows
+	// in its content list.
 	displayNames map[string]string
+	// catalogueByDir maps a resolved ROM directory to the catalogue directory
+	// its box art belongs in. Separate from displayNames because muOS files
+	// artwork under different names than it displays.
+	catalogueByDir map[string]string
 
 	dataDir string
 	logPath string
@@ -304,7 +308,19 @@ func (e *Env) CoverArtDirFor(romDir string) string {
 	if e.catalogueDir == "" {
 		return filepath.Join(romDir, ".media")
 	}
-	return filepath.Join(e.catalogueDir, e.DisplayNameForFolder(filepath.Base(strings.TrimRight(romDir, "/"))), "box")
+	return filepath.Join(e.catalogueDir, e.catalogueNameFor(romDir), "box")
+}
+
+// catalogueNameFor picks the catalogue directory for a ROM directory. Known
+// systems use the name resolved at startup; a directory the user chose
+// themselves falls back to the firmware's display name for it, and then to the
+// folder name, which is what muOS does for folders it has no mapping for.
+func (e *Env) catalogueNameFor(romDir string) string {
+	trimmed := strings.TrimRight(romDir, "/")
+	if name, ok := e.catalogueByDir[trimmed]; ok {
+		return name
+	}
+	return e.DisplayNameForFolder(filepath.Base(trimmed))
 }
 
 // DisplayNameForFolder maps a ROM folder name to the system name the firmware
