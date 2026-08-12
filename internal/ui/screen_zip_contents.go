@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -20,10 +21,10 @@ import (
 type zipContentRowKind int
 
 const (
-	zipRowROM        zipContentRowKind = iota // selectable ROM entry for version picker
-	zipRowExtHeader                           // non-selectable section label for an extension group
-	zipRowMusicToggle                         // music download yes/no toggle
-	zipRowGBADir                              // GBA destination folder toggle (GBA vs MGBA)
+	zipRowROM         zipContentRowKind = iota // selectable ROM entry for version picker
+	zipRowExtHeader                            // non-selectable section label for an extension group
+	zipRowMusicToggle                          // music download yes/no toggle
+	zipRowGBADir                               // GBA destination folder toggle (GBA vs MGBA)
 )
 
 type zipContentRow struct {
@@ -113,7 +114,10 @@ func (s *ZIPContentsScreen) buildRows() {
 		s.rows = append(s.rows, zipContentRow{kind: zipRowMusicToggle, toggled: false})
 	}
 
-	if s.cfg.ROMLocation == "ask" && len(s.plan.Manifest.ROMsByExt()[".gba"]) > 0 {
+	// Only offer the GBA folder choice on firmware that actually has two GBA
+	// folders for two emulators. muOS has one, and picks the core itself.
+	if s.cfg.ROMLocation == "ask" && firmware.Active().Caps().GBAEmulatorChoice &&
+		len(s.plan.Manifest.ROMsByExt()[".gba"]) > 0 {
 		s.rows = append(s.rows, zipContentRow{kind: zipRowGBADir, gbaDir: s.resolveLastGBADir()})
 	}
 
@@ -143,7 +147,7 @@ func (s *ZIPContentsScreen) resolveLastGBADir() string {
 	return roms.GBADir()
 }
 
-func (s *ZIPContentsScreen) NeedsRedraw() bool        { return true }
+func (s *ZIPContentsScreen) NeedsRedraw() bool         { return true }
 func (s *ZIPContentsScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPContentsScreen) Draw(r *renderer.Renderer) {

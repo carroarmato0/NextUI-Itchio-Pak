@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -58,11 +59,20 @@ func main() {
 		}
 	}()
 
+	// Apply LOG_LEVEL before the startup banner. runSDL applies the configured
+	// level and then this variable again, so precedence is unchanged; without
+	// it, everything logged before the UI starts is stuck at the default level.
+	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
+		logger.SetLevel(logger.LevelFromString(envLevel))
+	}
+
 	logger.Info("itchio %s starting", version)
 	logger.Info("git commit: %s", gitCommit)
 	logger.Info("firmware:   %s", env.Kind())
 	logger.Info("device:     %s (%s)", deviceOrUnknown(env.Device()), env.DeviceLabel())
 	logger.Info("fw version: %s", env.FirmwareVersion())
+	logger.Info("storage:    root=%s data=%s", env.Root(), env.DataDir())
+	logRomDirs(env)
 	profilingDesc := "off"
 	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {
 		var parts []string
@@ -154,6 +164,23 @@ func main() {
 			} else {
 				logger.Info("memprofile: written to %s", *memProfile)
 			}
+		}
+	}
+}
+
+// logRomDirs records where each system's ROMs will be written. On firmware that
+// discovers these by scanning the card rather than fixing them in advance, this
+// is the line that turns "my game went missing" into a one-look diagnosis.
+func logRomDirs(env *firmware.Env) {
+	dirs := env.ROMDirs()
+	keys := make([]string, 0, len(dirs))
+	for k := range dirs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if dirs[k] != "" {
+			logger.Debug("roms: %-10s -> %s", k, dirs[k])
 		}
 	}
 }

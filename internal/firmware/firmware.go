@@ -26,6 +26,8 @@ type Kind string
 const (
 	// KindNextUI is NextUI (and MinUI-derived firmware) on /mnt/SDCARD.
 	KindNextUI Kind = "nextui"
+	// KindMuOS is MustardOS.
+	KindMuOS Kind = "muos"
 	// KindHost is a developer machine or CI — no device paths exist.
 	KindHost Kind = "host"
 )
@@ -59,6 +61,9 @@ type Caps struct {
 	// GBAEmulatorChoice: the firmware ships two GBA folders for two emulators,
 	// so the user picks one at download time.
 	GBAEmulatorChoice bool
+	// Pico8CoreChoice: the firmware ships two Pico-8 folders for two runtimes,
+	// so the user picks one and existing carts can be migrated between them.
+	Pico8CoreChoice bool
 }
 
 // Env is the resolved view of the firmware the app is running under.
@@ -85,6 +90,13 @@ type Env struct {
 	builtinPaletteDir string
 	userPaletteDir    string
 	versionFile       string // firmware version marker, "" when unknown
+
+	// catalogueDir is muOS's box-art root. Empty on firmware that keeps art in
+	// a .media/ directory beside the ROM instead.
+	catalogueDir string
+	// displayNames maps a ROM folder name to the system name the firmware shows,
+	// which is also the catalogue directory art is filed under.
+	displayNames map[string]string
 
 	dataDir string
 	logPath string
@@ -129,10 +141,15 @@ func Detect() *Env { return DetectIn("") }
 // DetectIn resolves the firmware, treating prefix as the filesystem root.
 // Tests pass a temp dir holding a fixture tree; production passes "".
 //
-// NextUI is recognised by its .system directory, or by the PLATFORM variable it
-// exports to paks — the latter matters on the Miyoo Flip, where the .system
-// layout is not guaranteed.
+// muOS is checked first, and on an unambiguous marker: only muOS has /opt/muos.
+// It has to come first because a muOS card can carry a leftover /mnt/SDCARD
+// from a previous firmware. NextUI is then recognised by its .system directory,
+// or by the PLATFORM variable it exports to paks — the latter matters on the
+// Miyoo Flip, where the .system layout is not guaranteed.
 func DetectIn(prefix string) *Env {
+	if isDir(filepath.Join(prefix, muosMarkerDir)) {
+		return newMuOS(prefix)
+	}
 	if isDir(filepath.Join(prefix, "/mnt/SDCARD/.system")) || os.Getenv("PLATFORM") != "" {
 		return newNextUI(prefix)
 	}
@@ -154,6 +171,8 @@ func ForTest(kind Kind, prefix string) *Env {
 	switch kind {
 	case KindNextUI:
 		return newNextUI(prefix)
+	case KindMuOS:
+		return newMuOS(prefix)
 	default:
 		return newHost(prefix)
 	}
@@ -178,6 +197,18 @@ func (e *Env) Root() string { return e.root }
 // ROMDirForSystem returns the absolute destination directory for a system key,
 // with a trailing slash. Returns "" when this firmware has no such directory.
 func (e *Env) ROMDirForSystem(key string) string { return e.romDirs[key] }
+
+// ROMDirs returns a copy of every resolved ROM destination, keyed by system.
+// Logged at startup: on firmware where these are discovered rather than fixed,
+// "which folder did it pick?" is the first question any misplaced-ROM report
+// needs answered.
+func (e *Env) ROMDirs() map[string]string {
+	out := make(map[string]string, len(e.romDirs))
+	for k, v := range e.romDirs {
+		out[k] = v
+	}
+	return out
+}
 
 // SystemForExt maps a ROM extension to a system key. pico8Core selects between
 // the two Pico-8 variants. Returns "" for extensions we do not place.
@@ -257,19 +288,33 @@ func (e *Env) StatesDir(coreTag, coreName string) string {
 	return filepath.Join(e.sharedUserdata, coreTag+"-"+coreName)
 }
 
-// CoverArtPath returns where cover art for a ROM belongs. NextUI and MinUI
-// read it from a .media/ directory beside the ROM; other firmware use their own
-// layout, so this is not simply a path join everywhere.
+// CoverArtPath returns where cover art for a ROM belongs.
 func (e *Env) CoverArtPath(romPath string) string {
-	dir := filepath.Dir(romPath)
 	base := filepath.Base(romPath)
 	base = strings.TrimSuffix(base, filepath.Ext(base))
-	return filepath.Join(dir, ".media", base+".png")
+	return filepath.Join(e.CoverArtDirFor(filepath.Dir(romPath)), base+".png")
 }
 
 // CoverArtDirFor returns the directory cover art for ROMs in romDir belongs in.
+//
+// NextUI and MinUI read box art from a .media/ directory beside the ROM. muOS
+// keeps a single catalogue tree instead, filed under the system's display name
+// rather than the folder name, so this is not a path join everywhere.
 func (e *Env) CoverArtDirFor(romDir string) string {
-	return filepath.Join(romDir, ".media")
+	if e.catalogueDir == "" {
+		return filepath.Join(romDir, ".media")
+	}
+	return filepath.Join(e.catalogueDir, e.DisplayNameForFolder(filepath.Base(strings.TrimRight(romDir, "/"))), "box")
+}
+
+// DisplayNameForFolder maps a ROM folder name to the system name the firmware
+// displays. Falls back to the folder name itself, which is what muOS does for
+// folders it has no mapping for.
+func (e *Env) DisplayNameForFolder(folder string) string {
+	if name, ok := e.displayNames[strings.ToLower(folder)]; ok {
+		return name
+	}
+	return folder
 }
 
 // FirmwareVersion reads the firmware's own version string, or "unknown".

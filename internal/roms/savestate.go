@@ -12,9 +12,10 @@ import (
 // The caller should filter to only paths that exist on disk before prompting.
 //
 // stateFormat:
-//   0 = MinUI      — <full>.st0 … .st9   (10 paths; .st9 = auto-resume)
-//   1/2 = Retroarch-ish — <stem>.state.1 … .state.8 + .state.auto  (9 paths)
-//   3/4 = Retroarch     — <stem>.state, .state1…8, .state.auto      (10 paths)
+//
+//	0 = MinUI      — <full>.st0 … .st9   (10 paths; .st9 = auto-resume)
+//	1/2 = Retroarch-ish — <stem>.state.1 … .state.8 + .state.auto  (9 paths)
+//	3/4 = Retroarch     — <stem>.state, .state1…8, .state.auto      (10 paths)
 //
 // innerFilename: same semantics as SaveGamePath — only affects format 0.
 // coreTag / coreName: must match the NextUI core directory (e.g. "GB", "gambatte").

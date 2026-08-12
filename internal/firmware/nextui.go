@@ -82,6 +82,7 @@ func newNextUI(prefix string) *Env {
 			MinUISaveFormats:  true,
 			SaveStateSync:     true,
 			GBAEmulatorChoice: true,
+			Pico8CoreChoice:   true,
 		},
 	}
 }

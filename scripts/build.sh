@@ -204,13 +204,21 @@ build_target() {
 
 # Targets whose manifest row names a source copy the binary instead of
 # compiling it.  See the note in scripts/targets.sh.
+# $2 = "built" when the caller has already produced the source binary in this
+# run, so a multi-target build does not compile the same source twice.
 copy_target() {
     TGT="$1"
     SRC="$(target_source "$TGT")"
     SRC_BIN="$(target_binary "$SRC")"
 
+    # Build the source unless this run just did. Copying whatever happens to be
+    # on disk would quietly ship a stale binary — the failure mode is a build
+    # that "succeeds" and a device running last week's code.
+    if [ "${2:-}" != "built" ]; then
+        "$0" "$SRC"
+    fi
     if [ ! -f "$SRC_BIN" ]; then
-        echo "ERROR: $TGT copies $SRC but $SRC_BIN does not exist — build $SRC first." >&2
+        echo "ERROR: $TGT copies $SRC but $SRC_BIN does not exist." >&2
         exit 1
     fi
     mkdir -p "$(target_bindir "$TGT")"
@@ -307,9 +315,9 @@ build_many() {
         exit 1
     fi
 
-    # Copies run last: their source binary has to exist by now.
+    # Copies run last: this run has already built their sources.
     for t in $COPY; do
-        "$0" "$t"
+        copy_target "$t" built
     done
 }
 

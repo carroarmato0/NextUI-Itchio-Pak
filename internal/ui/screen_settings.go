@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -42,7 +43,6 @@ const (
 	sItemAbout
 	sItemCount
 )
-
 
 type SettingsScreen struct {
 	client         *itchio.Client
@@ -145,37 +145,41 @@ func (s *SettingsScreen) moveCursor(dir int) {
 			s.cursor--
 		}
 	}
-	// Skip NextUI Theme if not available.
-	if s.cursor == sItemNextUITheme && !s.themeAvailable {
-		if dir >= 0 { // moving down or neutral
-			if int(s.cursor) < int(sItemCount)-1 {
-				s.cursor++
-			} else {
-				s.cursor-- // bounce back if at end
-			}
-		} else { // moving up
-			if s.cursor > 0 {
-				s.cursor--
-			} else {
-				s.cursor++ // bounce back if at start
-			}
-		}
-	}
-	// Skip Music Location if music download is disabled.
-	if s.cursor == sItemMusicLocation && s.cfg.MusicDownload == "off" {
+	// Step past rows that are not rendered, reversing at either end rather than
+	// coming to rest on one. Looping (instead of one check per row) matters now
+	// that whole rows can be hidden by firmware: two hidden rows can be
+	// adjacent, and a single pass would leave the cursor on the second.
+	for s.rowHidden(s.cursor) {
 		if dir >= 0 {
 			if int(s.cursor) < int(sItemCount)-1 {
 				s.cursor++
 			} else {
+				dir = -1
 				s.cursor--
 			}
 		} else {
 			if s.cursor > 0 {
 				s.cursor--
 			} else {
+				dir = 1
 				s.cursor++
 			}
 		}
+	}
+}
+
+// rowHidden reports whether a settings row is currently absent from the list.
+// It must agree with the rows Draw actually appends.
+func (s *SettingsScreen) rowHidden(item settingsItem) bool {
+	switch item {
+	case sItemPico8Core:
+		return !firmware.Active().Caps().Pico8CoreChoice
+	case sItemNextUITheme:
+		return !s.themeAvailable
+	case sItemMusicLocation:
+		return s.cfg.MusicDownload == "off"
+	default:
+		return false
 	}
 }
 
@@ -218,11 +222,16 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	var items []menuItem
 	items = append(items, menuItem{sItemAPIKey, "API Key: "})
 	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
-	pico8CoreLabel := "FakeO8 (default)"
-	if s.cfg.Pico8Core == "pico8" {
-		pico8CoreLabel = "Pico-8 (official)"
+	// Only offered where the firmware keeps a separate folder per Pico-8
+	// runtime. muOS has one Pico-8 folder and runs the official binary, so
+	// there is nothing to choose and nothing to migrate between.
+	if firmware.Active().Caps().Pico8CoreChoice {
+		pico8CoreLabel := "FakeO8 (default)"
+		if s.cfg.Pico8Core == "pico8" {
+			pico8CoreLabel = "Pico-8 (official)"
+		}
+		items = append(items, menuItem{sItemPico8Core, "Pico-8 Core: " + pico8CoreLabel})
 	}
-	items = append(items, menuItem{sItemPico8Core, "Pico-8 Core: " + pico8CoreLabel})
 	items = append(items, menuItem{sItemMusicDownload, "Music Download: " + musicDownloadLabel(s.cfg.MusicDownload)})
 	if s.cfg.MusicDownload != "off" {
 		items = append(items, menuItem{sItemMusicLocation, "Music Location: " + s.cfg.MusicLocation})
@@ -340,7 +349,6 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			r.DrawSmallText(annotation, ax, y+(fh-sh)/2, aR, aG, aB)
 		}
 	}
-
 
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
@@ -592,4 +600,3 @@ func (s *SettingsScreen) activate() Screen {
 	}
 	return s
 }
-

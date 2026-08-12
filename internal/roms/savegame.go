@@ -3,6 +3,8 @@ package roms
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 )
 
 // RomDirToSaveTag maps a ROM directory name to its NextUI save tag.
@@ -23,17 +25,25 @@ func RomDirToSaveTag(romDestPath string) string {
 // SaveGamePath derives the SRAM save file path for a downloaded ROM.
 //
 // saveFormat:
-//   0 = MinUI (default)   — full ROM filename + ".sav"  (e.g. Game.gb.sav)
-//   1 = Retroarch SRM     — extension stripped + ".srm" (e.g. Game.srm)
-//   2 = Generic           — extension stripped + ".sav" (e.g. Game.sav)
-//   3 = Retroarch SRM     — same as 1, uncompressed
+//
+//	0 = MinUI (default)   — full ROM filename + ".sav"  (e.g. Game.gb.sav)
+//	1 = Retroarch SRM     — extension stripped + ".srm" (e.g. Game.srm)
+//	2 = Generic           — extension stripped + ".sav" (e.g. Game.sav)
+//	3 = Retroarch SRM     — same as 1, uncompressed
 //
 // innerFilename: when the ROM is a .zip and NextUI's useExtractedFileName is
 // enabled, pass the filename of the ROM inside the zip. Only affects format 0
 // output; formats 1–3 produce the same result either way.
 //
-// Returns "" for unrecognised ROM directories.
+// Returns "" for unrecognised ROM directories, and on firmware that cannot
+// locate saves at all. The capability check is not redundant with the tag
+// lookup: muOS lets the user name a ROM folder anything, including
+// "Game Boy (GB)", which would otherwise match here and send a save file to a
+// Saves directory that does not exist on that firmware.
 func SaveGamePath(romDestPath string, saveFormat int, innerFilename string) string {
+	if !firmware.Active().Caps().SaveStateSync {
+		return ""
+	}
 	tag := RomDirToSaveTag(romDestPath)
 	if tag == "" {
 		return ""
