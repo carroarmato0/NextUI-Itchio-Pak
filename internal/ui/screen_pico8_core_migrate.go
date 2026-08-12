@@ -17,7 +17,7 @@ import (
 type pico8MigrateState int32
 
 const (
-	pico8StateConfirm  pico8MigrateState = iota // waiting for user confirmation
+	pico8StateConfirm   pico8MigrateState = iota // waiting for user confirmation
 	pico8StateMigrating                          // migration running in background
 	pico8StateDone                               // migration complete
 	pico8StateError                              // migration failed
@@ -27,13 +27,13 @@ const (
 // then migrates all downloaded Pico-8 games to the new directory with a live
 // progress indicator.
 type Pico8CoreMigrateScreen struct {
-	cfg      *settings.Config
-	cfgPath  string
-	inv      *inventory.Inventory
-	invPath  string
-	prev     Screen
-	oldCore  string
-	newCore  string
+	cfg     *settings.Config
+	cfgPath string
+	inv     *inventory.Inventory
+	invPath string
+	prev    Screen
+	oldCore string
+	newCore string
 
 	state    pico8MigrateState
 	migrated int32 // games migrated so far (atomic)
@@ -190,7 +190,7 @@ func (s *Pico8CoreMigrateScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_B: // physical A
+		case btnA: // physical A
 			if s.loadState() == pico8StateConfirm {
 				s.startMigration()
 				return s
@@ -198,7 +198,7 @@ func (s *Pico8CoreMigrateScreen) HandleEvent(e sdl.Event) Screen {
 			if s.loadState() == pico8StateDone || s.loadState() == pico8StateError {
 				return s.prev
 			}
-		case sdl.CONTROLLER_BUTTON_A: // physical B — cancel / back
+		case btnB: // physical B — cancel / back
 			if s.loadState() == pico8StateConfirm || s.loadState() == pico8StateDone || s.loadState() == pico8StateError {
 				return s.prev
 			}

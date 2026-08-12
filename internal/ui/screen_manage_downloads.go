@@ -102,7 +102,7 @@ func (s *ManageDownloadsScreen) processAutoRepeat() {
 	s.lastRepeat = now
 }
 
-func (s *ManageDownloadsScreen) NeedsRedraw() bool        { return s.heldDir != 0 }
+func (s *ManageDownloadsScreen) NeedsRedraw() bool         { return s.heldDir != 0 }
 func (s *ManageDownloadsScreen) HasPendingAnimation() bool { return false }
 
 func hasFileType(files []inventory.DownloadedFile, ft string) bool {
@@ -402,7 +402,7 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				return s
 			}
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_B: // physical A = confirm
+			case btnA: // physical A = confirm
 				allGone, newFileCount := s.performDelete(s.gameURL, s.confirmFileIdx)
 				s.confirmActive = false
 				s.confirmFileIdx = -1
@@ -415,7 +415,7 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 				if s.cursor >= newFileCount {
 					s.cursor = newFileCount
 				}
-			case sdl.CONTROLLER_BUTTON_A: // physical B = cancel
+			case btnB: // physical B = cancel
 				s.confirmActive = false
 				s.confirmFileIdx = -1
 			}
@@ -510,7 +510,7 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_B: // physical A = select
+		case btnA: // physical A = select
 			switch {
 			case s.cursor < len(entry.Files):
 				s.confirmActive = true
@@ -529,7 +529,7 @@ func (s *ManageDownloadsScreen) HandleEvent(e sdl.Event) Screen {
 					return s.startUnifiedNamingMigration(entry)
 				}
 			}
-		case sdl.CONTROLLER_BUTTON_A: // physical B = back
+		case btnB: // physical B = back
 			return s.prev
 		}
 	}

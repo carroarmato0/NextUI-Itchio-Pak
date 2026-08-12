@@ -361,3 +361,46 @@ func isDir(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.IsDir()
 }
+
+// ButtonLayout says which physical face button the user expects to confirm.
+//
+// The same hardware can report its face buttons either way round, and it is a
+// user preference rather than a property of the device: muOS ships two SDL
+// mappings for one controller and lets the user pick. Getting this wrong swaps
+// confirm and cancel, so it is resolved from the firmware rather than assumed.
+type ButtonLayout string
+
+const (
+	// LayoutRetro is the Nintendo-style arrangement: the button labelled A —
+	// the right-hand one — confirms. SDL reports it as CONTROLLER_BUTTON_B,
+	// because SDL names buttons by position and A sits where Xbox puts B.
+	LayoutRetro ButtonLayout = "retro"
+	// LayoutModern is the Xbox-style arrangement: the bottom button confirms,
+	// and SDL's names line up with the labels on the shell.
+	LayoutModern ButtonLayout = "modern"
+)
+
+// ButtonLayout reports the arrangement in force. Retro is the default
+// everywhere: it is what NextUI presents, and what muOS falls back to when the
+// user has expressed no preference.
+func (e *Env) ButtonLayout() ButtonLayout {
+	if e.kind != KindMuOS {
+		return LayoutRetro
+	}
+
+	// muOS applies the choice by pointing SDL at one of two controller
+	// databases, so the filename it exports is the setting, already resolved.
+	switch filepath.Base(os.Getenv("SDL_GAMECONTROLLERCONFIG_FILE")) {
+	case "modern.txt":
+		return LayoutModern
+	case "retro.txt":
+		return LayoutRetro
+	}
+
+	// Launched outside muOS's own launcher, fall back to the stored setting.
+	// Absent on releases that predate it, where retro is the only behaviour.
+	if muosVar(e.prefix, muosGlobalConf, "settings/remap/layout") == "1" {
+		return LayoutModern
+	}
+	return LayoutRetro
+}

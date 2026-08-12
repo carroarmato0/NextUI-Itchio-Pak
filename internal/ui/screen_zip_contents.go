@@ -285,11 +285,11 @@ func (s *ZIPContentsScreen) HandleEvent(e sdl.Event) Screen {
 			s.moveCursor(1)
 		case sdl.CONTROLLER_BUTTON_DPAD_UP:
 			s.moveCursor(-1)
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			s.activate()
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.confirm()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		}
 	}

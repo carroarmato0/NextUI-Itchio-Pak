@@ -66,17 +66,34 @@ func runSDL() {
 	}
 
 	// Open all connected game controllers so button events are delivered.
+	//
+	// The mapping is logged because it is the thing that decides which physical
+	// button produces SDL_CONTROLLER_BUTTON_A. Firmware disagrees about this:
+	// muOS ships two mappings for the same hardware and lets the user pick,
+	// which swaps the face buttons. Without this line, "confirm and cancel are
+	// the wrong way round" is unanswerable from a log.
 	for i := 0; i < sdl.NumJoysticks(); i++ {
 		if sdl.IsGameController(i) {
 			if gc := sdl.GameControllerOpen(i); gc != nil {
+				logger.Info("input: controller %d %q", i, gc.Name())
+				logger.Debug("input: mapping %s", gc.Mapping())
 				defer gc.Close()
 			}
 		} else {
 			if js := sdl.JoystickOpen(i); js != nil {
+				logger.Info("input: joystick %d %q (no controller mapping)", i, js.Name())
 				defer js.Close()
 			}
 		}
 	}
+	// muOS exports this; it is what makes its retro/modern face-button choice
+	// take effect. Shadowing the settings cfg here would be a trap.
+	if gcConfig := os.Getenv("SDL_GAMECONTROLLERCONFIG"); gcConfig != "" {
+		logger.Debug("input: SDL_GAMECONTROLLERCONFIG=%s", gcConfig)
+	}
+
+	// Bind the face buttons before any screen can handle an event.
+	ui.SetButtonLayout(env.ButtonLayout())
 
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
@@ -210,6 +227,7 @@ loop:
 		}
 		for e != nil {
 			gotEvent = true
+			logControllerButton(e)
 			if pendingQuit {
 				e = sdl.PollEvent()
 				continue // drain input while waiting for tasks
@@ -322,4 +340,37 @@ func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
 	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, mt[0], mt[1], mt[2])
 	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, ht[0], ht[1], ht[2])
 	r.Present()
+}
+
+// controllerButtonNames maps SDL's logical face and shoulder buttons to their
+// SDL names. Deliberately SDL's names, not the labels printed on any particular
+// shell: which physical button produces which of these is what varies.
+var controllerButtonNames = map[uint8]string{
+	sdl.CONTROLLER_BUTTON_A:             "A",
+	sdl.CONTROLLER_BUTTON_B:             "B",
+	sdl.CONTROLLER_BUTTON_X:             "X",
+	sdl.CONTROLLER_BUTTON_Y:             "Y",
+	sdl.CONTROLLER_BUTTON_BACK:          "BACK",
+	sdl.CONTROLLER_BUTTON_GUIDE:         "GUIDE",
+	sdl.CONTROLLER_BUTTON_START:         "START",
+	sdl.CONTROLLER_BUTTON_LEFTSHOULDER:  "L1",
+	sdl.CONTROLLER_BUTTON_RIGHTSHOULDER: "R1",
+	sdl.CONTROLLER_BUTTON_DPAD_UP:       "UP",
+	sdl.CONTROLLER_BUTTON_DPAD_DOWN:     "DOWN",
+	sdl.CONTROLLER_BUTTON_DPAD_LEFT:     "LEFT",
+	sdl.CONTROLLER_BUTTON_DPAD_RIGHT:    "RIGHT",
+}
+
+// logControllerButton records button presses at debug level so a report of
+// "the buttons are wrong on my device" can be diagnosed from the log alone.
+func logControllerButton(e sdl.Event) {
+	ev, ok := e.(*sdl.ControllerButtonEvent)
+	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
+		return
+	}
+	name, known := controllerButtonNames[ev.Button]
+	if !known {
+		name = "?"
+	}
+	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
 }

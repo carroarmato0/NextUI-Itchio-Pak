@@ -156,7 +156,7 @@ func (s *MigrateFlowScreen) runMigration() {
 	}
 }
 
-func (s *MigrateFlowScreen) NeedsRedraw() bool { return s.state == mfsRunning }
+func (s *MigrateFlowScreen) NeedsRedraw() bool         { return s.state == mfsRunning }
 func (s *MigrateFlowScreen) HasPendingAnimation() bool { return false }
 
 func (s *MigrateFlowScreen) Draw(r *renderer.Renderer) {
@@ -320,22 +320,22 @@ func (s *MigrateFlowScreen) handleButton(btn uint8) Screen {
 	switch s.state {
 	case mfsCheckSave:
 		switch btn {
-		case sdl.CONTROLLER_BUTTON_B: // physical A = Rename / Overwrite
+		case btnA: // physical A = Rename / Overwrite
 			return s.handleSaveConfirm()
-		case sdl.CONTROLLER_BUTTON_A: // physical B = Skip / Cancel
+		case btnB: // physical B = Skip / Cancel
 			return s.handleSaveSkip()
 		}
 	case mfsCheckStates:
 		switch btn {
-		case sdl.CONTROLLER_BUTTON_B: // Rename
+		case btnA: // Rename
 			s.statesAnswer = true
-		case sdl.CONTROLLER_BUTTON_A: // Skip
+		case btnB: // Skip
 			s.statesAnswer = false
 		}
 		s.runMigration()
 	case mfsDone, mfsError:
 		switch btn {
-		case sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_A:
+		case btnA, btnB:
 			return s.prev
 		}
 	}

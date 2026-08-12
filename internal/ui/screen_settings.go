@@ -465,16 +465,16 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
 				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
 			}
 			return s.activate()
-		case sdl.CONTROLLER_BUTTON_X: // physical Y — edit API key when one is already set
+		case btnY: // physical Y — edit API key when one is already set
 			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
 				return s.openKeyboardForAPIKey()
 			}
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev

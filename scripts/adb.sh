@@ -40,8 +40,14 @@ adb_firmware() {
 adb_select() {
     WANT="${1:-}"
 
+    # ANDROID_SERIAL is adb's own variable, so anyone who has already exported it
+    # to drive adb by hand should not have to learn a second name for it.
     if [ -n "${ADB_SERIAL:-}" ]; then
         printf '%s\n' "$ADB_SERIAL"
+        return 0
+    fi
+    if [ -n "${ANDROID_SERIAL:-}" ]; then
+        printf '%s\n' "$ANDROID_SERIAL"
         return 0
     fi
 

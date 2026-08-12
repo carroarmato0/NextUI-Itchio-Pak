@@ -215,9 +215,9 @@ func (s *MusicLocationPickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			return s.activate()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.goUp()
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev

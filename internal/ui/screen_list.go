@@ -33,12 +33,12 @@ const (
 
 // Auto-repeat timing for held D-pad buttons
 const (
-	repeatDelay           = 300 * time.Millisecond  // initial delay before repeating
-	accelStart            = 180 * time.Millisecond  // repeat interval when acceleration begins
-	accelMin              = 30 * time.Millisecond   // repeat interval at full speed
-	accelRamp             = 1500 * time.Millisecond // time to reach accelMin from accelStart
-	shoulderAccelMin      = 15 * time.Millisecond  // minimum repeat interval for D-pad page-scroll
-	cacheTTL              = 24 * time.Hour
+	repeatDelay      = 300 * time.Millisecond  // initial delay before repeating
+	accelStart       = 180 * time.Millisecond  // repeat interval when acceleration begins
+	accelMin         = 30 * time.Millisecond   // repeat interval at full speed
+	accelRamp        = 1500 * time.Millisecond // time to reach accelMin from accelStart
+	shoulderAccelMin = 15 * time.Millisecond   // minimum repeat interval for D-pad page-scroll
+	cacheTTL         = 24 * time.Hour
 
 	// coverSettleDelay is how long the cursor must be stationary before cover
 	// art fetches are initiated. Below accelStart (180 ms) so normal browsing
@@ -86,15 +86,15 @@ type truncCacheKey struct {
 }
 
 type ListScreen struct {
-	client     *itchio.Client
-	cfg        *settings.Config
-	cache      *renderer.ImageCache
-	cursor      int
-	loading     atomic.Bool
-	err         error
-	cfgPath     string
-	totalGames  atomic.Int32 // 0 = not yet known
-	totalPages  atomic.Int32 // 0 = not yet known
+	client       *itchio.Client
+	cfg          *settings.Config
+	cache        *renderer.ImageCache
+	cursor       int
+	loading      atomic.Bool
+	err          error
+	cfgPath      string
+	totalGames   atomic.Int32 // 0 = not yet known
+	totalPages   atomic.Int32 // 0 = not yet known
 	pageUpdateCh chan pageResult
 
 	// Held-button auto-repeat state
@@ -155,10 +155,10 @@ type ListScreen struct {
 
 	// Sort/filter state
 	sortMode       itchio.SortMode
-	platformFilter string          // "" = All; persisted to config.json
-	searchQuery    string          // "" = no filter; session-only, not persisted
-	viewGames      []itchio.Game   // sorted/filtered view; paging operates on this
-	needsRebuild   bool            // set by ScheduleRebuild; consumed at next Draw
+	platformFilter string        // "" = All; persisted to config.json
+	searchQuery    string        // "" = no filter; session-only, not persisted
+	viewGames      []itchio.Game // sorted/filtered view; paging operates on this
+	needsRebuild   bool          // set by ScheduleRebuild; consumed at next Draw
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -370,7 +370,6 @@ func (s *ListScreen) jumpCursor(n int) {
 	s.warmedGameURL = ""
 }
 
-
 func (s *ListScreen) NeedsRedraw() bool {
 	if s.heldDir != 0 || s.heldShoulderDir != 0 {
 		return true
@@ -470,8 +469,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	// This is 3 draw calls, far cheaper than the previous 36-dot approach.
 	if s.cacheBuilding.Load() || (s.updateSvc != nil && s.updateSvc.IsRunning()) {
 		titleW, _ := r.BoldTextSize("Itch.io")
-		outerR := fontH * 2 / 5       // diameter ≈ 80% of font height
-		innerR := outerR * 7 / 10     // ~3px ring at typical sizes
+		outerR := fontH * 2 / 5   // diameter ≈ 80% of font height
+		innerR := outerR * 7 / 10 // ~3px ring at typical sizes
 		cx := int32(12) + titleW + 18 + outerR
 		cy := headerTextY + fontH/2
 
@@ -487,8 +486,8 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		// the anti-aliased fringe and eliminate tip artefacts. Arms use the header bar
 		// colour so they blend seamlessly with the header background.
 		offset := float64(time.Now().UnixMilli()) / 3000.0 * 2.0 * math.Pi
-		hw := float64(outerR) / 2.0      // arm half-width
-		R := float64(outerR) + 3.0       // extend past outer edge to cover fringe
+		hw := float64(outerR) / 2.0 // arm half-width
+		R := float64(outerR) + 3.0  // extend past outer edge to cover fringe
 		hBG := r.Theme.Surface()
 		fcx, fcy := float64(cx), float64(cy)
 		for i := 0; i < 3; i++ {
@@ -594,7 +593,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		ht := r.Theme.HintText
 		r.DrawTextCentered("No games match the active filter.", 0, r.H/2-fontH, leftW, ht[0], ht[1], ht[2])
 		nf := r.Theme.Info()
-			r.DrawTextCentered("Press SELECT to change filters.", 0, r.H/2+4, leftW, nf[0], nf[1], nf[2])
+		r.DrawTextCentered("Press SELECT to change filters.", 0, r.H/2+4, leftW, nf[0], nf[1], nf[2])
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"},
@@ -1015,7 +1014,6 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	r.Present()
 }
 
-
 func (s *ListScreen) cachedPageInfo() string {
 	cp := s.cursor/itchio.PerPage + 1
 	tp := s.totalPages.Load()
@@ -1209,16 +1207,16 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		// Allow retrying when the feed is blocked (physical A = confirm button = sdl B).
 		// CONTROLLER_BUTTON_A (physical B = back/exit) is intentionally left unhandled
 		// here so it falls through to the exit case below.
-		if s.err != nil && ev.Button == sdl.CONTROLLER_BUTTON_B {
+		if s.err != nil && ev.Button == btnA {
 			go s.loadPage(1, "")
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			if s.cursor < len(s.viewGames) {
 				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
 			}
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return nil
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
@@ -1237,7 +1235,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 				s.SetFilter(s.platformFilter, string(s.prevSortModeSimple()), s.searchQuery)
 			}
 			return s
-		case sdl.CONTROLLER_BUTTON_X:
+		case btnY:
 			if s.cursor < len(s.viewGames) {
 				g := s.viewGames[s.cursor]
 				if s.inv.HasPendingUpdates(g.URL) {

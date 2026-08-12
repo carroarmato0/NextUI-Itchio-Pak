@@ -120,14 +120,14 @@ func NewFormatPickerScreen(
 	return &FormatPickerScreen{
 		client: client, cfg: cfg, cfgPath: cfgPath,
 		cache: cache,
-		game: game, detail: detail,
+		game:  game, detail: detail,
 		uploads: uploads, formats: formats,
 		prev: prev,
-		inv: inv, inventoryPath: inventoryPath,
+		inv:  inv, inventoryPath: inventoryPath,
 	}
 }
 
-func (s *FormatPickerScreen) NeedsRedraw() bool { return false }
+func (s *FormatPickerScreen) NeedsRedraw() bool         { return false }
 func (s *FormatPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *FormatPickerScreen) Draw(r *renderer.Renderer) {
@@ -265,9 +265,9 @@ func (s *FormatPickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor < len(s.formats) {
 				s.formats[s.cursor] = s.formats[s.cursor].next()
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			return s.confirm()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		}
 	}

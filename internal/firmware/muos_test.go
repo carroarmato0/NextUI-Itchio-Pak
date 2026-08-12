@@ -292,3 +292,60 @@ func TestMuOSUnknownBoardUsesItsOwnName(t *testing.T) {
 		t.Errorf("DeviceLabel() = %q, want the board name", got)
 	}
 }
+
+// Which face button confirms is a user preference on muOS, applied by pointing
+// SDL at one of two controller databases. The exported filename is therefore
+// the setting already resolved, and is the most direct thing to read.
+func TestMuOSButtonLayoutFromSDLConfigFile(t *testing.T) {
+	t.Setenv("PLATFORM", "")
+	prefix := muosFixture(t)
+
+	for _, tc := range []struct {
+		file string
+		want ButtonLayout
+	}{
+		{"/opt/muos/share/info/gamecontrollerdb/retro.txt", LayoutRetro},
+		{"/opt/muos/share/info/gamecontrollerdb/modern.txt", LayoutModern},
+	} {
+		t.Setenv("SDL_GAMECONTROLLERCONFIG_FILE", tc.file)
+		if got := DetectIn(prefix).ButtonLayout(); got != tc.want {
+			t.Errorf("%s -> %q, want %q", tc.file, got, tc.want)
+		}
+	}
+}
+
+// Launched outside muOS's launcher the variable is absent, so fall back to the
+// stored preference — and to retro when even that is missing, which is the case
+// on releases predating the setting (JACARANDA 2601.0 has no remap/layout).
+func TestMuOSButtonLayoutFallsBack(t *testing.T) {
+	t.Setenv("PLATFORM", "")
+	t.Setenv("SDL_GAMECONTROLLERCONFIG_FILE", "")
+
+	prefix := muosFixture(t)
+	if got := DetectIn(prefix).ButtonLayout(); got != LayoutRetro {
+		t.Errorf("with no setting at all = %q, want %q", got, LayoutRetro)
+	}
+
+	remap := filepath.Join(prefix, "opt/muos/config/settings/remap")
+	mkdirAll(t, remap)
+	writeFile(t, filepath.Join(remap, "layout"), "1")
+	if got := DetectIn(prefix).ButtonLayout(); got != LayoutModern {
+		t.Errorf("with remap/layout=1 = %q, want %q", got, LayoutModern)
+	}
+
+	writeFile(t, filepath.Join(remap, "layout"), "0")
+	if got := DetectIn(prefix).ButtonLayout(); got != LayoutRetro {
+		t.Errorf("with remap/layout=0 = %q, want %q", got, LayoutRetro)
+	}
+}
+
+// NextUI presents one arrangement and has no setting for it. The muOS variable
+// must not leak across and change NextUI's bindings.
+func TestNextUIAlwaysRetroLayout(t *testing.T) {
+	t.Setenv("PLATFORM", "tg5040")
+	t.Setenv("SDL_GAMECONTROLLERCONFIG_FILE", "/somewhere/modern.txt")
+
+	if got := newNextUI("").ButtonLayout(); got != LayoutRetro {
+		t.Errorf("NextUI layout = %q, want %q", got, LayoutRetro)
+	}
+}
