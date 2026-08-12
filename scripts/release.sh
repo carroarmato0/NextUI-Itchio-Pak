@@ -88,6 +88,7 @@ cp "$(target_binary nextui/tg5040)" "$PAK_DIR/$BIN_NAME"
 cp launch.sh                        "$PAK_DIR/launch.sh"
 cp pak.json                         "$PAK_DIR/pak.json"
 cp -r assets/.                      "$PAK_DIR/assets/"
+rm -f "$PAK_DIR/assets/.gitkeep"
 
 # Dereference symlinks (-L) so FAT32 SD cards get real files instead of symlinks.
 for t in $(targets_for nextui); do
@@ -115,6 +116,7 @@ for t in $(targets_for nextui); do
     cp launch.sh               "$PLAT_PAK/launch.sh"
     cp pak.json                "$PLAT_PAK/pak.json"
     cp -r assets/.             "$PLAT_PAK/assets/"
+    rm -f "$PLAT_PAK/assets/.gitkeep"
     cp -L "$(toolchain_libdir "$(target_toolchain "$t")")"/* "$PLAT_PAK/lib/$dev/" 2>/dev/null || true
 done
 
@@ -147,6 +149,7 @@ cp packaging/muos/mux_launch.sh  "$MUOS_APP/mux_launch.sh"
 cp packaging/muos/mux_lang.ini   "$MUOS_APP/mux_lang.ini"
 cp -r packaging/muos/glyph       "$MUOS_APP/glyph"
 cp -r assets/.                   "$MUOS_APP/assets/"
+rm -f "$MUOS_APP/assets/.gitkeep"
 
 # Firmware-neutral version marker, so the artifact can be identified on device
 # and by the release tooling without borrowing NextUI's manifest.

@@ -80,6 +80,16 @@ for unwanted in "Itch-io/pak.json" "Itch-io/launch.sh"; do
     fi
 done
 
+# Only what the device needs. A build tool or a repo placeholder on someone's SD
+# card is harmless but sloppy, and it is the kind of thing that accumulates.
+for junk in "Itch-io/glyph/make-glyph.py" "Itch-io/assets/.gitkeep"; do
+    if printf '%s\n' "$LIST" | grep -qx "$junk"; then
+        fail "does not ship $junk"
+    else
+        ok "does not ship $junk"
+    fi
+done
+
 # Bundling SDL2 would shadow muOS's own patched build, which is the one that
 # honours SDL_ROTATION, SDL_HQ_SCALER and SDL_BLITTER_DISABLED.
 if printf '%s\n' "$LIST" | grep -q 'libSDL2'; then

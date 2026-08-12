@@ -10,7 +10,7 @@ out of it. itch.io's own mark is a trademark with no stated licence, and their
 press kit asks that it not be redistorted or recoloured, which is exactly what
 fitting it into a 26px monochrome silhouette would require.
 
-Run after editing:  python3 packaging/muos/glyph/make-glyph.py
+Run after editing:  python3 packaging/muos/make-glyph.py
 """
 
 from PIL import Image, ImageDraw
@@ -19,6 +19,8 @@ from PIL import Image, ImageDraw
 # (26, 34 and 47 px in the stock theme alone), so it has to stay crisp when
 # reduced by roughly 10x.
 SIZE = 256
+# Written into glyph/, which release.sh copies wholesale into the archive —
+# so this script deliberately lives one level up, out of what ships.
 OUT = "packaging/muos/glyph/itchio.png"
 
 S = SIZE / 34.0  # design was laid out on muOS's 34px grid
