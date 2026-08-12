@@ -61,13 +61,18 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
+# Clear dist/ before the tests rather than after the build. The archive tests
+# inspect whatever is in dist/, so leaving last run's output in place has them
+# judging a stale artifact — reporting failures that a rebuild would fix, and
+# passes that the current source has not earned. With it gone they skip.
+rm -rf dist
+
 echo "==> Running tests..."
 ./scripts/test.sh
 
 ./scripts/build.sh all
 
 echo "==> Assembling release artifacts ($VERSION)..."
-rm -rf dist
 mkdir -p dist/nextui
 
 # --- NextUI -----------------------------------------------------------------
