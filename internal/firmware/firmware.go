@@ -362,45 +362,51 @@ func isDir(path string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// ButtonLayout says which physical face button the user expects to confirm.
+// FaceMapping says how SDL's face-button names line up with the labels printed
+// on the shell.
 //
-// The same hardware can report its face buttons either way round, and it is a
-// user preference rather than a property of the device: muOS ships two SDL
-// mappings for one controller and lets the user pick. Getting this wrong swaps
-// confirm and cancel, so it is resolved from the firmware rather than assumed.
-type ButtonLayout string
+// SDL names face buttons by position using the Xbox arrangement, and these
+// handhelds print Nintendo labels, so the two often disagree — but not always,
+// and not consistently across firmware. It has to be resolved rather than
+// derived: NextUI and muOS present the same TrimUI pad under different device
+// names with the same controller-database line, yet report opposite face
+// buttons for it, because the raw button order underneath differs.
+type FaceMapping string
 
 const (
-	// LayoutRetro is the Nintendo-style arrangement: the button labelled A —
-	// the right-hand one — confirms. SDL reports it as CONTROLLER_BUTTON_B,
-	// because SDL names buttons by position and A sits where Xbox puts B.
-	LayoutRetro ButtonLayout = "retro"
-	// LayoutModern is the Xbox-style arrangement: the bottom button confirms,
-	// and SDL's names line up with the labels on the shell.
-	LayoutModern ButtonLayout = "modern"
+	// FaceSwapped: the shell's A sits where Xbox puts B, so the button labelled
+	// A arrives as CONTROLLER_BUTTON_B.
+	FaceSwapped FaceMapping = "swapped"
+	// FaceDirect: SDL's names match the labels on the shell.
+	FaceDirect FaceMapping = "direct"
 )
 
-// ButtonLayout reports the arrangement in force. Retro is the default
-// everywhere: it is what NextUI presents, and what muOS falls back to when the
-// user has expressed no preference.
-func (e *Env) ButtonLayout() ButtonLayout {
+// FaceMapping reports how to read this firmware's face buttons.
+//
+// Measured on hardware, not inferred. NextUI presents the TrimUI pad as an
+// "X360 Controller" and swaps them. muOS presents the same pad as a "TRIMUI
+// Smart Pro Controller" with an identical mapping line, and does not — the raw
+// button indices behind the identical line are ordered differently. muOS's
+// modern controller database then swaps its face buttons back relative to its
+// own default, so it lands where NextUI is.
+func (e *Env) FaceMapping() FaceMapping {
 	if e.kind != KindMuOS {
-		return LayoutRetro
+		return FaceSwapped
 	}
 
-	// muOS applies the choice by pointing SDL at one of two controller
-	// databases, so the filename it exports is the setting, already resolved.
+	// muOS applies the user's choice by pointing SDL at one of two controller
+	// databases, so the filename it exports is that setting already resolved.
 	switch filepath.Base(os.Getenv("SDL_GAMECONTROLLERCONFIG_FILE")) {
 	case "modern.txt":
-		return LayoutModern
+		return FaceSwapped
 	case "retro.txt":
-		return LayoutRetro
+		return FaceDirect
 	}
 
-	// Launched outside muOS's own launcher, fall back to the stored setting.
-	// Absent on releases that predate it, where retro is the only behaviour.
+	// Launched outside muOS's own launcher, fall back to the stored preference.
+	// Absent on releases predating it, where the default behaviour is retro.
 	if muosVar(e.prefix, muosGlobalConf, "settings/remap/layout") == "1" {
-		return LayoutModern
+		return FaceSwapped
 	}
-	return LayoutRetro
+	return FaceDirect
 }

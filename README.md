@@ -55,6 +55,10 @@ muOS differs from NextUI in ways you will notice:
   colour palette, save and save-state migration, the GBA emulator choice, and
   the Pico-8 core choice. They are hidden rather than approximated — guessing
   where a save file goes would write it somewhere you would never find it.
+- **The menu icon is installed into your active theme.** muOS resolves
+  application glyphs from the theme rather than the app, so Itch-io writes a
+  correctly sized `itchio.png` into the active theme's `glyph/muxapp/` folders
+  the first time it runs. Switch theme and it reinstalls itself on next launch.
 
 ---
 

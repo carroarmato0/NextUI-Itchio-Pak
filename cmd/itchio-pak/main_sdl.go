@@ -93,7 +93,7 @@ func runSDL() {
 	}
 
 	// Bind the face buttons before any screen can handle an event.
-	ui.SetButtonLayout(env.ButtonLayout())
+	ui.SetFaceMapping(env.FaceMapping())
 
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {

@@ -11,17 +11,16 @@ import (
 // The SDL button each physically labelled face button produces.
 //
 // These are variables, not constants, because the relationship is not fixed.
-// SDL names face buttons by position, using the Xbox arrangement, while these
-// handhelds print Nintendo labels on the shell — so on a retro layout the
-// A-labelled button arrives as CONTROLLER_BUTTON_B. muOS lets the user switch
-// to a modern layout, where the two line up instead.
+// SDL names face buttons by position using the Xbox arrangement, while these
+// handhelds print Nintendo labels — so the A-labelled button often arrives as
+// CONTROLLER_BUTTON_B. Often, but not always: the same TrimUI pad reports
+// opposite face buttons under NextUI and under muOS. See firmware.FaceMapping.
 //
-// Screens should compare against these rather than the SDL constants, so a
-// layout change moves every binding at once instead of inverting confirm and
-// cancel throughout the app.
+// Screens compare against these rather than the SDL constants, so the whole
+// app follows the device instead of inverting confirm and cancel on one of them.
 //
-// Defaults are the retro layout, which is what NextUI presents and what muOS
-// falls back to. Shoulder buttons, START, SELECT and the d-pad are unaffected.
+// Defaults are the swapped arrangement, which is what NextUI presents.
+// Shoulder buttons, START, SELECT and the d-pad are unaffected.
 var (
 	btnA uint8 = sdl.CONTROLLER_BUTTON_B
 	btnB uint8 = sdl.CONTROLLER_BUTTON_A
@@ -29,18 +28,19 @@ var (
 	btnY uint8 = sdl.CONTROLLER_BUTTON_X
 )
 
-// SetButtonLayout points the face-button bindings at the given layout. Called
-// once at startup, before any screen handles an event.
-func SetButtonLayout(layout firmware.ButtonLayout) {
-	if layout == firmware.LayoutModern {
+// SetFaceMapping points the face-button bindings at the given arrangement.
+// Called once at startup, before any screen handles an event.
+func SetFaceMapping(m firmware.FaceMapping) {
+	if m == firmware.FaceDirect {
 		btnA, btnB = sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B
 		btnX, btnY = sdl.CONTROLLER_BUTTON_X, sdl.CONTROLLER_BUTTON_Y
 	} else {
 		btnA, btnB = sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_A
 		btnX, btnY = sdl.CONTROLLER_BUTTON_Y, sdl.CONTROLLER_BUTTON_X
 	}
-	logger.Info("input: %s layout — A=SDL_%s B=SDL_%s", layout,
-		sdlFaceButtonName(btnA), sdlFaceButtonName(btnB))
+	logger.Info("input: face buttons %s — A=SDL_%s B=SDL_%s X=SDL_%s Y=SDL_%s", m,
+		sdlFaceButtonName(btnA), sdlFaceButtonName(btnB),
+		sdlFaceButtonName(btnX), sdlFaceButtonName(btnY))
 }
 
 func sdlFaceButtonName(b uint8) string {

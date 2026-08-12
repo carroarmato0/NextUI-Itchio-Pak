@@ -37,6 +37,52 @@ mkdir -p "$ITCHIO_DATA_DIR"
 SSL_CERT_FILE="$APP_DIR/assets/ca-certificates.crt"
 export SSL_CERT_FILE
 
+# Put our menu icon where the frontend looks for it.
+#
+# The ICON header above names a glyph, but glyphs are resolved from the *active
+# theme*, not from the application directory — so a third-party app has to
+# install its own, which is what every other one does. The theme decides the
+# size (26, 34 and 47 px in the stock theme alone), so each destination is
+# matched against a glyph already sitting there rather than assumed.
+#
+# Re-run on every launch so the icon reappears after the user switches theme,
+# but only when our copy is actually newer, to keep startup quick.
+INSTALL_GLYPH() {
+    GLYPH_SRC="$APP_DIR/glyph/itchio.png"
+    [ -f "$GLYPH_SRC" ] || return 0
+
+    ACTIVE_THEME="$(GET_VAR "config" "theme/active")"
+    [ -n "$ACTIVE_THEME" ] || return 0
+    THEME_DIR="$MUOS_STORE_DIR/theme/$ACTIVE_THEME"
+    [ -d "$THEME_DIR" ] || return 0
+
+    if ! command -v convert >/dev/null 2>&1; then
+        LOG_INFO "$0" 0 "ITCHIO" "No convert binary; leaving the menu glyph to the theme default"
+        return 0
+    fi
+
+    find "$THEME_DIR" -type d -name muxapp 2>/dev/null | while IFS= read -r GLYPH_DIR; do
+        GLYPH_DEST="$GLYPH_DIR/itchio.png"
+        [ -e "$GLYPH_DEST" ] && [ ! "$GLYPH_SRC" -nt "$GLYPH_DEST" ] && continue
+
+        # app.png is the generic application glyph every theme ships, so it is
+        # the reliable reference for how big this theme draws them.
+        GLYPH_SIZE=34
+        if [ -f "$GLYPH_DIR/app.png" ]; then
+            REF_SIZE="$(identify -format '%w' "$GLYPH_DIR/app.png" 2>/dev/null)"
+            case "$REF_SIZE" in
+                ''|*[!0-9]*) ;;
+                *) GLYPH_SIZE="$REF_SIZE" ;;
+            esac
+        fi
+
+        convert "$GLYPH_SRC" -resize "${GLYPH_SIZE}x${GLYPH_SIZE}" "$GLYPH_DEST" 2>/dev/null ||
+            LOG_INFO "$0" 0 "ITCHIO" "Could not write menu glyph to $GLYPH_DEST"
+    done
+}
+
+INSTALL_GLYPH
+
 # No bundled SDL2 here on purpose: muOS ships its own patched build, and that is
 # the one that honours SDL_ROTATION, SDL_HQ_SCALER and SDL_BLITTER_DISABLED.
 exec ./"$APP_BIN"

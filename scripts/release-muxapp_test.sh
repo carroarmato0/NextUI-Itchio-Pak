@@ -64,7 +64,7 @@ for want in \
     "Itch-io/itchio" \
     "Itch-io/version.txt" \
     "Itch-io/mux_lang.ini" \
-    "Itch-io/glyph/itchio.svg" \
+    "Itch-io/glyph/itchio.png" \
     "Itch-io/assets/font.ttf" \
     "Itch-io/assets/ca-certificates.crt"
 do
@@ -108,7 +108,7 @@ done
 # The ICON header names a glyph; shipping a different filename means muOS falls
 # back to a generic icon with nothing to explain why.
 ICON="$(printf '%s\n' "$HEADER" | sed -n 's/^# ICON: *//p')"
-check "glyph matches the ICON header ($ICON)" has "Itch-io/glyph/$ICON.svg"
+check "glyph matches the ICON header ($ICON)" has "Itch-io/glyph/$ICON.png"
 
 # The version marker is what release-github.sh verifies the artifact against.
 STAMPED="$(unzip -p "$MUXAPP" "Itch-io/version.txt" | tr -d '\r\n')"
