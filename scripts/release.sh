@@ -18,6 +18,7 @@ Run the full test suite, build every target, and assemble release artifacts.
 Output in dist/:
   nextui/Itch-io.NextUI.<version>.pak.zip   NextUI single pak; all lib dirs inside, works on any NextUI device
   nextui/Itch-io.NextUI.<version>.pakz      NextUI multi-device bundle (one dir per platform), extract at SD root
+  muos/Itch-io.muOS.<version>.muxapp        muOS application archive, installed via Archive Manager
   Itch-io.pak.zip                           Copy of the .pak.zip under the name the Pak Store expects
 
 Requires: zip (host), docker or podman (managed internally by test.sh and build.sh)
@@ -108,6 +109,36 @@ wait $pid_zip2
 # The Pak Store fetches pak.json's release_filename verbatim, so keep a copy
 # under the unversioned name it expects.
 cp "$NEXTUI_ZIP" dist/Itch-io.pak.zip
+
+# --- muOS ------------------------------------------------------------------
+# A .muxapp is a plain zip whose root is the application directory; muOS's
+# Archive Manager extracts it into the application store. No pak.json and no
+# launch.sh: both are NextUI packaging, and mean nothing here. No SDL2 either —
+# muOS ships its own patched build and that is the one to link against.
+
+mkdir -p dist/muos
+MUOS_APP="dist/muos/Itch-io"
+rm -rf "$MUOS_APP"
+mkdir -p "$MUOS_APP/assets"
+
+cp "$(target_binary muos/arm64)" "$MUOS_APP/$BIN_NAME"
+cp packaging/muos/mux_launch.sh  "$MUOS_APP/mux_launch.sh"
+cp packaging/muos/mux_lang.ini   "$MUOS_APP/mux_lang.ini"
+cp -r packaging/muos/glyph       "$MUOS_APP/glyph"
+cp -r assets/.                   "$MUOS_APP/assets/"
+
+# Firmware-neutral version marker, so the artifact can be identified on device
+# and by the release tooling without borrowing NextUI's manifest.
+printf '%s\n' "$VERSION" > "$MUOS_APP/version.txt"
+
+# muOS runs mux_launch.sh directly; without the exec bit the app simply does
+# not start, and zip is what has to carry that through.
+chmod +x "$MUOS_APP/mux_launch.sh" "$MUOS_APP/$BIN_NAME"
+
+(
+    cd dist/muos
+    zip -qr "Itch-io.muOS.$VERSION.muxapp" Itch-io
+)
 
 echo "==> Release artifacts:"
 find dist -maxdepth 2 -type f \( -name '*.zip' -o -name '*.pakz' -o -name '*.muxapp' \) | sort

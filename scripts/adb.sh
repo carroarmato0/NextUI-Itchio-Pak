@@ -69,6 +69,7 @@ adb_select() {
         for s in $SERIALS; do
             [ "$(adb_firmware "$s")" = "$WANT" ] && MATCHED="$MATCHED $s"
         done
+        # shellcheck disable=SC2086  # intentional split of a space-separated list
         set -- $MATCHED
         if [ "$#" -eq 1 ]; then
             printf '%s\n' "$1"

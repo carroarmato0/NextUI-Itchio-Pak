@@ -1,0 +1,12 @@
+<svg width="42" height="42" viewBox="0 0 42 42" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Itch.io icon</title>
+  <desc>Download arrow above a cartridge, 42x42px, black on transparent</desc>
+
+  <!-- Download arrow -->
+  <line x1="21" y1="5" x2="21" y2="19" stroke="black" stroke-width="3" stroke-linecap="round"/>
+  <polyline points="14,13 21,20 28,13" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Cartridge it lands in -->
+  <rect x="8" y="24" width="26" height="13" rx="2" fill="none" stroke="black" stroke-width="3"/>
+  <rect x="13" y="28" width="16" height="3" rx="1.5" fill="black"/>
+</svg>

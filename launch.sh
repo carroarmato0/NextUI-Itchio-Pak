@@ -37,7 +37,9 @@ export PATH="$PAK_DIR:$PATH"
 # bundle we ship so HTTPS requests to itch.io can be verified correctly.
 export SSL_CERT_FILE="$PAK_DIR/assets/ca-certificates.crt"
 mkdir -p "$HOME"
-cd "$PAK_DIR"
+# The binary loads assets/font.ttf relative to the working directory, so a
+# failed cd would start it with no fonts rather than not at all.
+cd "$PAK_DIR" || exit 1
 # Optional profiling flags written by ./scripts/debug.sh profile commands.
 # Absent in normal operation; present only during a profiling session.
 # Word-splitting is intentional — the file contains space-separated flags.
