@@ -41,24 +41,50 @@ the binary needs nothing newer than glibc 2.17.
 | TrimUI Smart Pro | Tested |
 | Other muOS devices | Should work; untested |
 
-muOS differs from NextUI in ways you will notice:
+---
 
-- **ROM folders.** muOS has no required folder names, so Itch-io looks for a
-  folder you already have — `gb`, `Nintendo Game Boy`, `Game Boy`, and so on —
-  and only creates muOS's short name (`gb`, `gbc`, `gba`, `nes`, `md`, `pico8`)
-  when there is nothing to adopt. Both SD cards are searched.
-- **A new folder has no emulator assigned.** That is muOS's own behaviour: it
-  asks you to pick a core the first time you launch something from it.
-- **Box art** goes into muOS's catalogue (`MUOS/info/catalogue/<System>/box/`)
-  rather than a `.media` folder beside the ROM.
-- **Some features are switched off**, because muOS has no equivalent: the NextUI
-  colour palette, save and save-state migration, the GBA emulator choice, and
-  the Pico-8 core choice. They are hidden rather than approximated — guessing
-  where a save file goes would write it somewhere you would never find it.
-- **The menu icon is installed into your active theme.** muOS resolves
-  application glyphs from the theme rather than the app, so Itch-io writes a
-  correctly sized `itchio.png` into the active theme's `glyph/muxapp/` folders
-  the first time it runs. Switch theme and it reinstalls itself on next launch.
+## NextUI and muOS
+
+Itch-io does the same job on both, and most of this README applies to either.
+The two firmwares organise storage differently, though, and a few features only
+exist on one of them.
+
+| | NextUI | muOS |
+|---|---|---|
+| ROMs go to | `Roms/<System>/`, fixed names | a folder under `ROMS/` — see below |
+| Box art | `.media/` beside the ROM | `MUOS/info/catalogue/<System>/box/` |
+| Soundtracks | `Music/<Game>/` | `MUOS/music/<Game>/` |
+| Settings, inventory, cache | `.userdata/shared/Itch-io/` | `data/` inside the application folder |
+| Follows the system colour palette | yes | no — uses its own theme |
+| Save and save-state migration | yes | no |
+| Choice of GBA emulator folder | yes | no — muOS picks the core |
+| Choice of Pico-8 runtime | yes | no — one Pico-8 folder |
+
+### ROM folders on muOS
+
+muOS has no required folder names — the documentation says folders "can be named
+whatever you want" — so Itch-io looks for one you already have before making its
+own. For a Game Boy download it will use `gb`, `Nintendo Game Boy`, `Game Boy` or
+`gameboy`, whichever exists, on either SD card. Only if none exists does it
+create muOS's own short name: `gb`, `gbc`, `gba`, `nes`, `md` or `pico8`.
+
+A folder it creates has no emulator assigned yet. That is muOS's own behaviour —
+the first time you launch something from a new folder it asks you to pick a core.
+
+### Why some features are missing on muOS
+
+They are switched off rather than approximated. Save migration is the clearest
+case: muOS assigns an emulator core per folder, chosen by you *after* the ROM is
+already in place, so at download time there is nothing to derive a save path
+from. Writing a guess would put files somewhere you would never find them, which
+is worse than not writing them at all.
+
+### The menu icon
+
+muOS resolves application icons from the active theme rather than from the
+application itself, so Itch-io installs a correctly sized icon into your active
+theme's `glyph/muxapp/` folders the first time it runs. Switch theme and it
+reinstalls itself on the next launch.
 
 ---
 
@@ -159,12 +185,12 @@ When **Use game title as filename** is enabled (the default), downloaded ROMs ar
 
 ### Theming
 
-The Pak can follow NextUI's own colour palette, so it looks like part of the
+Itch-io can follow NextUI's own colour palette, so it looks like part of the
 system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
 
-<img src="docs/screenshots/theme-macchiato.png" alt="Itch.io Pak using the Catppuccin Macchiato palette" width="800"/>
+<img src="docs/screenshots/theme-macchiato.png" alt="Itch-io using the Catppuccin Macchiato palette" width="800"/>
 
-- Reads the active palette from NextUI's own settings — no configuration in the Pak
+- Reads the active palette from NextUI's own settings — no configuration in Itch-io
 - Works with every palette NextUI ships, including the light ones, and with any
   custom palette you drop into `Palettes/` on the SD card
 - The Settings row names the palette in use, e.g. `NextUI Theme: On (Catppuccin Macchiato)`
@@ -172,8 +198,8 @@ system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
   follow the palette; status badges tint to it too
 - Update (`[UP]`) and error (`[!]`) badges deliberately keep their amber and red so
   they still stand out whatever the palette
-- Switch palettes in NextUI and the Pak picks up the change the next time it starts
-- Leave the setting off to keep the Pak's own dark theme
+- Switch palettes in NextUI and Itch-io picks up the change the next time it starts
+- Leave the setting off to keep Itch-io's own dark theme
 
 <table>
   <tr>
@@ -188,7 +214,7 @@ system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
 
 The power button behaves the same way it does with emulators on NextUI:
 
-- **Short press** — device goes to sleep; the Pak stays in memory and resumes exactly where you left it when you wake the device.
+- **Short press** — device goes to sleep; Itch-io stays in memory and resumes exactly where you left it when you wake the device.
 - **Hold 2 seconds** — device shuts down cleanly.
 
 If a background task (ROM download, game list cache build, inventory check) is running when you press the power button, a full-screen **"Please wait"** overlay is shown until the task finishes. The action fires automatically — no confirmation or extra button press needed.
@@ -205,7 +231,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
   Switching cores instantly moves all previously downloaded Pico-8 files (ROMs and cover art) to the new folder — no manual file management needed. Switching back moves them back.
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
-- **NextUI Theme** — when `On`, the Pak follows the colour palette configured in
+- **NextUI Theme** — when `On`, Itch-io follows the colour palette configured in
   NextUI, and the row shows which one is active. Only appears when NextUI's
   settings file is present. Defaults to `Off`
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio.log` on the SD card.
@@ -368,7 +394,7 @@ survive both an update and a muOS system update.
     </td>
     <td align="center">
       <img src="docs/screenshots/theme-macchiato.png" alt="NextUI theme applied" width="480"/><br/>
-      <sub>NextUI theme — the Pak following the device's Catppuccin Macchiato palette</sub>
+      <sub>NextUI theme — Itch-io following the device's Catppuccin Macchiato palette</sub>
     </td>
   </tr>
 </table>
@@ -388,13 +414,13 @@ API key. The Settings screen shows **FOUND** (green) when a key is active.
 2. Go to <https://itch.io/user/settings/api-keys>.
 3. Click **Generate new API key** and copy the key.
 
-### Adding the key to the Pak
+### Adding the key to Itch-io
 
 #### Option 1 — Built-in virtual keyboard (recommended)
 
 Open **Settings** (press **Start** from any screen), navigate to **API Key**,
 and press **A**. A virtual keyboard appears where you can type the key
-directly on-device. Confirm with the **OK** key; the Pak validates the key
+directly on-device. Confirm with the **OK** key; Itch-io validates the key
 immediately and shows `WORKING` on success.
 
 To update an existing key, navigate to **API Key** in Settings and press **Y**
@@ -427,7 +453,7 @@ adb pull /mnt/SDCARD/.userdata/shared/Itch-io/config.json config.json
 adb push config.json /mnt/SDCARD/.userdata/shared/Itch-io/config.json
 ```
 
-If you have never launched the Pak and no config file exists yet, you can
+If you have never launched Itch-io and no config file exists yet, you can
 create a minimal one:
 
 ```json
@@ -500,13 +526,13 @@ in the Settings screen on the device.
   1. **Visit itch.io in a browser on the same WiFi network.** Your device and your
      phone or laptop share the same public IP address. If Cloudflare presents a
      human-verification challenge in the browser and you pass it, the IP is marked
-     as human traffic. Return to the Pak and press **A** (game list) or retry the
+     as human traffic. Return to Itch-io and press **A** (game list) or retry the
      refresh — it will often succeed immediately afterwards.
   2. **Wait a few minutes and retry.** Cloudflare challenges are sometimes
-     temporary. The Pak retries the request each time you press **A** on the error
+     temporary. Itch-io retries the request each time you press **A** on the error
      screen.
   3. **Try a different network.** Switching WiFi networks (e.g. a mobile hotspot)
-     gives the Pak a fresh public IP that may not be challenged.
+     gives Itch-io a fresh public IP that may not be challenged.
 
 - **Animated GIF thumbnail conversion is best-effort.** When a game's cover art
   is an animated GIF, a static PNG thumbnail is derived from it automatically
@@ -517,7 +543,7 @@ in the Settings screen on the device.
 
 - **Some Pico-8 games have no downloadable files.** A number of Pico-8 titles on
   itch.io are published as browser-only experiences with no file uploads at all.
-  When this happens the Pak shows a clear "No downloads available" message with a
+  When this happens Itch-io shows a clear "No downloads available" message with a
   QR code so you can open the game's itch.io page and play it in a browser instead.
 
 - **Multi-cart Pico-8 games require the official Pico-8 core.** Games that ship as
@@ -541,7 +567,7 @@ in the Settings screen on the device.
 - **"Pay What You Want" games with a mandatory minimum price show as free.**
   itch.io reports a price of `0` in its RSS feed for games configured as
   "name your price", even when the creator has set a non-zero minimum purchase
-  amount. The Pak cannot distinguish these from genuinely free games using feed
+  amount. Itch-io cannot distinguish these from genuinely free games using feed
   data alone, so they are labelled **Free** and appear in the `[FREE]` filter.
   You can recognise them on itch.io by their **"Download Now"** button (instead
   of "Buy Now") and a note that a minimum purchase price is required. If you

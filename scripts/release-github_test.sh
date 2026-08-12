@@ -114,6 +114,19 @@ else
 	printf 'skip - dry-run checks (no dist/ artifacts; run scripts/release.sh)\n'
 fi
 
+# --- pre-release notes ---
+# A pre-release deliberately ships no Itch-io.pak.zip, because that is the
+# filename the Pak Store matches on. The notes must not advertise it either.
+pre="$("$SCRIPT" --print-notes --prerelease)"
+check "pre-release notes say it is a test build" "$pre" "This is a test build"
+check "pre-release notes still offer the muOS artifact" "$pre" "Itch-io.muOS.$VERSION.muxapp"
+if printf '%s' "$pre" | grep -qF '`Itch-io.pak.zip`'; then
+	printf 'FAIL - pre-release notes must not advertise the Pak Store asset\n'
+	fail=1
+else
+	printf 'ok   - pre-release notes omit the Pak Store asset\n'
+fi
+
 # --- unknown flag is rejected ---
 if "$SCRIPT" --bogus >/dev/null 2>&1; then
 	printf 'FAIL - unknown flag should exit non-zero\n'
