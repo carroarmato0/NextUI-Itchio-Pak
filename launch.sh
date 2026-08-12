@@ -14,6 +14,11 @@ else
     PLATFORM_LIB="$PAK_DIR/lib/tg5040"
 fi
 
+# Remove the pre-rename binary left behind when upgrading over an older pak.
+# Installing writes the new "itchio" alongside it rather than replacing it, so
+# without this every upgraded device carries a dead 14MB copy for ever.
+rm -f "$PAK_DIR/itchio-pak" 2>/dev/null || true
+
 # Remove stale versioned SDL2 files left by previous pak versions.  Only the
 # SONAME files (libSDL2-2.0.so.0, libSDL2_ttf-2.0.so.0) are needed at runtime;
 # the versioned siblings are never referenced directly by the dynamic linker.
