@@ -11,7 +11,7 @@ cd "$SCRIPT_DIR/.."
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
-Usage: release.sh
+Usage: release.sh [--allow-dirty]
 
 Run the full test suite, build every target, and assemble release artifacts.
 
@@ -21,10 +21,16 @@ Output in dist/:
   muos/Itch-io.muOS.<version>.muxapp        muOS application archive, installed via Archive Manager
   Itch-io.pak.zip                           Copy of the .pak.zip under the name the Pak Store expects
 
+Options:
+  --allow-dirty   Build with uncommitted changes. The binaries are stamped
+                  "<commit>-dirty" and cannot be traced back to a commit, so
+                  this is for packaging experiments, never for a release.
+
 Requires: zip (host), docker or podman (managed internally by test.sh and build.sh)
 
 Examples:
   ./scripts/release.sh
+  ./scripts/release.sh --allow-dirty
 EOF
     exit 0
 fi
@@ -32,6 +38,21 @@ fi
 if ! command -v zip >/dev/null 2>&1; then
     echo "ERROR: zip is required (install it with your package manager)" >&2
     exit 1
+fi
+
+# Refuse to package a dirty tree. build.sh stamps the binary with the commit it
+# built from, suffixed "-dirty" when the tree has uncommitted changes — so a
+# release built this way reports a commit that does not describe it, and a bug
+# report quoting that line cannot be traced to any source. Caught the hard way:
+# v1.0.23-rc1 first shipped stamped with the commit before the one it was tagged at.
+if [ "${1:-}" != "--allow-dirty" ] && command -v git >/dev/null 2>&1; then
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+        echo "ERROR: working tree has uncommitted changes." >&2
+        echo "       Release binaries record the commit they were built from, and this" >&2
+        echo "       build would be stamped '-dirty' and point at the wrong commit." >&2
+        echo "       Commit first, or pass --allow-dirty for a packaging experiment." >&2
+        exit 1
+    fi
 fi
 
 VERSION="$(pak_version)"
