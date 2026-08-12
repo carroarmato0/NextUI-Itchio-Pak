@@ -1,3 +1,9 @@
+# CA bundle, snapshotted from the build container by build.sh on every build.
+# It was tracked, which meant every build dirtied the tree with a file nobody
+# edits — and the committed copy described whichever container last built it
+# rather than the one that will.
+assets/ca-certificates.crt
+
 # Release artifacts
 dist/
 

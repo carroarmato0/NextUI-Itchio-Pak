@@ -172,7 +172,8 @@ build_target() {
     mkdir -p "$(target_bindir "$TGT")" "$LIBDIR" assets
 
     # Copy CA bundle into assets/ so SSL_CERT_FILE works on devices without a
-    # system certificate store.
+    # system certificate store. Generated, not tracked: it is a snapshot of this
+    # container's trust store and changes whenever the base image does.
     cp /etc/ssl/certs/ca-certificates.crt assets/ca-certificates.crt 2>/dev/null || true
 
     # CC, PKG_CONFIG_PATH, and SYSROOT are set by the LoveRetro toolchain image.
