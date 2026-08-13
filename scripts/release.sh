@@ -45,11 +45,8 @@ fi
 # release built this way reports a commit that does not describe it, and a bug
 # report quoting that line cannot be traced to any source. Caught the hard way:
 # v1.0.23-rc1 first shipped stamped with the commit before the one it was tagged at.
-# graphify-out/ is excluded: it is knowledge-graph output that a git hook
-# rewrites after every commit, it is already listed in .gitignore, and nothing
-# in it reaches an artifact. Without this the guard fires on every release.
 if [ "${1:-}" != "--allow-dirty" ] && command -v git >/dev/null 2>&1; then
-    DIRTY="$(git status --porcelain -- . ':(exclude)graphify-out' 2>/dev/null)"
+    DIRTY="$(git status --porcelain 2>/dev/null)"
     if [ -n "$DIRTY" ]; then
         echo "ERROR: working tree has uncommitted changes." >&2
         echo "       Release binaries record the commit they were built from, and this" >&2
