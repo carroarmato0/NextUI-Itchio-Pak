@@ -43,6 +43,9 @@ if [ -z "${IN_CONTAINER:-}" ]; then
         echo "note: skipping release-github_test.sh (jq not found on host)" >&2
     fi
 
+    echo "==> release-pak_test.sh"
+    "$SCRIPT_DIR/release-pak_test.sh" || exit 1
+
     echo "==> release-muxapp_test.sh"
     "$SCRIPT_DIR/release-muxapp_test.sh" || exit 1
 
