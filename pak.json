@@ -1,6 +1,6 @@
 {
   "name": "Itch-io",
-  "version": "v1.0.23-rc1",
+  "version": "v1.0.23-rc2",
   "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
@@ -41,6 +41,7 @@
     }
   ],
   "changelog": {
+    "v1.0.23-rc2": "\n• muOS: the Applications icon is lighter and now matches whatever size your theme uses, instead of assuming one.\n• Otherwise identical to rc1 — still a test build.",
     "v1.0.23-rc1": "\n• Adds muOS support — Itch-io now runs on MustardOS as well as NextUI.\n• On muOS: downloads land in your existing ROM folders, box art goes to the muOS catalogue, and features with no muOS equivalent are hidden rather than guessed at.\n• Test build: please report how it goes on your device.",
     "v1.0.22": "\n• Fix a case where two ROMs inside one archive could be saved under the same name, leaving only one of them.",
     "v1.0.21": "\n• Follow NextUI's colour palette, including the light themes, with the active palette shown in Settings.\n• Choose which ROM to download when a game offers several builds for the same system.\n• Fix multiple downloads for one game overwriting each other.",
