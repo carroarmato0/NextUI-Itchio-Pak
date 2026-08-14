@@ -640,8 +640,36 @@ testdata/             — captured HTML/RSS fixtures for offline unit tests
 For a detailed explanation of how the itch.io web API is used, see
 [`docs/itchio-interaction-flow.md`](docs/itchio-interaction-flow.md).
 
+### Branches
+
+| Branch | Holds |
+|---|---|
+| `main` | What has been released. Only ever updated by merging `dev` for a release. |
+| `dev` | Work accumulating towards the next release. May be ahead of the last release. |
+| `feature/*` | One change in progress, branched from `dev` and merged back into it. |
+
+Work goes `feature/* → dev → main`. `main` therefore always matches the newest
+stable release, which is what the Pak Store installs.
+
+Pre-release builds for testers are cut from `dev` and tagged `vX.Y.Z-rcN`:
+
+```bash
+./scripts/release.sh                          # test, build every target, package
+./scripts/release-github.sh --dry-run --prerelease
+./scripts/release-github.sh --prerelease      # publish
+```
+
+`--prerelease` marks the GitHub release *and* withholds the unversioned
+`Itch-io.pak.zip`. The Pak Store finds updates by matching that filename against
+a release's assets, so a build without it cannot reach people on a stable
+release — which does not depend on the store also honouring GitHub's
+pre-release flag.
+
+A full release is the same commands without `--prerelease`, run on `main` after
+merging `dev` and bumping the version in `pak.json`.
+
 ### Contributing
 
-1. Fork the repository and create a feature branch.
+1. Fork the repository and create a feature branch from `dev`.
 2. Make your changes and ensure `make test` passes.
-3. Open a pull request — CI will run automatically.
+3. Open a pull request against `dev` — CI will run automatically.

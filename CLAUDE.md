@@ -101,6 +101,13 @@ scripts/targets.sh Single source of truth for build targets
 testdata/          HTML/RSS fixtures for offline unit tests
 ```
 
+## Branches
+
+`feature/* → dev → main`. `main` is what has been released and is what the Pak
+Store installs; never commit to it directly. Branch features from `dev` and
+merge them back there. Pre-releases for testers are tagged `vX.Y.Z-rcN` and cut
+from `dev` with `release-github.sh --prerelease`; full releases come off `main`.
+
 ## Coding Standards
 
 - All new and modified code **must** include structured log calls at key points — see memory entry "Logging standards" for the full checklist (goroutines, cache ops, HTTP calls, file I/O).
