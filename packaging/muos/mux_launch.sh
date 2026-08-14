@@ -62,22 +62,42 @@ INSTALL_GLYPH() {
     fi
 
     find "$THEME_DIR" -type d -name muxapp 2>/dev/null | while IFS= read -r GLYPH_DIR; do
-        GLYPH_DEST="$GLYPH_DIR/itchio.png"
-        [ -e "$GLYPH_DEST" ] && [ ! "$GLYPH_SRC" -nt "$GLYPH_DEST" ] && continue
-
-        # app.png is the generic application glyph every theme ships, so it is
-        # the reliable reference for how big this theme draws them.
-        GLYPH_SIZE=34
-        if [ -f "$GLYPH_DIR/app.png" ]; then
-            REF_SIZE="$(identify -format '%w' "$GLYPH_DIR/app.png" 2>/dev/null)"
+        # Size against a glyph already in this directory. Themes disagree about
+        # how big these are — 22, 26, 34 and 47 px are all in use — and guessing
+        # is what makes an icon look wrong next to its neighbours. app.png is the
+        # generic one every stock theme ships, but a custom theme may not have
+        # it, so fall back to any other glyph and skip the directory entirely
+        # rather than invent a size.
+        GLYPH_SIZE=""
+        for REF in "$GLYPH_DIR/app.png" "$GLYPH_DIR"/*.png; do
+            [ -f "$REF" ] || continue
+            case "$REF" in *"/itchio.png") continue ;; esac
+            REF_SIZE="$(identify -format '%w' "$REF" 2>/dev/null)"
             case "$REF_SIZE" in
-                ''|*[!0-9]*) ;;
-                *) GLYPH_SIZE="$REF_SIZE" ;;
+                '' | *[!0-9]*) continue ;;
             esac
+            GLYPH_SIZE="$REF_SIZE"
+            break
+        done
+        if [ -z "$GLYPH_SIZE" ]; then
+            LOG_INFO "$0" 0 "ITCHIO" "No reference glyph in $GLYPH_DIR; skipping"
+            continue
         fi
 
-        convert "$GLYPH_SRC" -resize "${GLYPH_SIZE}x${GLYPH_SIZE}" "$GLYPH_DEST" 2>/dev/null ||
+        # Rewrite when our artwork is newer, and also when the theme's glyph size
+        # has changed since we last ran — a user who resizes their glyphs would
+        # otherwise keep our old one at the old size for ever.
+        GLYPH_DEST="$GLYPH_DIR/itchio.png"
+        if [ -e "$GLYPH_DEST" ] && [ ! "$GLYPH_SRC" -nt "$GLYPH_DEST" ]; then
+            DEST_SIZE="$(identify -format '%w' "$GLYPH_DEST" 2>/dev/null)"
+            [ "$DEST_SIZE" = "$GLYPH_SIZE" ] && continue
+        fi
+
+        if convert "$GLYPH_SRC" -resize "${GLYPH_SIZE}x${GLYPH_SIZE}" "$GLYPH_DEST" 2>/dev/null; then
+            LOG_INFO "$0" 0 "ITCHIO" "Installed menu glyph at ${GLYPH_SIZE}px in $GLYPH_DIR"
+        else
             LOG_INFO "$0" 0 "ITCHIO" "Could not write menu glyph to $GLYPH_DEST"
+        fi
     done
 }
 
