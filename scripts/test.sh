@@ -9,7 +9,7 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 Usage: test.sh [--coverage]
 
 Run the full test suite inside a container using the headless build tag (no SDL2).
-The dev container (itchio-pak-dev) is built automatically on first run.
+The dev container (itchio-dev) is built automatically on first run.
 
 Options:
   --coverage    Generate an HTML coverage report at coverage.html
@@ -30,7 +30,7 @@ detect_runtime() {
     else echo ""; fi
 }
 
-IMAGE="itchio-pak-dev"
+IMAGE="itchio-dev"
 CACHE_DIR="$(pwd)/.go_cache"
 if [ -z "${IN_CONTAINER:-}" ]; then
     # Host-side shell-tooling tests (release scripts). These exercise host tools
@@ -41,6 +41,19 @@ if [ -z "${IN_CONTAINER:-}" ]; then
         "$SCRIPT_DIR/release-github_test.sh" || exit 1
     else
         echo "note: skipping release-github_test.sh (jq not found on host)" >&2
+    fi
+
+    echo "==> release-muxapp_test.sh"
+    "$SCRIPT_DIR/release-muxapp_test.sh" || exit 1
+
+    echo "==> shellcheck (device launchers)"
+    if command -v shellcheck >/dev/null 2>&1; then
+        # muOS runs mux_launch.sh with its own /bin/sh, so it is checked as
+        # POSIX sh rather than bash.
+        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh || exit 1
+        echo "ok   - device launch scripts are clean"
+    else
+        echo "note: skipping shellcheck (not installed)" >&2
     fi
 
     echo "==> no-color-literals.sh"

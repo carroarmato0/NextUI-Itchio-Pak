@@ -279,7 +279,7 @@ func (s *MultiROMDownloadScreen) HandleEvent(e sdl.Event) Screen {
 	case *sdl.ControllerButtonEvent:
 		if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+			case btnB, btnA:
 				return s.prev
 			}
 		}

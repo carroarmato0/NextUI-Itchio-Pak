@@ -58,7 +58,7 @@ func NewPurchasePickerScreen(
 	}
 }
 
-func (s *PurchasePickerScreen) NeedsRedraw() bool { return false }
+func (s *PurchasePickerScreen) NeedsRedraw() bool         { return false }
 func (s *PurchasePickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *PurchasePickerScreen) Draw(r *renderer.Renderer) {
@@ -146,9 +146,9 @@ func (s *PurchasePickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			return s.choosePurchase(s.ownedKeys[s.cursor])
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		}
 	}

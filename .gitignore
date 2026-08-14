@@ -1,10 +1,17 @@
+# CA bundle, snapshotted from the build container by build.sh on every build.
+# It was tracked, which meant every build dirtied the tree with a file nobody
+# edits — and the committed copy described whichever container last built it
+# rather than the one that will.
+assets/ca-certificates.crt
+
 # Release artifacts
 dist/
 
-# SDL2 shared libraries extracted at build time
-# (tg5050 shares lib/tg5040/ — there is no lib/tg5050/ directory)
-lib/tg5040/*.so*
-lib/my355/*.so*
+# SDL2 shared libraries harvested from the toolchain sysroots at build time.
+# One directory per toolchain, so this covers every current and future target
+# (see scripts/targets.sh) rather than naming them one by one — the old
+# per-platform rules missed lib/tg5050/ and committed its .so files by mistake.
+lib/*/*.so*
 
 # Release zips
 *.pak.zip
@@ -15,7 +22,9 @@ bin/
 
 # Native build binary (wherever go build drops it)
 cmd/itchio-pak/itchio-pak
+cmd/itchio-pak/itchio
 /itchio-pak
+/itchio
 
 # Local tooling
 .superpowers/
@@ -31,6 +40,7 @@ debug-profiles/
 # Git worktrees
 .worktrees/
 itchio-pak.log
+itchio.log
 
 # Graphify knowledge graph (generated outputs — keep report/cost/manifest)
 graphify-out/

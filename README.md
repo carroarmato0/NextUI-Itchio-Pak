@@ -1,14 +1,14 @@
-# Itch.io Pak for NextUI
+# Itch-io — browse and download itch.io games on your handheld
 
 ![CI](../../actions/workflows/ci.yml/badge.svg)
 [![Ko-Fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/carroarmato0)
 
 <img src="docs/screenshots/main.png" alt="Game list" width="800"/>
 
-An unofficial community Pak for NextUI on TrimUI and Miyoo Flip handheld gaming
-devices. Browse, discover, and download homebrew ROM games for Game Boy, Game
-Boy Color, Game Boy Advance, NES/Famicom, Sega Genesis, and Pico-8 directly
-from itch.io — all on-device, no PC required.
+An unofficial community app for **NextUI** and **muOS** on TrimUI and Miyoo Flip
+handheld gaming devices. Browse, discover, and download homebrew ROM games for
+Game Boy, Game Boy Color, Game Boy Advance, NES/Famicom, Sega Genesis, and
+Pico-8 directly from itch.io — all on-device, no PC required.
 
 > **Disclaimer:** This is an unofficial community project, not affiliated with
 > or endorsed by itch.io.
@@ -20,7 +20,9 @@ from itch.io — all on-device, no PC required.
 
 ---
 
-## Supported Devices
+## Supported Firmware and Devices
+
+### NextUI
 
 | Device | Platform code | Status |
 |---|---|---|
@@ -28,6 +30,61 @@ from itch.io — all on-device, no PC required.
 | TrimUI Smart Pro | `tg5040` | Tested |
 | TrimUI Smart Pro S | `tg5050` | Tested |
 | Miyoo Flip | `my355` | Tested |
+
+### muOS
+
+One ARM64 build covers every muOS device, because muOS ships its own SDL2 and
+the binary needs nothing newer than glibc 2.17.
+
+| Device | Status |
+|---|---|
+| TrimUI Smart Pro | Tested |
+| Other muOS devices | Should work; untested |
+
+---
+
+## NextUI and muOS
+
+Itch-io does the same job on both, and most of this README applies to either.
+The two firmwares organise storage differently, though, and a few features only
+exist on one of them.
+
+| | NextUI | muOS |
+|---|---|---|
+| ROMs go to | `Roms/<System>/`, fixed names | a folder under `ROMS/` — see below |
+| Box art | `.media/` beside the ROM | `MUOS/info/catalogue/<System>/box/` |
+| Soundtracks | `Music/<Game>/` | `MUOS/music/<Game>/` |
+| Settings, inventory, cache | `.userdata/shared/Itch-io/` | `data/` inside the application folder |
+| Follows the system colour palette | yes | no — uses its own theme |
+| Save and save-state migration | yes | no |
+| Choice of GBA emulator folder | yes | no — muOS picks the core |
+| Choice of Pico-8 runtime | yes | no — one Pico-8 folder |
+
+### ROM folders on muOS
+
+muOS has no required folder names — the documentation says folders "can be named
+whatever you want" — so Itch-io looks for one you already have before making its
+own. For a Game Boy download it will use `gb`, `Nintendo Game Boy`, `Game Boy` or
+`gameboy`, whichever exists, on either SD card. Only if none exists does it
+create muOS's own short name: `gb`, `gbc`, `gba`, `nes`, `md` or `pico8`.
+
+A folder it creates has no emulator assigned yet. That is muOS's own behaviour —
+the first time you launch something from a new folder it asks you to pick a core.
+
+### Why some features are missing on muOS
+
+They are switched off rather than approximated. Save migration is the clearest
+case: muOS assigns an emulator core per folder, chosen by you *after* the ROM is
+already in place, so at download time there is nothing to derive a save path
+from. Writing a guess would put files somewhere you would never find them, which
+is worse than not writing them at all.
+
+### The menu icon
+
+muOS resolves application icons from the active theme rather than from the
+application itself, so Itch-io installs a correctly sized icon into your active
+theme's `glyph/muxapp/` folders the first time it runs. Switch theme and it
+reinstalls itself on the next launch.
 
 ---
 
@@ -128,12 +185,12 @@ When **Use game title as filename** is enabled (the default), downloaded ROMs ar
 
 ### Theming
 
-The Pak can follow NextUI's own colour palette, so it looks like part of the
+Itch-io can follow NextUI's own colour palette, so it looks like part of the
 system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
 
-<img src="docs/screenshots/theme-macchiato.png" alt="Itch.io Pak using the Catppuccin Macchiato palette" width="800"/>
+<img src="docs/screenshots/theme-macchiato.png" alt="Itch-io using the Catppuccin Macchiato palette" width="800"/>
 
-- Reads the active palette from NextUI's own settings — no configuration in the Pak
+- Reads the active palette from NextUI's own settings — no configuration in Itch-io
 - Works with every palette NextUI ships, including the light ones, and with any
   custom palette you drop into `Palettes/` on the SD card
 - The Settings row names the palette in use, e.g. `NextUI Theme: On (Catppuccin Macchiato)`
@@ -141,8 +198,8 @@ system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
   follow the palette; status badges tint to it too
 - Update (`[UP]`) and error (`[!]`) badges deliberately keep their amber and red so
   they still stand out whatever the palette
-- Switch palettes in NextUI and the Pak picks up the change the next time it starts
-- Leave the setting off to keep the Pak's own dark theme
+- Switch palettes in NextUI and Itch-io picks up the change the next time it starts
+- Leave the setting off to keep Itch-io's own dark theme
 
 <table>
   <tr>
@@ -157,7 +214,7 @@ system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
 
 The power button behaves the same way it does with emulators on NextUI:
 
-- **Short press** — device goes to sleep; the Pak stays in memory and resumes exactly where you left it when you wake the device.
+- **Short press** — device goes to sleep; Itch-io stays in memory and resumes exactly where you left it when you wake the device.
 - **Hold 2 seconds** — device shuts down cleanly.
 
 If a background task (ROM download, game list cache build, inventory check) is running when you press the power button, a full-screen **"Please wait"** overlay is shown until the task finishes. The action fires automatically — no confirmation or extra button press needed.
@@ -174,10 +231,10 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
   Switching cores instantly moves all previously downloaded Pico-8 files (ROMs and cover art) to the new folder — no manual file management needed. Switching back moves them back.
 - **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
-- **NextUI Theme** — when `On`, the Pak follows the colour palette configured in
+- **NextUI Theme** — when `On`, Itch-io follows the colour palette configured in
   NextUI, and the row shows which one is active. Only appears when NextUI's
   settings file is present. Defaults to `Off`
-- **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio-pak.log` on the SD card.
+- **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Refresh Game List** — re-fetches the full game list from itch.io across all platform feeds with a live progress screen showing how many games have been retrieved; the cache is updated on completion. Press **B** at any time to cancel the fetch cleanly — no partial cache is written
 - **Update Inventory** — manually triggers a background check for new upstream files, removed games, and missing cover art across all inventory entries; the right side of the row shows when the last check ran (`just now`, `Xm ago`, `Xh ago`, or `Xd ago`) or `never` if no check has run yet
@@ -206,45 +263,64 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
 ## Installation
 
-There are two release files on the [Releases](../../releases) page. Both support
-all devices — the difference is the directory structure inside:
+Release files on the [Releases](../../releases) page are named after the firmware
+they are for. Pick the row that matches your device:
 
-| File | What's inside | Use when |
-|---|---|---|
-| `Itch-io.pak.zip` | Pak files only (no folder wrapper) | Pak Store install, or manual install where you place it in the right platform folder yourself |
-| `Itch-io.pakz` | Full `Tools/<platform>/Itch-io.pak/` tree | Manual install — extract to SD card root and all platforms are set up at once |
+| File | Firmware | What's inside | Use when |
+|---|---|---|---|
+| `Itch-io.pak.zip` | NextUI | Pak files only (no folder wrapper) | Pak Store install |
+| `Itch-io.NextUI.<version>.pak.zip` | NextUI | Pak files only (no folder wrapper) | Manual install where you place the files in the right platform folder yourself |
+| `Itch-io.NextUI.<version>.pakz` | NextUI | Full `Tools/<platform>/Itch-io.pak/` tree | Manual install — extract to SD card root and all platforms are set up at once |
+| `Itch-io.muOS.<version>.muxapp` | muOS | The application directory | Install through muOS's Archive Manager |
+
+The two NextUI `.pak.zip` files are identical; the unversioned name exists
+because that is what the Pak Store fetches.
 
 ### Via the Pak Store (recommended)
 
 Open the Pak Store on your device, find **Itch-io**, and press **A** to install.
 The Pak Store downloads and installs `Itch-io.pak.zip` automatically.
 
-### Manual install — `Itch-io.pak.zip`
+### Manual install — `Itch-io.NextUI.<version>.pak.zip`
 
 Use this if you want to install without the Pak Store and prefer to place files
 yourself.
 
-1. Download `Itch-io.pak.zip` from the [Releases](../../releases) page.
+1. Download `Itch-io.NextUI.<version>.pak.zip` from the [Releases](../../releases) page.
 2. Create the destination folder on your SD card for your device:
    - TrimUI Brick / Smart Pro: `Tools/tg5040/Itch-io.pak/`
    - TrimUI Smart Pro S: `Tools/tg5050/Itch-io.pak/`
    - Miyoo Flip: `Tools/my355/Itch-io.pak/`
 3. Extract the contents of the zip **into** that folder (the folder should contain
-   `launch.sh`, `itchio-pak`, `pak.json`, etc. directly — not a nested subfolder).
+   `launch.sh`, `itchio`, `pak.json`, etc. directly — not a nested subfolder).
 4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
 5. Connect to WiFi before launching.
 
-### Manual install — `Itch-io.pakz` (all platforms at once)
+### Manual install — `Itch-io.NextUI.<version>.pakz` (all platforms at once)
 
 Use this if you want to set up all supported platforms in one step, or if you
 are preparing an SD card that will be used across multiple device types.
 
-1. Download `Itch-io.pakz` from the [Releases](../../releases) page.
-2. Rename it to `Itch-io.pakz.zip` (most tools require a `.zip` extension to extract).
+1. Download `Itch-io.NextUI.<version>.pakz` from the [Releases](../../releases) page.
+2. Rename it to end in `.zip` (most tools require a `.zip` extension to extract).
 3. Extract the contents directly to the **root** of your SD card. The archive
    already contains the correct `Tools/<platform>/Itch-io.pak/` structure.
 4. Reinsert the SD card and boot into NextUI — **Itch-io** will appear in Tools.
 5. Connect to WiFi before launching.
+
+### muOS install
+
+1. Download `Itch-io.muOS.<version>.muxapp` from the [Releases](../../releases) page.
+2. Copy it into the `ARCHIVE` folder on your SD card — do not rename it or
+   unpack it; muOS installs it as-is.
+3. On the device: **Applications → Archive Manager**, select the file, press **A**.
+4. **Itch.io** now appears under Applications.
+5. Connect to Wi-Fi before launching.
+
+Updating works the same way: install the new `.muxapp` over the old one. Your
+settings, inventory and caches live in the application's own `data/` folder and
+survive both an update and a muOS system update.
+
 
 ---
 
@@ -318,7 +394,7 @@ are preparing an SD card that will be used across multiple device types.
     </td>
     <td align="center">
       <img src="docs/screenshots/theme-macchiato.png" alt="NextUI theme applied" width="480"/><br/>
-      <sub>NextUI theme — the Pak following the device's Catppuccin Macchiato palette</sub>
+      <sub>NextUI theme — Itch-io following the device's Catppuccin Macchiato palette</sub>
     </td>
   </tr>
 </table>
@@ -338,13 +414,13 @@ API key. The Settings screen shows **FOUND** (green) when a key is active.
 2. Go to <https://itch.io/user/settings/api-keys>.
 3. Click **Generate new API key** and copy the key.
 
-### Adding the key to the Pak
+### Adding the key to Itch-io
 
 #### Option 1 — Built-in virtual keyboard (recommended)
 
 Open **Settings** (press **Start** from any screen), navigate to **API Key**,
 and press **A**. A virtual keyboard appears where you can type the key
-directly on-device. Confirm with the **OK** key; the Pak validates the key
+directly on-device. Confirm with the **OK** key; Itch-io validates the key
 immediately and shows `WORKING` on success.
 
 To update an existing key, navigate to **API Key** in Settings and press **Y**
@@ -377,7 +453,7 @@ adb pull /mnt/SDCARD/.userdata/shared/Itch-io/config.json config.json
 adb push config.json /mnt/SDCARD/.userdata/shared/Itch-io/config.json
 ```
 
-If you have never launched the Pak and no config file exists yet, you can
+If you have never launched Itch-io and no config file exists yet, you can
 create a minimal one:
 
 ```json
@@ -450,13 +526,13 @@ in the Settings screen on the device.
   1. **Visit itch.io in a browser on the same WiFi network.** Your device and your
      phone or laptop share the same public IP address. If Cloudflare presents a
      human-verification challenge in the browser and you pass it, the IP is marked
-     as human traffic. Return to the Pak and press **A** (game list) or retry the
+     as human traffic. Return to Itch-io and press **A** (game list) or retry the
      refresh — it will often succeed immediately afterwards.
   2. **Wait a few minutes and retry.** Cloudflare challenges are sometimes
-     temporary. The Pak retries the request each time you press **A** on the error
+     temporary. Itch-io retries the request each time you press **A** on the error
      screen.
   3. **Try a different network.** Switching WiFi networks (e.g. a mobile hotspot)
-     gives the Pak a fresh public IP that may not be challenged.
+     gives Itch-io a fresh public IP that may not be challenged.
 
 - **Animated GIF thumbnail conversion is best-effort.** When a game's cover art
   is an animated GIF, a static PNG thumbnail is derived from it automatically
@@ -467,7 +543,7 @@ in the Settings screen on the device.
 
 - **Some Pico-8 games have no downloadable files.** A number of Pico-8 titles on
   itch.io are published as browser-only experiences with no file uploads at all.
-  When this happens the Pak shows a clear "No downloads available" message with a
+  When this happens Itch-io shows a clear "No downloads available" message with a
   QR code so you can open the game's itch.io page and play it in a browser instead.
 
 - **Multi-cart Pico-8 games require the official Pico-8 core.** Games that ship as
@@ -491,7 +567,7 @@ in the Settings screen on the device.
 - **"Pay What You Want" games with a mandatory minimum price show as free.**
   itch.io reports a price of `0` in its RSS feed for games configured as
   "name your price", even when the creator has set a non-zero minimum purchase
-  amount. The Pak cannot distinguish these from genuinely free games using feed
+  amount. Itch-io cannot distinguish these from genuinely free games using feed
   data alone, so they are labelled **Free** and appear in the `[FREE]` filter.
   You can recognise them on itch.io by their **"Download Now"** button (instead
   of "Buy Now") and a note that a minimum purchase price is required. If you
@@ -519,8 +595,12 @@ make test
 # Build native binary (requires local SDL2 dev libs)
 make build-native
 
-# Cross-compile for all supported platforms
+# Cross-compile every target (all firmwares, all devices)
 make build-all
+
+# Cross-compile one firmware, or one target
+./scripts/build.sh nextui
+./scripts/build.sh nextui/tg5040
 
 # Assemble release zips in dist/
 make release
@@ -547,9 +627,11 @@ internal/
   roms/               — ROM type detection, destination folder mapping
   settings/           — JSON config read/write
   ui/                 — screen-based UI (list, detail, fetch, ROM picker, download, settings)
-lib/{tg5040,my355}/   — bundled SDL2 .so files (tg5050 shares tg5040's libs)
+bin/<firmware>/<device>/ — built binaries, e.g. bin/nextui/tg5040/itchio
+lib/<toolchain>/      — SDL2 .so files harvested from each toolchain sysroot
 docs/                 — interaction flow reference and screenshots
 scripts/              — build, test, release, deploy, debug, screenshot helpers
+scripts/targets.sh    — single source of truth for firmware x device build targets
 docker/               — cross-compilation container image
 assets/               — font.ttf, CA certificate bundle
 testdata/             — captured HTML/RSS fixtures for offline unit tests

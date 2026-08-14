@@ -14,6 +14,11 @@ else
     PLATFORM_LIB="$PAK_DIR/lib/tg5040"
 fi
 
+# Remove the pre-rename binary left behind when upgrading over an older pak.
+# Installing writes the new "itchio" alongside it rather than replacing it, so
+# without this every upgraded device carries a dead 14MB copy for ever.
+rm -f "$PAK_DIR/itchio-pak" 2>/dev/null || true
+
 # Remove stale versioned SDL2 files left by previous pak versions.  Only the
 # SONAME files (libSDL2-2.0.so.0, libSDL2_ttf-2.0.so.0) are needed at runtime;
 # the versioned siblings are never referenced directly by the dynamic linker.
@@ -37,7 +42,9 @@ export PATH="$PAK_DIR:$PATH"
 # bundle we ship so HTTPS requests to itch.io can be verified correctly.
 export SSL_CERT_FILE="$PAK_DIR/assets/ca-certificates.crt"
 mkdir -p "$HOME"
-cd "$PAK_DIR"
+# The binary loads assets/font.ttf relative to the working directory, so a
+# failed cd would start it with no fonts rather than not at all.
+cd "$PAK_DIR" || exit 1
 # Optional profiling flags written by ./scripts/debug.sh profile commands.
 # Absent in normal operation; present only during a profiling session.
 # Word-splitting is intentional — the file contains space-separated flags.
@@ -46,4 +53,4 @@ if [ -f "$PAK_DIR/.profile-flags" ]; then
     PROFILE_FLAGS="$(cat "$PAK_DIR/.profile-flags")"
 fi
 # shellcheck disable=SC2086
-exec "$PAK_DIR/itchio-pak" $PROFILE_FLAGS "$@"
+exec "$PAK_DIR/itchio" $PROFILE_FLAGS "$@"

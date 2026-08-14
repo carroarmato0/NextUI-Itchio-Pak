@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -25,9 +26,14 @@ const (
 )
 
 func runSDL() {
-	cfgPath := os.Getenv("HOME") + "/config.json"
-	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
-	ownedCachePath := filepath.Join(filepath.Dir(cfgPath), "owned_cache.json")
+	env := firmware.Active()
+
+	// All mutable app state lives in one directory chosen by the firmware, so a
+	// launcher can put it somewhere that survives a firmware update.
+	dataDir := env.DataDir()
+	cfgPath := filepath.Join(dataDir, "config.json")
+	cachePath := filepath.Join(dataDir, "games_cache.json")
+	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
@@ -39,7 +45,7 @@ func runSDL() {
 	}
 	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
 
-	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
+	inventoryPath := filepath.Join(dataDir, "inventory.json")
 	inv, _ := inventory.Load(inventoryPath)
 	inv.VerifyAndClean(inventoryPath)
 
@@ -60,17 +66,34 @@ func runSDL() {
 	}
 
 	// Open all connected game controllers so button events are delivered.
+	//
+	// The mapping is logged because it is the thing that decides which physical
+	// button produces SDL_CONTROLLER_BUTTON_A. Firmware disagrees about this:
+	// muOS ships two mappings for the same hardware and lets the user pick,
+	// which swaps the face buttons. Without this line, "confirm and cancel are
+	// the wrong way round" is unanswerable from a log.
 	for i := 0; i < sdl.NumJoysticks(); i++ {
 		if sdl.IsGameController(i) {
 			if gc := sdl.GameControllerOpen(i); gc != nil {
+				logger.Info("input: controller %d %q", i, gc.Name())
+				logger.Debug("input: mapping %s", gc.Mapping())
 				defer gc.Close()
 			}
 		} else {
 			if js := sdl.JoystickOpen(i); js != nil {
+				logger.Info("input: joystick %d %q (no controller mapping)", i, js.Name())
 				defer js.Close()
 			}
 		}
 	}
+	// muOS exports this; it is what makes its retro/modern face-button choice
+	// take effect. Shadowing the settings cfg here would be a trap.
+	if gcConfig := os.Getenv("SDL_GAMECONTROLLERCONFIG"); gcConfig != "" {
+		logger.Debug("input: SDL_GAMECONTROLLERCONFIG=%s", gcConfig)
+	}
+
+	// Bind the face buttons before any screen can handle an event.
+	ui.SetFaceMapping(env.FaceMapping())
 
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
@@ -78,9 +101,10 @@ func runSDL() {
 	}
 	logger.Info("display: %dx%d", w, h)
 
-	// theme.SettingsPath is the same file inventory.NXSettingsPath names; both
-	// point at NextUI's shared minuisettings.txt.
-	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(theme.SettingsPath)
+	// The firmware's own settings file — NextUI's minuisettings.txt. Empty on
+	// firmware with no palette system, where LoadSettings reports unavailable
+	// and the app falls back to its own theme.
+	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(env.SettingsFile())
 	defaultTheme := theme.Defaults()
 
 	activeTheme := defaultTheme
@@ -95,7 +119,7 @@ func runSDL() {
 	// minuisettings.txt — but it records in the log what a user actually has
 	// installed, which is the first thing worth knowing when a theme bug is
 	// reported.
-	theme.EnumeratePalettes(theme.BuiltinPaletteDir, theme.UserPaletteDir)
+	theme.EnumeratePalettes(env.PaletteDirs())
 
 	r, err := renderer.New("Itch.io", int(w), int(h), activeTheme)
 	if err != nil {
@@ -151,8 +175,10 @@ func runSDL() {
 		pendingAction = power.ActionSleep
 	)
 
-	platform := readPlatform()
-	if platform == "my355" {
+	// Keyed off the firmware's device code rather than the PLATFORM variable
+	// directly: only NextUI exports PLATFORM, and this workaround is about the
+	// hardware, not the firmware that happens to be on it.
+	if env.Device() == "my355" {
 		const joyTypePath = "/sys/class/miyooio_chr_dev/joy_type"
 		logger.Debug("input: checking for my355 joy_type workaround at %s", joyTypePath)
 		if _, err := os.Stat(joyTypePath); err == nil {
@@ -201,6 +227,7 @@ loop:
 		}
 		for e != nil {
 			gotEvent = true
+			logControllerButton(e)
 			if pendingQuit {
 				e = sdl.PollEvent()
 				continue // drain input while waiting for tasks
@@ -258,8 +285,10 @@ loop:
 					}
 					break loop // exit cleanly; NextUI detects /tmp/poweroff and shuts down
 				}
-				suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
-				if _, err := os.Stat(suspendPath); err != nil {
+				// Empty when the firmware suspends the app itself rather than
+				// exposing a script for it.
+				suspendPath := env.SuspendCmd()
+				if _, err := os.Stat(suspendPath); suspendPath == "" || err != nil {
 					logger.Warn("power: suspend script not found at %s, exiting instead", suspendPath)
 					current = nil
 				} else {
@@ -311,4 +340,37 @@ func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
 	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, mt[0], mt[1], mt[2])
 	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, ht[0], ht[1], ht[2])
 	r.Present()
+}
+
+// controllerButtonNames maps SDL's logical face and shoulder buttons to their
+// SDL names. Deliberately SDL's names, not the labels printed on any particular
+// shell: which physical button produces which of these is what varies.
+var controllerButtonNames = map[uint8]string{
+	sdl.CONTROLLER_BUTTON_A:             "A",
+	sdl.CONTROLLER_BUTTON_B:             "B",
+	sdl.CONTROLLER_BUTTON_X:             "X",
+	sdl.CONTROLLER_BUTTON_Y:             "Y",
+	sdl.CONTROLLER_BUTTON_BACK:          "BACK",
+	sdl.CONTROLLER_BUTTON_GUIDE:         "GUIDE",
+	sdl.CONTROLLER_BUTTON_START:         "START",
+	sdl.CONTROLLER_BUTTON_LEFTSHOULDER:  "L1",
+	sdl.CONTROLLER_BUTTON_RIGHTSHOULDER: "R1",
+	sdl.CONTROLLER_BUTTON_DPAD_UP:       "UP",
+	sdl.CONTROLLER_BUTTON_DPAD_DOWN:     "DOWN",
+	sdl.CONTROLLER_BUTTON_DPAD_LEFT:     "LEFT",
+	sdl.CONTROLLER_BUTTON_DPAD_RIGHT:    "RIGHT",
+}
+
+// logControllerButton records button presses at debug level so a report of
+// "the buttons are wrong on my device" can be diagnosed from the log alone.
+func logControllerButton(e sdl.Event) {
+	ev, ok := e.(*sdl.ControllerButtonEvent)
+	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
+		return
+	}
+	name, known := controllerButtonNames[ev.Button]
+	if !known {
+		name = "?"
+	}
+	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
 }

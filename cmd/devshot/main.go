@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -212,9 +213,10 @@ func loadPalettes(dir string) []theme.Palette {
 	if dir != "" {
 		return theme.EnumeratePalettes(dir, "")
 	}
+	builtin, _ := firmware.Detect().PaletteDirs()
 	for _, d := range []string{
 		"testdata/palettes",
-		theme.BuiltinPaletteDir,
+		builtin, // empty off-device, where EnumeratePalettes finds nothing
 	} {
 		if pals := theme.EnumeratePalettes(d, ""); len(pals) > 0 {
 			return pals

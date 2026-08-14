@@ -7,12 +7,12 @@ import (
 )
 
 var jumpGames = []itchio.Game{
-	{Title: "Alwa's Awakening"},  // 0 → a
-	{Title: "Arkade Boy"},        // 1 → a
-	{Title: "Balloon Trip"},      // 2 → b
-	{Title: "Byte Defender"},     // 3 → b
-	{Title: "Cave Crawler"},      // 4 → c
-	{Title: "Dino Quest"},        // 5 → d
+	{Title: "Alwa's Awakening"}, // 0 → a
+	{Title: "Arkade Boy"},       // 1 → a
+	{Title: "Balloon Trip"},     // 2 → b
+	{Title: "Byte Defender"},    // 3 → b
+	{Title: "Cave Crawler"},     // 4 → c
+	{Title: "Dino Quest"},       // 5 → d
 }
 
 func TestAlphaJumpForward(t *testing.T) {

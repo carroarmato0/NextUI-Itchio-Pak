@@ -21,6 +21,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+. "$SCRIPT_DIR/targets.sh"
+. "$SCRIPT_DIR/adb.sh"
+
 # ── All supported screens and their readiness patterns ────────────────────────
 # Format: "<screen>:<wait_pattern>"
 # The wait_pattern is grepped from the device log to detect when the screen
@@ -86,13 +89,7 @@ while [ $# -gt 0 ]; do
 done
 
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
-if ! command -v adb >/dev/null 2>&1; then
-    echo "ERROR: adb not found. Install android-tools." >&2; exit 1
-fi
-if ! adb devices | grep -q "device$"; then
-    echo "ERROR: no ADB device connected. Check USB cable and ADB enable in NextUI settings." >&2
-    exit 1
-fi
+adb_use nextui
 
 # ── Platform detection (done once) ───────────────────────────────────────────
 if [ -n "${DEPLOY_PLATFORM:-}" ]; then
@@ -112,18 +109,19 @@ else
     echo "    Detected: $PLATFORM"
 fi
 
+TARGET="nextui/$PLATFORM"
 PAK_DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch-io.pak"
-LOG_PATH="/mnt/SDCARD/.userdata/$PLATFORM/logs/itchio-pak.log"
+LOG_PATH="/mnt/SDCARD/.userdata/$PLATFORM/logs/$BIN_NAME.log"
 
 # ── Build once ────────────────────────────────────────────────────────────────
 if [ "$NO_BUILD" -eq 0 ]; then
-    echo "==> Cross-compiling for $PLATFORM..."
-    ./scripts/build.sh "$PLATFORM"
+    echo "==> Cross-compiling for $TARGET..."
+    ./scripts/build.sh "$TARGET"
 fi
 
 # ── Push binary once ──────────────────────────────────────────────────────────
 echo "==> Pushing binary to device..."
-adb push "bin/$PLATFORM/itchio-pak" "$PAK_DEST/itchio-pak"
+adb push "$(target_binary "$TARGET")" "$PAK_DEST/$BIN_NAME"
 
 # ── Keepawake: prevent device idle-sleep during the capture session ───────────
 # When launched from ADB (not via NextUI), the system's idle-timeout is not
@@ -157,7 +155,7 @@ capture_screen() {
     echo "── Screen: $_SCREEN ──────────────────────────────────────────────────"
 
     # Kill any running instance and clear the log.
-    adb shell "pkill -f itchio-pak 2>/dev/null; sleep 0.4; true" || true
+    adb shell "pkill -f $BIN_NAME 2>/dev/null; sleep 0.4; true" || true
     adb shell "truncate -s 0 '$LOG_PATH' 2>/dev/null || rm -f '$LOG_PATH' 2>/dev/null; true" || true
 
     # Launch in background with dev env vars.
@@ -200,7 +198,7 @@ capture_screen() {
 
     # Kill unless this is the last screen and --keep-alive was set.
     if [ "$_LAST" -eq 0 ] || [ "$KEEP_ALIVE" -eq 0 ]; then
-        adb shell "pkill -f itchio-pak 2>/dev/null; true" || true
+        adb shell "pkill -f $BIN_NAME 2>/dev/null; true" || true
     fi
 }
 

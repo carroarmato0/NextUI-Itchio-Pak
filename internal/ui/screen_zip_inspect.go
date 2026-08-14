@@ -24,7 +24,7 @@ type ZIPPlan struct {
 	CDNURL   string
 	Manifest roms.ZIPManifest
 
-	DownloadROMs bool
+	DownloadROMs  bool
 	DownloadMusic bool
 	// Pico8GameDir, when non-empty, triggers path-preserving extraction of all
 	// .p8/.p8.png/.lua files from the ZIP into this directory.
@@ -136,7 +136,7 @@ func (s *ZIPInspectScreen) runInspect() {
 	s.storeState(zipInspectDone)
 }
 
-func (s *ZIPInspectScreen) NeedsRedraw() bool        { return true }
+func (s *ZIPInspectScreen) NeedsRedraw() bool         { return true }
 func (s *ZIPInspectScreen) HasPendingAnimation() bool { return false }
 
 func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
@@ -225,9 +225,9 @@ func (s *ZIPInspectScreen) HandleEvent(e sdl.Event) Screen {
 	case *sdl.ControllerButtonEvent:
 		if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
+			case btnB: // physical B — cancel at any time
 				return s.prev
-			case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
+			case btnA: // physical A — dismiss error
 				if s.loadState() == zipInspectError {
 					return s.prev
 				}

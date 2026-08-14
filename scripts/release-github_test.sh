@@ -40,6 +40,14 @@ else
 	check "notes include the changelog bullet" "$notes" "$FIRST_BULLET"
 fi
 check "notes include a compare link" "$notes" "/compare/"
+
+# The download table is the part of the notes a first-time reader needs, so it
+# is generated rather than hand-written and every firmware must appear in it.
+check "notes ask which file you need" "$notes" "Which file do I need?"
+check "notes offer the muOS artifact" "$notes" "Itch-io.muOS.$VERSION.muxapp"
+check "notes offer the NextUI pak" "$notes" "Itch-io.NextUI.$VERSION.pak.zip"
+check "notes offer the NextUI multi-device bundle" "$notes" "Itch-io.NextUI.$VERSION.pakz"
+check "notes keep the Pak Store filename" "$notes" '`Itch-io.pak.zip`'
 check "compare link ends at current version" "$notes" "...$VERSION"
 [ -n "$PREV" ] && check "compare link starts at previous version" "$notes" "/compare/$PREV..."
 
@@ -55,7 +63,11 @@ check "compare link ends at current version" "$notes" "...$VERSION"
 #
 # Read the stream to completion before extracting — `unzip -p | grep -m1` is the
 # SIGPIPE race this script has a regression guard for further down.
-_bundle_json="$(unzip -p "$REPO_ROOT/dist/Itch-io.pakz" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null || true)"
+PAKZ_PATH="$REPO_ROOT/dist/nextui/Itch-io.NextUI.$VERSION.pakz"
+PAKZIP_PATH="$REPO_ROOT/dist/nextui/Itch-io.NextUI.$VERSION.pak.zip"
+MUXAPP_PATH="$REPO_ROOT/dist/muos/Itch-io.muOS.$VERSION.muxapp"
+
+_bundle_json="$(unzip -p "$PAKZ_PATH" 'Tools/*/Itch-io.pak/pak.json' 2>/dev/null || true)"
 _bundle_vers="$(printf '%s\n' "$_bundle_json" \
     | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sort -u)"
 BUNDLE_VER="${_bundle_vers%%$'\n'*}"
@@ -63,7 +75,7 @@ BUNDLE_VER="${_bundle_vers%%$'\n'*}"
 if [ -n "$BUNDLE_VER" ] && [ "$BUNDLE_VER" != "$VERSION" ]; then
 	printf 'skip - dry-run checks (dist/ holds %s, pak.json is %s; run scripts/release.sh)\n' \
 		"$BUNDLE_VER" "$VERSION"
-elif [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.zip" ]; then
+elif [ -f "$PAKZ_PATH" ] && [ -f "$PAKZIP_PATH" ] && [ -f "$MUXAPP_PATH" ]; then
 	dry="$("$SCRIPT" --dry-run 2>&1)"; dry_rc=$?
 	# Assert the exit status first. Without this, a script that dies early under
 	# `set -e` produces empty output and is reported as three confusing
@@ -74,8 +86,10 @@ elif [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.
 		printf 'FAIL - dry-run exits 0 (got %s, output: %s)\n' "$dry_rc" "${dry:-<empty>}"
 		fail=1
 	fi
-	check "dry-run mentions the .pakz artifact" "$dry" "Itch-io.pakz"
-	check "dry-run mentions the .pak.zip artifact" "$dry" "Itch-io.pak.zip"
+	check "dry-run mentions the .pakz artifact" "$dry" "Itch-io.NextUI.$VERSION.pakz"
+	check "dry-run mentions the .pak.zip artifact" "$dry" "Itch-io.NextUI.$VERSION.pak.zip"
+	check "dry-run mentions the Pak Store copy" "$dry" "dist/Itch-io.pak.zip"
+	check "dry-run mentions the .muxapp artifact" "$dry" "Itch-io.muOS.$VERSION.muxapp"
 	check "dry-run announces itself" "$dry" "DRY RUN"
 
 	# Regression guard for the SIGPIPE race that used to live in bundle_version:
@@ -98,6 +112,19 @@ elif [ -f "$REPO_ROOT/dist/Itch-io.pakz" ] && [ -f "$REPO_ROOT/dist/Itch-io.pak.
 	fi
 else
 	printf 'skip - dry-run checks (no dist/ artifacts; run scripts/release.sh)\n'
+fi
+
+# --- pre-release notes ---
+# A pre-release deliberately ships no Itch-io.pak.zip, because that is the
+# filename the Pak Store matches on. The notes must not advertise it either.
+pre="$("$SCRIPT" --print-notes --prerelease)"
+check "pre-release notes say it is a test build" "$pre" "This is a test build"
+check "pre-release notes still offer the muOS artifact" "$pre" "Itch-io.muOS.$VERSION.muxapp"
+if printf '%s' "$pre" | grep -qF '`Itch-io.pak.zip`'; then
+	printf 'FAIL - pre-release notes must not advertise the Pak Store asset\n'
+	fail=1
+else
+	printf 'ok   - pre-release notes omit the Pak Store asset\n'
 fi
 
 # --- unknown flag is rejected ---

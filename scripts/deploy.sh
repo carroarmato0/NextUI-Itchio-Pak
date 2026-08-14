@@ -4,75 +4,120 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+. "$SCRIPT_DIR/targets.sh"
+. "$SCRIPT_DIR/adb.sh"
+
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat <<'EOF'
-Usage: deploy.sh [<sd-path>|assets]
+Usage: deploy.sh [<sd-path>|assets|muos|muxapp]
 
-Deploy the release pak (dist/Itch-io.pak/) to a device.
-Run scripts/release.sh first to produce the pak directory.
+Deploy a built release to a connected device. Run scripts/release.sh first.
 
 Arguments:
-  <none>        Push to connected ADB device via USB (requires: adb)
-  <sd-path>     Copy to a mounted SD card, e.g. /run/media/user/SD
-  assets        Push only assets/ via ADB without a full rebuild
+  <none>        Push the NextUI pak to a connected NextUI device via ADB
+  <sd-path>     Copy the NextUI pak to a mounted SD card, e.g. /run/media/user/SD
+  assets        Push only assets/ to the NextUI device, without a full rebuild
+  muos          Push the muOS application directory straight to a muOS device
+  muxapp        Copy the .muxapp into the device's ARCHIVE folder, to install
+                through Applications -> Archive Manager the way a user would
 
 Environment:
-  DEPLOY_PLATFORM=tg5040|tg5050|my355   Target platform directory on device (default: tg5040)
+  DEPLOY_PLATFORM=tg5040|tg5050|my355   NextUI platform directory (default: tg5040)
+  ADB_SERIAL=<serial>                   Target a specific device; otherwise the
+                                        single attached device of the right
+                                        firmware is chosen automatically
+                                        (ANDROID_SERIAL is honoured too)
 
 Examples:
   ./scripts/deploy.sh
   ./scripts/deploy.sh /run/media/user/SD
-  ./scripts/deploy.sh assets
+  ./scripts/deploy.sh muos
+  ./scripts/deploy.sh muxapp
   DEPLOY_PLATFORM=my355 ./scripts/deploy.sh
 EOF
     exit 0
 fi
 
 PLATFORM="${DEPLOY_PLATFORM:-tg5040}"
-PAK_SRC="dist/Itch-io.pak"
+PAK_SRC="dist/nextui/Itch-io.pak"
+MUOS_SRC="dist/muos/Itch-io"
 
-if [ ! -d "$PAK_SRC" ]; then
-    echo "ERROR: $PAK_SRC not found. Run scripts/release.sh first." >&2
+require_built() {
+    [ -e "$1" ] && return 0
+    echo "ERROR: $1 not found. Run scripts/release.sh first." >&2
     exit 1
-fi
+}
 
-SD_PATH="${1:-}"
+MODE="${1:-}"
 
-# deploy.sh assets — push only the assets/ directory via ADB without requiring
-# a full release build. Useful when only asset files (fonts, certs) have changed.
-if [ "$SD_PATH" = "assets" ]; then
+case "$MODE" in
+assets)
+    # Push only the assets/ directory, for when fonts or the CA bundle changed
+    # but the binary did not.
     echo "==> Deploying assets/ via ADB..."
-    if ! command -v adb >/dev/null 2>&1; then
-        echo "ERROR: adb not found. Install android-tools (or android-platform-tools)." >&2; exit 1
-    fi
-    DEVICE="$(adb devices | awk 'NR==2 {print $1}')"
-    if [ -z "$DEVICE" ]; then
-        echo "ERROR: no ADB device connected. Check USB cable." >&2; exit 1
-    fi
+    adb_use nextui
     DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch-io.pak"
     adb push "assets/." "$DEST/assets/"
-    echo "Assets deployed to $DEVICE:$DEST/assets/"
-    exit 0
-fi
+    echo "Assets deployed to $ADB_DEVICE:$DEST/assets/"
+    ;;
 
-if [ -n "$SD_PATH" ]; then
+muos)
+    # Straight into the application directory, which is the fast path for
+    # iterating. It skips Archive Manager, so it does not prove the archive
+    # itself is well formed — use the muxapp mode for that.
+    require_built "$MUOS_SRC"
+    echo "==> Deploying to muOS via ADB..."
+    adb_use muos
+
+    ROM_MOUNT="$(adb shell 'cat /opt/muos/device/config/storage/rom/mount' | tr -d ' \t\r\n')"
+    [ -n "$ROM_MOUNT" ] || ROM_MOUNT="/mnt/mmc"
+    DEST="$ROM_MOUNT/MUOS/application/Itch-io"
+
+    adb shell "mkdir -p '$DEST'"
+    adb push "$MUOS_SRC/." "$DEST/"
+    # adb push does not preserve the exec bit, and muOS silently does nothing
+    # with a launcher it cannot execute.
+    adb shell "chmod +x '$DEST/mux_launch.sh' '$DEST/$BIN_NAME'"
+    echo "Deployed to $ADB_DEVICE:$DEST"
+    echo "Launch it from Applications on the device."
+    ;;
+
+muxapp)
+    # The real install path: drop the archive where muOS expects it and let the
+    # user install it through Archive Manager.
+    VERSION="$(pak_version)"
+    ARCHIVE="dist/muos/Itch-io.muOS.$VERSION.muxapp"
+    require_built "$ARCHIVE"
+    echo "==> Copying $(basename "$ARCHIVE") to the device ARCHIVE folder..."
+    adb_use muos
+
+    ROM_MOUNT="$(adb shell 'cat /opt/muos/device/config/storage/rom/mount' | tr -d ' \t\r\n')"
+    [ -n "$ROM_MOUNT" ] || ROM_MOUNT="/mnt/mmc"
+    DEST="$ROM_MOUNT/ARCHIVE"
+
+    adb shell "mkdir -p '$DEST'"
+    adb push "$ARCHIVE" "$DEST/"
+    echo "Copied to $ADB_DEVICE:$DEST/$(basename "$ARCHIVE")"
+    echo "On the device: Applications -> Archive Manager -> select it -> A"
+    ;;
+
+"")
+    require_built "$PAK_SRC"
+    echo "==> Deploying via ADB..."
+    adb_use nextui
+    DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch-io.pak"
+    adb shell "mkdir -p $DEST"
+    adb push "$PAK_SRC/." "$DEST/"
+    echo "Deployed to $ADB_DEVICE:$DEST"
+    ;;
+
+*)
+    require_built "$PAK_SRC"
+    SD_PATH="$MODE"
     echo "==> Deploying to SD card: $SD_PATH"
     DEST="$SD_PATH/Tools/$PLATFORM/Itch-io.pak"
     mkdir -p "$DEST"
     cp -r "$PAK_SRC/." "$DEST/"
     echo "Deployed to $DEST"
-else
-    echo "==> Deploying via ADB..."
-    if ! command -v adb >/dev/null 2>&1; then
-        echo "ERROR: adb not found. Install android-tools (or android-platform-tools)." >&2
-        exit 1
-    fi
-    DEVICE="$(adb devices | awk 'NR==2 {print $1}')"
-    if [ -z "$DEVICE" ]; then
-        echo "ERROR: no ADB device connected. Check USB cable." >&2; exit 1
-    fi
-    DEST="/mnt/SDCARD/Tools/$PLATFORM/Itch-io.pak"
-    adb shell "mkdir -p $DEST"
-    adb push "$PAK_SRC/." "$DEST/"
-    echo "Deployed to $DEVICE:$DEST"
-fi
+    ;;
+esac

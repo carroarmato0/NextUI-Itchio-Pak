@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
@@ -16,8 +17,10 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-// locationRoot is the highest directory the user can navigate to.
-const locationRoot = "/mnt/SDCARD"
+// locationRoot is the highest directory the user can navigate to. It is the
+// SD card root on NextUI and the ROM storage root on muOS, so it is resolved
+// from the firmware rather than fixed.
+func locationRoot() string { return firmware.Active().BrowseRoot() }
 
 type rowKind int
 
@@ -108,7 +111,7 @@ func (s *LocationPickerScreen) loadDir(dir string) {
 		dir += "/"
 	}
 	s.currentDir = dir
-	s.rows = buildRows(dir, locationRoot)
+	s.rows = buildRows(dir, locationRoot())
 	s.cursor = 0
 	s.scrollOffset = 0
 }
@@ -146,7 +149,7 @@ func buildRows(dir, root string) []pickerRow {
 
 // atRoot reports whether the browser is already at locationRoot.
 func (s *LocationPickerScreen) atRoot() bool {
-	return strings.TrimRight(s.currentDir, "/") == locationRoot
+	return strings.TrimRight(s.currentDir, "/") == locationRoot()
 }
 
 // clampScroll adjusts scrollOffset so that cursor is always visible.
@@ -167,7 +170,7 @@ func (s *LocationPickerScreen) clampScroll(visibleCount int) {
 	}
 }
 
-func (s *LocationPickerScreen) NeedsRedraw() bool { return false }
+func (s *LocationPickerScreen) NeedsRedraw() bool         { return false }
 func (s *LocationPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
@@ -338,9 +341,9 @@ func (s *LocationPickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			return s.activate()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.goUp()
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev // cancel, no download

@@ -196,9 +196,9 @@ func (s *ContentModerationScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			return s.activate()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		}
 	}
