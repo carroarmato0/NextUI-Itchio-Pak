@@ -70,8 +70,25 @@ func main() {
 	logger.Info("git commit: %s", gitCommit)
 	logger.Info("firmware:   %s", env.Kind())
 	logger.Info("device:     %s (%s)", deviceOrUnknown(env.Device()), env.DeviceLabel())
+	// H700 is one PLATFORM across eleven SKUs, so without these two a bug
+	// report cannot be told apart from ten other handhelds. RGXX_MODEL is the
+	// stock firmware's own name for the board and is display-only upstream.
+	if sku := os.Getenv("DEVICE"); sku != "" {
+		// RGXX_MODEL is only set by Anbernic's stock firmware; other NextUI
+		// platforms export DEVICE too, so printing "(stock model: unknown)"
+		// unconditionally would put a meaningless parenthetical on every
+		// TrimUI log line. Only show it when there is a real value to show.
+		if model := os.Getenv("RGXX_MODEL"); model != "" {
+			logger.Info("device sku: %s (stock model: %s)", sku, model)
+		} else {
+			logger.Info("device sku: %s", sku)
+		}
+	}
 	logger.Info("fw version: %s", env.FirmwareVersion())
 	logger.Info("storage:    root=%s data=%s", env.Root(), env.DataDir())
+	// launch.sh silently picks a native SDL directory and a bundled one with no
+	// log line of its own; this is the one place that records what it resolved.
+	logger.Info("ld_libs:    %s", os.Getenv("LD_LIBRARY_PATH"))
 	logRomDirs(env)
 	profilingDesc := "off"
 	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {

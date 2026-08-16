@@ -16,7 +16,8 @@
   "platforms": [
     "tg5040",
     "tg5050",
-    "my355"
+    "my355",
+    "h700"
   ],
   "targets": [
     {
@@ -35,12 +36,18 @@
       "label": "Miyoo Flip"
     },
     {
+      "firmware": "nextui",
+      "device": "h700",
+      "label": "Anbernic RG XX (H700)"
+    },
+    {
       "firmware": "muos",
       "device": "arm64",
       "label": "every muOS device"
     }
   ],
   "changelog": {
+    "v1.0.23-rc3": "\n• Adds support for Anbernic RG XX handhelds (H700) running NextUI.\n• Layouts now fit the 720×480 and 720×720 screens those devices use.\n• Test build: please report how it goes, and say which model you have.",
     "v1.0.23-rc2": "\n• muOS: the Applications icon is lighter and now matches whatever size your theme uses, instead of assuming one.\n• Otherwise identical to rc1 — still a test build.",
     "v1.0.23-rc1": "\n• Adds muOS support — Itch-io now runs on MustardOS as well as NextUI.\n• On muOS: downloads land in your existing ROM folders, box art goes to the muOS catalogue, and features with no muOS equivalent are hidden rather than guessed at.\n• Test build: please report how it goes on your device.",
     "v1.0.22": "\n• Fix a case where two ROMs inside one archive could be saved under the same name, leaving only one of them.",

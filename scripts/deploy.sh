@@ -22,7 +22,7 @@ Arguments:
                 through Applications -> Archive Manager the way a user would
 
 Environment:
-  DEPLOY_PLATFORM=tg5040|tg5050|my355   NextUI platform directory (default: tg5040)
+  DEPLOY_PLATFORM=tg5040|tg5050|my355|h700   NextUI platform directory (default: tg5040)
   ADB_SERIAL=<serial>                   Target a specific device; otherwise the
                                         single attached device of the right
                                         firmware is chosen automatically

@@ -296,7 +296,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
-		if r.W <= narrowScreenW {
+		if abbreviate(r.W) {
 			dlLabel = "● DL"
 		}
 		dw, _ := r.SmallTextSize(dlLabel)
@@ -330,7 +330,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// doesn't jump in size once the QR code and detail data arrive.
 	// QR column narrower than before — screenshot gets more horizontal space.
 	qrColW := r.W / 5
-	if r.W <= narrowScreenW {
+	if abbreviate(r.W) {
 		qrColW = r.W / 6
 	}
 	imgAreaW := r.W - qrColW - margin - 10
@@ -553,7 +553,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				s.pathScrollX = 0
 				pth := r.Theme.Muted()
 				r.DrawSmallText(pathText, textX, cardY+cp+2, pth[0], pth[1], pth[2])
-			} else if r.W <= narrowScreenW {
+			} else if abbreviate(r.W) {
 				// On small screens truncate the path rather than scrolling.
 				truncated := truncateSmallToWidth(r, pathText, textMaxW)
 				pth := r.Theme.Muted()
@@ -655,7 +655,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
-		if r.W <= narrowScreenW {
+		if abbreviate(r.W) {
 			dlLabel = "● DL"
 		}
 		dw, _ := r.SmallTextSize(dlLabel)
@@ -681,7 +681,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgePill, Label: "←→", Text: "Screenshots"},
 	}
-	if r.W > narrowScreenW {
+	if !abbreviate(r.W) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
 	if s.contentHeight > contentH {
@@ -1139,12 +1139,12 @@ func pruneDeletedDirs(files []inventory.DownloadedFile, pico8Core string) {
 	}
 }
 
-// backHints returns standard "back + settings" footer hints scaled to screen width.
+// backHints returns standard "back + settings" footer hints scaled to screen size.
 func backHints(screenW int32) []renderer.FooterHint {
 	hints := []renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
-	if screenW > narrowScreenW {
+	if !abbreviate(screenW) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	} else {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})

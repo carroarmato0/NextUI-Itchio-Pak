@@ -123,18 +123,25 @@ echo "==> Creating release archives..."
 pid_zip1=$!
 
 # Multi-device bundle (.pakz) for manual SD card installation.
-# Each platform directory gets its own binary and only its own lib dir.
+# Each platform directory gets its own binary; only platforms that bundle SDL2
+# also get their own lib dir (h700 links the firmware's SDL2 and gets none).
 mkdir -p dist/nextui/all/Tools
 for t in $(targets_for nextui); do
     dev="$(target_device "$t")"
     PLAT_PAK="dist/nextui/all/Tools/$dev/Itch-io.pak"
-    mkdir -p "$PLAT_PAK/lib/$dev" "$PLAT_PAK/assets"
+    mkdir -p "$PLAT_PAK/assets"
     cp "$(target_binary "$t")" "$PLAT_PAK/$BIN_NAME"
     cp launch.sh               "$PLAT_PAK/launch.sh"
     cp pak.json                "$PLAT_PAK/pak.json"
     cp -r assets/.             "$PLAT_PAK/assets/"
     rm -f "$PLAT_PAK/assets/.gitkeep"
-    cp -L "$(toolchain_libdir "$(target_toolchain "$t")")"/* "$PLAT_PAK/lib/$dev/" 2>/dev/null || true
+    # Only targets that ship their own SDL2 get a lib dir.  h700 links the
+    # SDL2 NextUI installs in .system/h700/lib; a lib dir here would put ours
+    # ahead of it.
+    if target_bundles_sdl "$t"; then
+        mkdir -p "$PLAT_PAK/lib/$dev"
+        cp -L "$(toolchain_libdir "$(target_toolchain "$t")")"/* "$PLAT_PAK/lib/$dev/" 2>/dev/null || true
+    fi
 done
 
 (
@@ -183,3 +190,12 @@ chmod +x "$MUOS_APP/mux_launch.sh" "$MUOS_APP/$BIN_NAME"
 
 echo "==> Release artifacts:"
 find dist -maxdepth 2 -type f \( -name '*.zip' -o -name '*.pakz' -o -name '*.muxapp' \) | sort
+
+# ./scripts/test.sh above ran these against an empty (just-cleared) dist/, so
+# they skipped cleanly and proved nothing about this release. Run them again
+# now that the artifacts actually exist, so a release verifies what it just
+# built rather than depending on a human remembering to run a second command.
+# In particular this is what enforces "no artifact may contain lib/h700/".
+echo "==> Verifying release artifacts..."
+./scripts/release-pak_test.sh
+./scripts/release-muxapp_test.sh

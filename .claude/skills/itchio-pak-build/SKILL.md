@@ -5,6 +5,11 @@ description: Use when building, testing, cross-compiling, releasing, or deployin
 
 # Itch.io Pak — Build & Release Reference
 
+> **Note:** parts of this file predate `scripts/targets.sh` and still refer to
+> `build.sh <platform>`, a binary named `itchio-pak`, and `Dockerfile.platform`.
+> The current shape is `build.sh <firmware>/<device>`, a binary named `itchio`,
+> and `docker/Dockerfile.toolchain`. `scripts/targets.sh` is authoritative.
+
 ## Quick Commands
 
 | Action | Command |
@@ -12,7 +17,7 @@ description: Use when building, testing, cross-compiling, releasing, or deployin
 | Run tests | `./scripts/test.sh` |
 | Tests + coverage HTML | `./scripts/test.sh --coverage` |
 | Build for host machine | `./scripts/build.sh native` |
-| Build one platform | `./scripts/build.sh tg5040` |
+| Build one platform | `./scripts/build.sh nextui/tg5040` |
 | Build all platforms | `./scripts/build.sh all` |
 | Create release artifacts | `./scripts/release.sh` |
 | Deploy via ADB | `./scripts/deploy.sh` |
@@ -20,6 +25,18 @@ description: Use when building, testing, cross-compiling, releasing, or deployin
 | Capture device screenshot | `./scripts/screenshot.sh` |
 
 All commands also available as `make <target>`: `test`, `build-native`, `build-all`, `release`, `deploy`, `clean`.
+
+## Build Targets
+
+Declared in `scripts/targets.sh` as `<firmware>/<device>`.
+
+| Target | Device | Notes |
+|--------|--------|-------|
+| `nextui/tg5040` | TrimUI Brick + Smart Pro | Portable build; ships in the pak zip |
+| `nextui/tg5050` | TrimUI Smart Pro S | Only runs on tg5050 |
+| `nextui/my355` | Miyoo Flip | |
+| `nextui/h700` | Anbernic RG XX (H700) | Copy of `nextui/tg5040`; bundles no SDL2 |
+| `muos/arm64` | Every muOS device | Copy of `nextui/tg5040` |
 
 ## ⚠️ Build vs Deploy — Critical Distinction
 

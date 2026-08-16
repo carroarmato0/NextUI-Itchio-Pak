@@ -992,13 +992,13 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Exit"})
 	footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "SELECT", Text: "Filter"})
 	if s.cacheReady {
-		if r.W <= narrowScreenW {
+		if abbreviate(r.W) {
 			footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "LR", Text: "Sort"})
 		} else {
 			footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Sort"})
 		}
 	}
-	if r.W <= narrowScreenW {
+	if abbreviate(r.W) {
 		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Set"})
 	} else {
 		footerHintsBuf = append(footerHintsBuf, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})

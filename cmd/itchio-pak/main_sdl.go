@@ -55,6 +55,23 @@ func runSDL() {
 	}
 	logger.Info("log_level:  %s", level)
 
+	// The version actually loaded, not the one we compiled against. On H700 this
+	// is the difference between NextUI's own SDL2 from .system/h700/lib and
+	// stock Anbernic's 2.0.12 from /usr/lib — which has no SDL2_ttf beside it
+	// and would otherwise fail in a way no log explains.
+	//
+	// This must run BEFORE sdl.Init: GetVersion/VERSION/GetRevision are safe to
+	// call pre-init, and stock Anbernic's 2.0.12 is built with only the mali and
+	// dummy video backends — exactly the library for which sdl.Init(INIT_VIDEO)
+	// below FAILS. Logging the version after Init means the one case this line
+	// exists to diagnose is the one case it would never run.
+	var linked, compiled sdl.Version
+	sdl.GetVersion(&linked)
+	sdl.VERSION(&compiled)
+	logger.Info("sdl:        runtime %d.%d.%d (compiled against %d.%d.%d, rev %s)",
+		linked.Major, linked.Minor, linked.Patch,
+		compiled.Major, compiled.Minor, compiled.Patch, sdl.GetRevision())
+
 	// Pre-init SDL2 to detect display resolution before creating the window.
 	// Include JOYSTICK + GAMECONTROLLER so the device's physical buttons are
 	// delivered as ControllerButtonEvents (the device SDL2 has built-in
@@ -98,6 +115,12 @@ func runSDL() {
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
 		w, h = dm.W, dm.H
+	} else {
+		// Three new panel geometries (720x480, 720x720, and H700's HDMI-out
+		// case) now depend on this number for layout. Logging only the
+		// fallback value, with no indication it IS a fallback, would make a
+		// wrong layout in a tester report untraceable.
+		logger.Error("display: GetCurrentDisplayMode failed (%v), falling back to %dx%d", err, w, h)
 	}
 	logger.Info("display: %dx%d", w, h)
 
@@ -361,8 +384,41 @@ var controllerButtonNames = map[uint8]string{
 	sdl.CONTROLLER_BUTTON_DPAD_RIGHT:    "RIGHT",
 }
 
-// logControllerButton records button presses at debug level so a report of
-// "the buttons are wrong on my device" can be diagnosed from the log alone.
+// loggedFaceButtonPresses counts face-button (A/B/X/Y) CONTROLLERBUTTONDOWN
+// events logged at Info so far. Only ever touched from the single SDL event
+// loop in runSDL (one goroutine), so a plain int is correct here — a mutex or
+// atomic would misleadingly imply concurrent access that does not happen.
+var loggedFaceButtonPresses int
+
+// buttonLogCap is how many face-button presses are logged at Info before
+// dropping to Debug. At the default log level this is the app's only
+// instrument for the face-button arrangement (README tells testers their log
+// records "which buttons you pressed"), so it must be visible without raising
+// verbosity — but a full keypress dump is not the goal, so it is capped.
+const buttonLogCap = 8
+
+// isFaceButton reports whether b is one of the four buttons the arrangement
+// instrument cares about. Everything else — D-pad, shoulders, START, BACK,
+// GUIDE — is not diagnostic for the face-button arrangement and does not draw
+// on the Info budget: the app opens on a scrollable list, so a tester who
+// scrolls before touching a face button must not burn the whole budget on
+// D-pad events before a single A/B/X/Y press is logged at Info.
+func isFaceButton(b uint8) bool {
+	switch b {
+	case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B,
+		sdl.CONTROLLER_BUTTON_X, sdl.CONTROLLER_BUTTON_Y:
+		return true
+	default:
+		return false
+	}
+}
+
+// logControllerButton records button presses so a report of "the buttons are
+// wrong on my device" can be diagnosed from the log alone. Only face-button
+// presses count against buttonLogCap; the first buttonLogCap of those log at
+// Info (visible at the default level), the rest log at Debug. Non-face
+// buttons always log at Debug — they never establish the arrangement, so
+// they are not worth the Info budget.
 func logControllerButton(e sdl.Event) {
 	ev, ok := e.(*sdl.ControllerButtonEvent)
 	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
@@ -371,6 +427,12 @@ func logControllerButton(e sdl.Event) {
 	name, known := controllerButtonNames[ev.Button]
 	if !known {
 		name = "?"
+	}
+	if isFaceButton(ev.Button) && loggedFaceButtonPresses < buttonLogCap {
+		loggedFaceButtonPresses++
+		logger.Info("input: button down SDL_%s (raw %d) [%d/%d face buttons, capped — further face-button presses log at debug]",
+			name, ev.Button, loggedFaceButtonPresses, buttonLogCap)
+		return
 	}
 	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
 }

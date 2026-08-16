@@ -67,12 +67,22 @@ for want in "launch.sh" "$BIN_NAME" "pak.json" "assets/font.ttf" "assets/ca-cert
     check "contains $want" has_zip "$want"
 done
 
-# Each NextUI device needs its own SDL2 pair: launch.sh picks the directory at
-# runtime, and a missing one means the app cannot start on that hardware.
+# Each NextUI device that ships its own SDL2 needs its own pair: launch.sh picks
+# the directory at runtime, and a missing one means the app cannot start on that
+# hardware. Devices that link the firmware's SDL2 (h700) must have no directory
+# at all — shipping one would put our library ahead of the one NextUI installed.
 for dev in $NEXTUI_DEVICES; do
-    for lib in libSDL2-2.0.so.0 libSDL2_ttf-2.0.so.0; do
-        check "carries lib/$dev/$lib" has_zip "lib/$dev/$lib"
-    done
+    if target_bundles_sdl "nextui/$dev"; then
+        for lib in libSDL2-2.0.so.0 libSDL2_ttf-2.0.so.0; do
+            check "carries lib/$dev/$lib" has_zip "lib/$dev/$lib"
+        done
+    else
+        if printf '%s\n' "$ZIP_LIST" | grep -q "^lib/$dev/"; then
+            fail "ships no lib/$dev/ (firmware provides SDL2)"
+        else
+            ok "ships no lib/$dev/ (firmware provides SDL2)"
+        fi
+    fi
 done
 
 # muOS packaging must not leak in, and neither should repo or build leftovers.
@@ -120,16 +130,30 @@ fi
 
 for dev in $NEXTUI_DEVICES; do
     P="Tools/$dev/Itch-io.pak"
-    for want in "$P/launch.sh" "$P/$BIN_NAME" "$P/pak.json" "$P/lib/$dev/libSDL2-2.0.so.0"; do
+    for want in "$P/launch.sh" "$P/$BIN_NAME" "$P/pak.json"; do
         check "contains $want" has_pakz "$want"
     done
-    # Each platform directory carries only its own libraries; shipping all three
-    # everywhere would triple the bundle for no benefit.
-    # Directory entries are filtered out: "lib/" itself is not under
-    # "lib/<device>/" and would otherwise count against every platform.
-    OTHER="$(printf '%s\n' "$PAKZ_LIST" | grep "^$P/lib/" | grep -v '/$' \
-        | grep -cv "^$P/lib/$dev/" || true)"
-    check "Tools/$dev carries only its own lib dir" [ "$OTHER" -eq 0 ]
+
+    if target_bundles_sdl "nextui/$dev"; then
+        check "contains $P/lib/$dev/libSDL2-2.0.so.0" \
+            has_pakz "$P/lib/$dev/libSDL2-2.0.so.0"
+        # Each platform directory carries only its own libraries; shipping all
+        # of them everywhere would multiply the bundle for no benefit.
+        # Directory entries are filtered out: "lib/" itself is not under
+        # "lib/<device>/" and would otherwise count against every platform.
+        OTHER="$(printf '%s\n' "$PAKZ_LIST" | grep "^$P/lib/" | grep -v '/$' \
+            | grep -cv "^$P/lib/$dev/" || true)"
+        check "Tools/$dev carries only its own lib dir" [ "$OTHER" -eq 0 ]
+    else
+        # Deliberately do NOT filter out directory-only entries here, unlike the
+        # branch above. `zip -r` emits a bare "$P/lib/$dev/" entry ending in "/"
+        # when the directory was created but nothing was ever copied into it —
+        # exactly the bug this check exists to catch (a stray `mkdir -p` with no
+        # matching `cp`). Filtering "/$" out, as the positive branch does, would
+        # make ANY report 0 and this check would pass on a real violation.
+        ANY="$(printf '%s\n' "$PAKZ_LIST" | grep -c "^$P/lib/" || true)"
+        check "Tools/$dev ships no lib dir (firmware provides SDL2)" [ "$ANY" -eq 0 ]
+    fi
 done
 
 # The unversioned copy is what pak.json's release_filename points the Pak Store

@@ -3,11 +3,19 @@ package firmware
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // nextUISDCard is the SD card mount point on every NextUI platform
 // (workspace/tg5040/platform/platform.h:156, tg5050:151); RES_PATH and
 // SHARED_USERDATA_PATH are derived from it in common/defines.h:19,21.
+//
+// h700 is ASSUMED to match, not checked — no h700 platform.h line was read
+// and nobody here owns the hardware. If the mount point actually differs,
+// every ROM path, palette directory and log path this package resolves is
+// wrong. The "storage: root=" line main.go logs at startup is what falsifies
+// this: a tester's log showing anything other than /mnt/SDCARD/... means this
+// assumption was wrong.
 const nextUISDCard = "/mnt/SDCARD"
 
 // nextUIROMFolders maps our system keys onto NextUI's ROM folder display names.
@@ -31,6 +39,39 @@ var nextUIDeviceLabels = map[string]string{
 	"my355":  "Miyoo Flip",
 }
 
+// h700DeviceLabels maps NextUI's H700 SKU tokens ($DEVICE) to display names.
+// One PLATFORM covers the whole Anbernic RG XX family, so unlike every other
+// NextUI platform the platform code does not identify the hardware. Panel size
+// is not recorded here: the app reads the real display mode at startup and no
+// longer needs to know which SKU implies which resolution.
+var h700DeviceLabels = map[string]string{
+	"rg28xx":     "Anbernic RG28XX",
+	"rg34xx":     "Anbernic RG34XX",
+	"rg34xxsp":   "Anbernic RG34XX SP",
+	"rg35xxh":    "Anbernic RG35XX H",
+	"rg35xxplus": "Anbernic RG35XX Plus",
+	"rg35xxpro":  "Anbernic RG35XX Pro",
+	"rg35xxsp":   "Anbernic RG35XX SP",
+	"rg40xxh":    "Anbernic RG40XX H",
+	"rg40xxv":    "Anbernic RG40XX V",
+	"rgcubexx":   "Anbernic RG Cube XX",
+	"rgsp":       "Anbernic RG SP",
+}
+
+// h700Label names an H700 handheld from its SKU token, degrading to something
+// still useful in a bug report when the token is unknown or absent. Anbernic
+// will ship a model we have never heard of; "unknown device" would throw away
+// the one string that identifies it.
+func h700Label(device string) string {
+	if label, ok := h700DeviceLabels[strings.ToLower(device)]; ok {
+		return label
+	}
+	if device != "" {
+		return "Anbernic H700 (" + device + ")"
+	}
+	return "Anbernic H700"
+}
+
 func newNextUI(prefix string) *Env {
 	root := filepath.Join(prefix, nextUISDCard)
 
@@ -41,6 +82,9 @@ func newNextUI(prefix string) *Env {
 
 	platform := os.Getenv("PLATFORM")
 	label := nextUIDeviceLabels[platform]
+	if platform == "h700" {
+		label = h700Label(os.Getenv("DEVICE"))
+	}
 	if label == "" {
 		label = "unknown device"
 	}

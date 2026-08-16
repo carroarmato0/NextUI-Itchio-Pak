@@ -46,7 +46,7 @@ Options:
   --timeout <seconds>   Max wait per screen for readiness signal  (default: 30)
 
 Environment:
-  DEPLOY_PLATFORM=tg5040|tg5050|my355   Target platform (default: auto-detect)
+  DEPLOY_PLATFORM=tg5040|tg5050|my355|h700   Target platform (default: auto-detect)
 
 Supported screens:
   list      Game list (waits for cache load or first feed page)

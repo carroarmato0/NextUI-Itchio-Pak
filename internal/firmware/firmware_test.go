@@ -211,6 +211,28 @@ func TestActiveDefaultsToHost(t *testing.T) {
 	SetActive(nil)
 }
 
+// H700 reports its face buttons differently from every other NextUI device.
+// NextUI's own platform.h reads the shell's A as joystick button 0 there and as
+// button 1 on tg5040, and SDL's controller index equals that JOY_ index (a
+// four-for-four match on TrimUI hardware). So A and B land where their labels
+// say and X and Y do not.
+func TestFaceMappingPerPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		platform string
+		want     FaceMapping
+	}{
+		{"tg5040", FaceSwapped},
+		{"tg5050", FaceSwapped},
+		{"my355", FaceSwapped},
+		{"h700", FaceABDirect},
+	} {
+		t.Setenv("PLATFORM", tc.platform)
+		if got := newNextUI("").FaceMapping(); got != tc.want {
+			t.Errorf("PLATFORM=%q FaceMapping() = %q, want %q", tc.platform, got, tc.want)
+		}
+	}
+}
+
 func mkdirAll(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {
@@ -222,5 +244,37 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// h700 is a single PLATFORM across eleven SKUs, so the platform code cannot say
+// which handheld this is — $DEVICE can. The fallbacks matter as much as the
+// table: an unrecognised SKU still has to produce something a bug report can be
+// filed against, because a new Anbernic model will appear before we hear of it.
+func TestNextUIH700LabelsComeFromDevice(t *testing.T) {
+	t.Setenv("PLATFORM", "h700")
+	for device, want := range map[string]string{
+		"rg40xxv":    "Anbernic RG40XX V",
+		"rgcubexx":   "Anbernic RG Cube XX",
+		"rg35xxplus": "Anbernic RG35XX Plus",
+		"rg28xx":     "Anbernic RG28XX",
+		"RG40XXV":    "Anbernic RG40XX V",
+		"rg99xx":     "Anbernic H700 (rg99xx)",
+		"":           "Anbernic H700",
+	} {
+		t.Setenv("DEVICE", device)
+		if got := newNextUI("").DeviceLabel(); got != want {
+			t.Errorf("DEVICE=%q label = %q, want %q", device, got, want)
+		}
+	}
+}
+
+// DEVICE is exported on other platforms too, and must not leak into their
+// labels.
+func TestNextUIDeviceIgnoredOffH700(t *testing.T) {
+	t.Setenv("PLATFORM", "tg5040")
+	t.Setenv("DEVICE", "brick")
+	if got, want := newNextUI("").DeviceLabel(), "TrimUI Brick / Smart Pro"; got != want {
+		t.Errorf("label = %q, want %q", got, want)
 	}
 }
