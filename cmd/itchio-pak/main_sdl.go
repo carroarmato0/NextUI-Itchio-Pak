@@ -65,6 +65,17 @@ func runSDL() {
 		os.Exit(1)
 	}
 
+	// The version actually loaded, not the one we compiled against. On H700 this
+	// is the difference between NextUI's own SDL2 from .system/h700/lib and
+	// stock Anbernic's 2.0.12 from /usr/lib — which has no SDL2_ttf beside it
+	// and would otherwise fail in a way no log explains.
+	var linked, compiled sdl.Version
+	sdl.GetVersion(&linked)
+	sdl.VERSION(&compiled)
+	logger.Info("sdl:        runtime %d.%d.%d (compiled against %d.%d.%d, rev %s)",
+		linked.Major, linked.Minor, linked.Patch,
+		compiled.Major, compiled.Minor, compiled.Patch, sdl.GetRevision())
+
 	// Open all connected game controllers so button events are delivered.
 	//
 	// The mapping is logged because it is the thing that decides which physical

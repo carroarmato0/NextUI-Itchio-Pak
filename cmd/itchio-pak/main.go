@@ -70,6 +70,12 @@ func main() {
 	logger.Info("git commit: %s", gitCommit)
 	logger.Info("firmware:   %s", env.Kind())
 	logger.Info("device:     %s (%s)", deviceOrUnknown(env.Device()), env.DeviceLabel())
+	// H700 is one PLATFORM across eleven SKUs, so without these two a bug
+	// report cannot be told apart from ten other handhelds. RGXX_MODEL is the
+	// stock firmware's own name for the board and is display-only upstream.
+	if sku := os.Getenv("DEVICE"); sku != "" {
+		logger.Info("device sku: %s (stock model: %s)", sku, deviceOrUnknown(os.Getenv("RGXX_MODEL")))
+	}
 	logger.Info("fw version: %s", env.FirmwareVersion())
 	logger.Info("storage:    root=%s data=%s", env.Root(), env.DataDir())
 	logRomDirs(env)
