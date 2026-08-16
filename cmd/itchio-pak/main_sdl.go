@@ -55,6 +55,23 @@ func runSDL() {
 	}
 	logger.Info("log_level:  %s", level)
 
+	// The version actually loaded, not the one we compiled against. On H700 this
+	// is the difference between NextUI's own SDL2 from .system/h700/lib and
+	// stock Anbernic's 2.0.12 from /usr/lib — which has no SDL2_ttf beside it
+	// and would otherwise fail in a way no log explains.
+	//
+	// This must run BEFORE sdl.Init: GetVersion/VERSION/GetRevision are safe to
+	// call pre-init, and stock Anbernic's 2.0.12 is built with only the mali and
+	// dummy video backends — exactly the library for which sdl.Init(INIT_VIDEO)
+	// below FAILS. Logging the version after Init means the one case this line
+	// exists to diagnose is the one case it would never run.
+	var linked, compiled sdl.Version
+	sdl.GetVersion(&linked)
+	sdl.VERSION(&compiled)
+	logger.Info("sdl:        runtime %d.%d.%d (compiled against %d.%d.%d, rev %s)",
+		linked.Major, linked.Minor, linked.Patch,
+		compiled.Major, compiled.Minor, compiled.Patch, sdl.GetRevision())
+
 	// Pre-init SDL2 to detect display resolution before creating the window.
 	// Include JOYSTICK + GAMECONTROLLER so the device's physical buttons are
 	// delivered as ControllerButtonEvents (the device SDL2 has built-in
@@ -64,17 +81,6 @@ func runSDL() {
 		logger.Error("sdl pre-init: %v", err)
 		os.Exit(1)
 	}
-
-	// The version actually loaded, not the one we compiled against. On H700 this
-	// is the difference between NextUI's own SDL2 from .system/h700/lib and
-	// stock Anbernic's 2.0.12 from /usr/lib — which has no SDL2_ttf beside it
-	// and would otherwise fail in a way no log explains.
-	var linked, compiled sdl.Version
-	sdl.GetVersion(&linked)
-	sdl.VERSION(&compiled)
-	logger.Info("sdl:        runtime %d.%d.%d (compiled against %d.%d.%d, rev %s)",
-		linked.Major, linked.Minor, linked.Patch,
-		compiled.Major, compiled.Minor, compiled.Patch, sdl.GetRevision())
 
 	// Open all connected game controllers so button events are delivered.
 	//
@@ -109,6 +115,12 @@ func runSDL() {
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
 		w, h = dm.W, dm.H
+	} else {
+		// Three new panel geometries (720x480, 720x720, and H700's HDMI-out
+		// case) now depend on this number for layout. Logging only the
+		// fallback value, with no indication it IS a fallback, would make a
+		// wrong layout in a tester report untraceable.
+		logger.Error("display: GetCurrentDisplayMode failed (%v), falling back to %dx%d", err, w, h)
 	}
 	logger.Info("display: %dx%d", w, h)
 
@@ -372,8 +384,23 @@ var controllerButtonNames = map[uint8]string{
 	sdl.CONTROLLER_BUTTON_DPAD_RIGHT:    "RIGHT",
 }
 
-// logControllerButton records button presses at debug level so a report of
-// "the buttons are wrong on my device" can be diagnosed from the log alone.
+// loggedButtonPresses counts CONTROLLERBUTTONDOWN events logged at Info so far.
+// Only ever touched from the single SDL event loop in runSDL (one goroutine),
+// so a plain int is correct here — a mutex or atomic would misleadingly imply
+// concurrent access that does not happen.
+var loggedButtonPresses int
+
+// buttonLogCap is how many button-down events are logged at Info before
+// dropping to Debug. At the default log level this is the app's only
+// instrument for the face-button arrangement (README tells testers their log
+// records "which buttons you pressed"), so it must be visible without raising
+// verbosity — but a full keypress dump is not the goal, so it is capped.
+const buttonLogCap = 8
+
+// logControllerButton records button presses so a report of "the buttons are
+// wrong on my device" can be diagnosed from the log alone. The first
+// buttonLogCap presses log at Info (visible at the default level); the rest
+// log at Debug, same as before.
 func logControllerButton(e sdl.Event) {
 	ev, ok := e.(*sdl.ControllerButtonEvent)
 	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
@@ -382,6 +409,12 @@ func logControllerButton(e sdl.Event) {
 	name, known := controllerButtonNames[ev.Button]
 	if !known {
 		name = "?"
+	}
+	if loggedButtonPresses < buttonLogCap {
+		loggedButtonPresses++
+		logger.Info("input: button down SDL_%s (raw %d) [%d/%d, capped — further presses log at debug]",
+			name, ev.Button, loggedButtonPresses, buttonLogCap)
+		return
 	}
 	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
 }
