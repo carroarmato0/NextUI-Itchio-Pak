@@ -123,7 +123,8 @@ echo "==> Creating release archives..."
 pid_zip1=$!
 
 # Multi-device bundle (.pakz) for manual SD card installation.
-# Each platform directory gets its own binary and only its own lib dir.
+# Each platform directory gets its own binary; only platforms that bundle SDL2
+# also get their own lib dir (h700 links the firmware's SDL2 and gets none).
 mkdir -p dist/nextui/all/Tools
 for t in $(targets_for nextui); do
     dev="$(target_device "$t")"

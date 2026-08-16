@@ -145,7 +145,13 @@ for dev in $NEXTUI_DEVICES; do
             | grep -cv "^$P/lib/$dev/" || true)"
         check "Tools/$dev carries only its own lib dir" [ "$OTHER" -eq 0 ]
     else
-        ANY="$(printf '%s\n' "$PAKZ_LIST" | grep "^$P/lib/" | grep -cv '/$' || true)"
+        # Deliberately do NOT filter out directory-only entries here, unlike the
+        # branch above. `zip -r` emits a bare "$P/lib/$dev/" entry ending in "/"
+        # when the directory was created but nothing was ever copied into it —
+        # exactly the bug this check exists to catch (a stray `mkdir -p` with no
+        # matching `cp`). Filtering "/$" out, as the positive branch does, would
+        # make ANY report 0 and this check would pass on a real violation.
+        ANY="$(printf '%s\n' "$PAKZ_LIST" | grep -c "^$P/lib/" || true)"
         check "Tools/$dev ships no lib dir (firmware provides SDL2)" [ "$ANY" -eq 0 ]
     fi
 done
