@@ -31,9 +31,39 @@
 # builds only ever run on the hardware they were compiled for, so they are left
 # unconstrained — tg5050's toolchain legitimately emits GLIBC_2.32.
 
+# nextui/h700 is a copy for the same reason, plus one of its own.  H700 is
+# AArch64 Cortex-A53 on glibc 2.35, so the portable tg5040 binary satisfies it
+# with room to spare, and NextUI installs its own mali-fbdev SDL2 in
+# .system/h700/lib — the pak must ship none, per the H700 pak porting contract.
+#
+# A dedicated ghcr.io/loveretro/h700-toolchain image does exist, and its sysroot
+# is the same TrimUI SDK (SDK_usr_tg5040_a133p.tgz, glibc 2.33) with the same
+# SDL2_ttf.  The only difference that reaches a build is SDL2 itself, prebaked
+# into PREFIX_LOCAL=/opt/nextui.  We link libSDL2-2.0.so.0 by SONAME and bundle
+# no SDL2, so the device loads its own copy either way, and we use no post-2.26
+# API.  Compiling separately would therefore produce an equivalent binary while
+# adding a second one to the single zip the Pak Store fetches — roughly +6MB
+# paid by every TrimUI and Miyoo user for nothing.
+#
+# Switch to a real compile when H700 needs an SDL2 API only the fork provides,
+# or when a tester finds a divergence this arrangement cannot explain.  Then the
+# row becomes:
+#     nextui:h700:h700:no::2.17
+# and docker/Dockerfile.toolchain needs, for h700 only:
+#     ENV CGO_CFLAGS=-I/opt/nextui/include/SDL2
+#     ENV CGO_LDFLAGS=-L/opt/nextui/lib
+# Those explicit flags are required because the image sets
+# PKG_CONFIG_SYSROOT_DIR=$SYSROOT while putting /opt/nextui/lib/pkgconfig first,
+# so pkg-config would emit $SYSROOT/opt/nextui/... — a path that does not exist.
+# That switch also has to gate build.sh's SDL2 harvest on target_bundles_sdl:
+# toolchain_libdir is keyed by toolchain, so a compiled h700 would otherwise
+# harvest into an unused lib/h700.  Today every compiled target bundles SDL2 and
+# every non-bundling one is a copy, so build_target never sees the case.
+
 TARGETS='nextui:tg5040:tg5040:yes::2.17
 nextui:tg5050:tg5050:yes::
 nextui:my355:my355:yes::
+nextui:h700:tg5040:no:nextui/tg5040:2.17
 muos:arm64:tg5040:no:nextui/tg5040:2.17'
 
 # Name of the executable.  "Pak" is a NextUI packaging concept, not part of the

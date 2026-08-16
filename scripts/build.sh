@@ -51,6 +51,7 @@ target_description() {
         nextui/tg5040) echo "NextUI — TrimUI Brick / Smart Pro (ARM64)" ;;
         nextui/tg5050) echo "NextUI — TrimUI Smart Pro S (ARM64)" ;;
         nextui/my355)  echo "NextUI — Miyoo Flip (ARM64)" ;;
+        nextui/h700)   echo "NextUI — Anbernic RG XX / H700 (ARM64, copy of tg5040)" ;;
         muos/arm64)    echo "muOS — every supported device (ARM64)" ;;
         *)             echo "" ;;
     esac
