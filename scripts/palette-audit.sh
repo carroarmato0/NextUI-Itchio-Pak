@@ -5,8 +5,9 @@
 #
 # NextUI ships eighteen palettes, seven of them light. A colour that reads well
 # on the app's dark default can be invisible on Catppuccin Latte, and nobody is
-# going to check 228 combinations by hand. This renders them all off-screen in
-# about seven seconds and reports what is unreadable.
+# going to check 228 combinations by hand. This renders them all off-screen, at
+# every shipping screen geometry, in about thirty seconds and reports what is
+# unreadable.
 #
 # The audit measures the frame that was actually produced: each string's colour
 # against the pixels sampled underneath it, not theme accessors in isolation.
@@ -40,16 +41,31 @@ fi
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
-# shellcheck disable=SC2086
-if go run ./cmd/devshot --all --palettes all --out-dir "$OUT_DIR" --audit $EXTRA >"$log" 2>&1; then
-    summary="$(grep -E 'finding\(s\)' "$log" | sed 's/^ *//')"
-    # Count renders only; --sheet adds one "contact sheet:" line per scene.
-    renders="$(grep -cE '^    [a-z].*\.png ' "$log")"
-    printf 'ok   - palette audit: %s renders, %s\n' "$renders" "${summary:-no findings}"
-    exit 0
-fi
+# Geometries every shipping device actually presents.  1024x768 is the TrimUI
+# Brick; 640x480 is the Miyoo Flip and most of the H700 family; 720x480 is the
+# RG34XX line and 720x720 is the RG Cube XX.  The last two are new with H700 and
+# are the reason the size class stopped keying on width alone — rendering them
+# here is what makes that change something we looked at rather than reasoned
+# about.
+GEOMETRIES="1024x768 640x480 720x480 720x720"
 
-printf 'FAIL - palette audit found unreadable text:\n'
-grep -E '^\s+FAIL' "$log" | sed 's/^ */  /'
-printf '  (renders in %s)\n' "$OUT_DIR"
-exit 1
+STATUS=0
+for geom in $GEOMETRIES; do
+    W="${geom%x*}"
+    H="${geom#*x}"
+    # shellcheck disable=SC2086
+    if go run ./cmd/devshot --all --palettes all --width "$W" --height "$H" \
+        --out-dir "$OUT_DIR/$geom" --audit $EXTRA >"$log" 2>&1; then
+        summary="$(grep -E 'finding\(s\)' "$log" | sed 's/^ *//')"
+        # Count renders only; --sheet adds one "contact sheet:" line per scene.
+        renders="$(grep -cE '^    [a-z].*\.png ' "$log")"
+        printf 'ok   - palette audit %s: %s renders, %s\n' "$geom" "$renders" "${summary:-no findings}"
+    else
+        printf 'FAIL - palette audit %s found unreadable text:\n' "$geom"
+        grep -E '^\s+FAIL' "$log" | sed 's/^ */  /'
+        printf '  (renders in %s/%s)\n' "$OUT_DIR" "$geom"
+        STATUS=1
+    fi
+done
+
+exit "$STATUS"

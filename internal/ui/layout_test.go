@@ -98,3 +98,38 @@ func TestLayoutForFollowsSizeClass(t *testing.T) {
 		t.Errorf("1280x720 OverlayMarginX = %d, want %d", l.OverlayMarginX, 1280*14/100)
 	}
 }
+
+// Text abbreviation is a width question, not a width-and-height question.
+// 720×720 (RG Cube XX) has plenty of vertical room — so it gets roomy padding —
+// but not enough width for "L1R1 Sort" plus "Settings" plus a right-aligned
+// "Page 1/1", which overlapped and rendered as unreadable text on itself.
+func TestAbbreviateKeysOnWidthAlone(t *testing.T) {
+	for _, tc := range []struct {
+		w, h int32
+		want bool
+		why  string
+	}{
+		{640, 480, true, "Miyoo Flip and most RG XX"},
+		{720, 480, true, "RG34XX line"},
+		{720, 720, true, "RG Cube XX — roomy vertically, still too narrow for full hints"},
+		{480, 640, true, "RG28XX unrotated"},
+		{1024, 768, false, "TrimUI Brick"},
+		{1280, 720, false, "TrimUI Smart Pro"},
+	} {
+		if got := abbreviate(tc.w); got != tc.want {
+			t.Errorf("abbreviate(%d) = %v, want %v (%dx%d, %s)",
+				tc.w, got, tc.want, tc.w, tc.h, tc.why)
+		}
+	}
+}
+
+// The two predicates must disagree exactly where the bug was: 720×720 takes
+// roomy spacing but abbreviated text.
+func TestSizeClassesDivergeOnTallNarrowPanels(t *testing.T) {
+	if compact(720, 720) {
+		t.Error("compact(720, 720) = true, want false — it has vertical room")
+	}
+	if !abbreviate(720) {
+		t.Error("abbreviate(720) = false, want true — it has no horizontal room")
+	}
+}
