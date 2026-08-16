@@ -20,9 +20,12 @@ has to be handed to testers with an instrument attached.
 - **No hardware.** Every H700-specific claim in this document is derived from
   upstream source or the porting contract, not measured. The design must make
   each derivation falsifiable from a tester's log.
-- **Upstream is not merged.** Code can land on `dev` now; the release candidate
-  cannot be cut until a mainstream NextUI release contains H700, because until
-  then testers have no firmware to run it on.
+- **Upstream is not merged, but that does not gate the release.** An earlier
+  draft of this spec held the RC until H700 landed in mainstream NextUI, on the
+  reasoning that testers would otherwise have no firmware. That reasoning was
+  wrong: the H700 port ships its own beta releases, people are already running
+  them, and the Pak Store works on those devices — so advertising `h700` in
+  `pak.json` reaches real testers today. The RC ships when the code is ready.
 - **The pak must not ship SDL2 for H700.** NextUI installs its own mali-fbdev
   build into `.system/h700/lib`, and the porting contract forbids bundling a
   generic SDL2 alongside it.
@@ -223,9 +226,14 @@ exit and send the log.
 
 ## Release
 
-Merge to `dev` when complete and regression-tested. Cut `v1.0.23-rc3` once PR
-807 has landed in a mainstream NextUI release; that RC covers both muOS and
-H700, continuing the v1.0.23 testing cycle rather than opening a second one.
+Merge to `dev` when complete and regression-tested, then cut `v1.0.23-rc3`. The
+RC covers both muOS and H700, continuing the v1.0.23 testing cycle rather than
+opening a second one.
+
+No upstream gate. H700 testers are already running the port's own beta firmware,
+and the Pak Store works there, so `h700` in `pak.json` reaches them as soon as
+the release is published. Their reports are what turn this branch's derived
+claims — the face-button arrangement above all — into measured ones.
 
 Docs to update: README's platform table, CLAUDE.md's build-target table and
 devshot sizing note, and the `itchio-pak-build` and `itchio-pak-project` skills.
