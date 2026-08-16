@@ -3,16 +3,27 @@ PAK_DIR="$(dirname "$0")"
 PAK_NAME="$(basename "$PAK_DIR")"
 PAK_NAME="${PAK_NAME%.*}"
 export HOME="$SHARED_USERDATA_PATH/$PAK_NAME"
-# Select bundled SDL2 libs for this device family.
-# cpuinfo hwserial contains TG5050 on the Smart Pro S; all other TrimUI devices
-# fall through to tg5040.  Miyoo devices expose /usr/miyoo.
-if [ -d /usr/miyoo ]; then
-    PLATFORM_LIB="$PAK_DIR/lib/my355"
-elif grep -q "TG5050" /proc/cpuinfo 2>/dev/null; then
-    PLATFORM_LIB="$PAK_DIR/lib/tg5050"
-else
-    PLATFORM_LIB="$PAK_DIR/lib/tg5040"
-fi
+# Select the bundled SDL2 directory for this device family.
+#
+# $PLATFORM is what NextUI exports; the /usr/miyoo and cpuinfo probes are the
+# fallback for launches that arrive without it.  h700 is deliberately absent:
+# NextUI installs its own mali-fbdev SDL2 there and the pak ships none, so there
+# is no directory to select.
+PLATFORM_LIB=""
+case "${PLATFORM:-}" in
+    h700)   PLATFORM_LIB="" ;;
+    my355|tg5050|tg5040)
+            PLATFORM_LIB="$PAK_DIR/lib/$PLATFORM" ;;
+    *)
+        if [ -d /usr/miyoo ]; then
+            PLATFORM_LIB="$PAK_DIR/lib/my355"
+        elif grep -q "TG5050" /proc/cpuinfo 2>/dev/null; then
+            PLATFORM_LIB="$PAK_DIR/lib/tg5050"
+        else
+            PLATFORM_LIB="$PAK_DIR/lib/tg5040"
+        fi
+        ;;
+esac
 
 # Remove the pre-rename binary left behind when upgrading over an older pak.
 # Installing writes the new "itchio" alongside it rather than replacing it, so
@@ -22,21 +33,31 @@ rm -f "$PAK_DIR/itchio-pak" 2>/dev/null || true
 # Remove stale versioned SDL2 files left by previous pak versions.  Only the
 # SONAME files (libSDL2-2.0.so.0, libSDL2_ttf-2.0.so.0) are needed at runtime;
 # the versioned siblings are never referenced directly by the dynamic linker.
-rm -f "$PLATFORM_LIB"/libSDL2-2.0.so.0.* \
-      "$PLATFORM_LIB"/libSDL2_ttf-2.0.so.0.* 2>/dev/null || true
+if [ -n "$PLATFORM_LIB" ]; then
+    rm -f "$PLATFORM_LIB"/libSDL2-2.0.so.0.* \
+          "$PLATFORM_LIB"/libSDL2_ttf-2.0.so.0.* 2>/dev/null || true
+fi
 
-# Prefer the device-native SDL2 when available (it is tuned for the device's
-# display and audio backends).  The bundled LoveRetro SDL2 in PLATFORM_LIB
-# serves as a working fallback on devices where the native path is absent.
+# Prefer the SDL2 the firmware installed for itself, then the device-native one.
+#
+# $SYSTEM_PATH/lib comes first because when the firmware ships its own SDL2 it
+# is authoritative by definition.  On H700 that is .system/h700/lib, and the
+# alternative is stock Anbernic's /usr/lib SDL2 2.0.12 — mali and dummy video
+# only, with no libSDL2_ttf beside it.  TrimUI and Miyoo keep no libSDL2 there,
+# so they fall through to exactly the directory they used before.
+#
+# The bundled LoveRetro SDL2 in PLATFORM_LIB is the last resort, for devices
+# where no system copy exists.
 NATIVE_SDL_LIB=""
-for _d in /usr/trimui/lib /usr/miyoo/lib /usr/lib /usr/local/lib; do
+for _d in "${SYSTEM_PATH:-}/lib" /usr/trimui/lib /usr/miyoo/lib /usr/lib /usr/local/lib; do
     if [ -f "$_d/libSDL2-2.0.so.0" ]; then
         NATIVE_SDL_LIB="$_d"
         break
     fi
 done
 unset _d
-export LD_LIBRARY_PATH="${NATIVE_SDL_LIB:+$NATIVE_SDL_LIB:}$PLATFORM_LIB:$LD_LIBRARY_PATH"
+# Prepend only our own directories; the inherited value is kept, never replaced.
+export LD_LIBRARY_PATH="${NATIVE_SDL_LIB:+$NATIVE_SDL_LIB:}${PLATFORM_LIB:+$PLATFORM_LIB:}$LD_LIBRARY_PATH"
 export PATH="$PAK_DIR:$PATH"
 # The device has no system CA certificate store; point Go's TLS stack at the
 # bundle we ship so HTTPS requests to itch.io can be verified correctly.

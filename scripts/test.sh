@@ -49,6 +49,9 @@ if [ -z "${IN_CONTAINER:-}" ]; then
     echo "==> release-muxapp_test.sh"
     "$SCRIPT_DIR/release-muxapp_test.sh" || exit 1
 
+    echo "==> launch_test.sh"
+    "$SCRIPT_DIR/launch_test.sh" || exit 1
+
     echo "==> shellcheck (device launchers)"
     if command -v shellcheck >/dev/null 2>&1; then
         # muOS runs mux_launch.sh with its own /bin/sh, so it is checked as
@@ -101,6 +104,14 @@ else
 fi
 rm -f "$TEST_LOG"
 set -e
+
+# The run above is tagged headless, so it never compiles the !headless files —
+# internal/ui/input.go and its test among them. Those need SDL2 headers, which
+# this image has, but no display: binding button constants opens no window.
+# Without this pass a test can sit in the tree looking green while never having
+# run at all.
+echo "==> go test ./internal/ui (non-headless)"
+go test ./internal/ui/ || exit 1
 
 if [ -n "$COVER" ] && [ $EXIT_CODE -eq 0 ]; then
     go tool cover -html=coverage.out -o coverage.html
