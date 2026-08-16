@@ -130,6 +130,7 @@ from `dev` with `release-github.sh --prerelease`; full releases come off `main`.
 - **Itch.io owned-keys last page:** the API returns `{}` (object) not `[]` (array) when exhausted — use `json.RawMessage` and check `raw[0] == '['` before unmarshaling. See `auth_validate.go` for the pattern.
 - **Screenshot output:** always write to `/tmp/itchio-screenshots/`, never to `docs/screenshots/` — that directory is populated manually by the developer after design approval.
 - **`go build -tags headless` does not compile `main_sdl.go`** (it is `//go:build !headless`), so CI green does not mean the device build compiles. Run a real cross-compile before claiming a build works.
+- **CI runs almost none of this project's tests.** `.github/workflows/ci.yml` runs only a headless build and `go test -tags headless`. That excludes `internal/ui/input_test.go`, the non-headless `internal/ui` compile pass, `scripts/launch_test.sh`, the four-geometry palette audit, and the archive structural tests — i.e. everything that has actually caught a bug recently. **A green PR check is not evidence.** Run `./scripts/test.sh` locally. (Follow-up: give CI a container runtime so it can run `test.sh` itself.)
 - **Two devices are usually attached over ADB.** `scripts/adb.sh` picks one by probing for its firmware; never use `adb devices | awk NR==2`, and do not trust USB descriptors (the muOS Smart Pro reports itself as "Nexus_4").
 
 ## Skills — When to Use Which
