@@ -22,6 +22,7 @@ Declared once in `scripts/targets.sh` as `<firmware>/<device>`.
 | `nextui/tg5040` | TrimUI Brick (1024×768) + Smart Pro (1280×720) | The portable build: GLIBC_2.17 ceiling, shipped in the pak zip, and copied for muOS |
 | `nextui/tg5050` | TrimUI Smart Pro S (1280×720) | Its toolchain emits GLIBC_2.32; only runs on tg5050 |
 | `nextui/my355` | Miyoo Flip (640×480) | |
+| `nextui/h700` | Anbernic RG XX family (640×480, 720×480, 720×720) | A **copy** of nextui/tg5040. Bundles no SDL2 — NextUI ships its own in `.system/h700/lib` |
 | `muos/arm64` | Every muOS device | A **copy** of nextui/tg5040, not a compile. Bundles no SDL2 |
 
 ## Firmware differences
@@ -32,6 +33,8 @@ Declared once in `scripts/targets.sh` as `<firmware>/<device>`.
 - **Capabilities, not emulation.** `Env.Caps()` switches off NextUI-only features on muOS (palette, MinUI save formats, save/state sync, GBA emulator choice, Pico-8 core choice). Disable rather than guess — a wrong save path writes files the user never finds.
 - **Cover art** is `.media/` on NextUI and the catalogue tree on muOS.
 - **Face buttons** are `btnA`/`btnB`/`btnX`/`btnY` in `internal/ui`, not raw SDL constants: muOS lets the user swap them.
+- **One PLATFORM, eleven devices.** H700 covers the whole Anbernic RG XX family; `$DEVICE` carries the SKU and is what names the handheld in the log. Face buttons differ from every other NextUI device: A/B direct, X/Y swapped.
+- **Screen size class** is `compact(w, h)` in `internal/ui`, not a width comparison — 720×480 is cramped and 720×720 is not.
 
 ## Key Commands
 
@@ -69,9 +72,12 @@ reports low-contrast pairs, so it judges the frame actually produced rather than
 theme accessors in isolation. `scripts/palette-audit.sh` wraps this over all 18
 bundled palettes (`testdata/palettes/`) and runs as part of `test.sh`.
 
-**Render at 1024x768.** Font size scales with height (`h/22`) but pill padding and
-`LayoutFor` constants are fixed pixels, so any other size changes the layout and
-the output stops matching the device.
+**Render at 1024x768 for design work, and at a device geometry when the
+geometry is the point.** Font size scales with height (`h/22`) but pill padding
+and `LayoutFor` constants are fixed pixels, so each size is its own layout.
+`scripts/palette-audit.sh` renders all four shipping geometries — 1024x768,
+640x480, 720x480, 720x720 — so a change that only breaks one of them still
+fails the suite.
 
 **Offscreen is not pixel-identical to the device for text.** Geometry matches
 exactly, but the device uses the bundled SDL2_ttf from `lib/tg5040` while the

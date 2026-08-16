@@ -14,13 +14,21 @@ description: Use when starting any work session on the Itch.io NextUI Pak projec
 
 ## Supported Platforms (all ARM64)
 
-| Code | Device | Resolution |
-|------|--------|-----------|
-| `tg5040` | TrimUI Brick (1024×768) + Smart Pro (1280×720) | ARM64 |
-| `tg5050` | TrimUI Smart Pro S (1280×720) | ARM64 |
-| `my355` | Miyoo Flip (640×480) | ARM64 |
+| Code | Device | Panel |
+|------|--------|-------|
+| `tg5040` | TrimUI Brick + Smart Pro | 1024×768, 1280×720 |
+| `tg5050` | TrimUI Smart Pro S | 1280×720 |
+| `my355` | Miyoo Flip | 640×480 |
+| `h700` | Anbernic RG XX family (11 SKUs) | 640×480, 720×480, 720×720 |
 
-Single binary covers all three. SDL2 `.so` files may differ per platform (extracted from toolchain images).
+One binary covers every platform. Bundled SDL2 `.so` files differ per platform,
+except on `h700` where NextUI ships its own in `.system/h700/lib` and the pak
+bundles none.
+
+`h700` is the only platform code that does not identify the hardware — `$DEVICE`
+carries the SKU (`rg40xxv`, `rgcubexx`, …), and it is what names the handheld in
+the log. Its face buttons also differ from every other NextUI device: A/B
+direct, X/Y swapped.
 
 ## Key Directories
 

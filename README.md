@@ -30,6 +30,14 @@ Pico-8 directly from itch.io — all on-device, no PC required.
 | TrimUI Smart Pro | `tg5040` | Tested |
 | TrimUI Smart Pro S | `tg5050` | Tested |
 | Miyoo Flip | `my355` | Tested |
+| Anbernic RG28XX, RG34XX, RG34XX SP, RG SP | `h700` | Untested — please report |
+| Anbernic RG35XX Plus / H / SP / Pro | `h700` | Untested — please report |
+| Anbernic RG40XX H, RG40XX V, RG Cube XX | `h700` | Untested — please report |
+
+H700 support requires a NextUI build that includes it. Nobody working on
+Itch-io owns one of these handhelds, so every H700 report is genuinely useful —
+the log at `.userdata/h700/logs/itchio.log` records the model, the screen size
+and which buttons you pressed.
 
 ### muOS
 
