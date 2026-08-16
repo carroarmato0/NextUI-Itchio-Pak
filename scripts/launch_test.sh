@@ -99,5 +99,23 @@ case "$OUT" in
     *)                   fail "inherited LD_LIBRARY_PATH is preserved (got: $OUT)" ;;
 esac
 
+# --- unset $SYSTEM_PATH must not degrade the search to the literal /lib -----
+_pak="$TMP/tg5040/Itch-io.pak"
+OUT="$(env -u SYSTEM_PATH \
+    PLATFORM=tg5040 \
+    SHARED_USERDATA_PATH="$TMP/tg5040/userdata" \
+    LD_LIBRARY_PATH="" \
+    "$_pak/launch.sh" 2>/dev/null)"
+case "$OUT" in
+    /lib:*|*:/lib:*|*:/lib|/lib)
+        fail "unset \$SYSTEM_PATH contributes no bare /lib entry (got: $OUT)" ;;
+    *)  ok "unset \$SYSTEM_PATH contributes no bare /lib entry" ;;
+esac
+
+case "$OUT" in
+    *"/lib/tg5040"*) ok "unset \$SYSTEM_PATH still selects the bundled lib dir" ;;
+    *)                fail "unset \$SYSTEM_PATH still selects the bundled lib dir (got: $OUT)" ;;
+esac
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

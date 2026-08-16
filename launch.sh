@@ -49,7 +49,7 @@ fi
 # The bundled LoveRetro SDL2 in PLATFORM_LIB is the last resort, for devices
 # where no system copy exists.
 NATIVE_SDL_LIB=""
-for _d in "${SYSTEM_PATH:-}/lib" /usr/trimui/lib /usr/miyoo/lib /usr/lib /usr/local/lib; do
+for _d in ${SYSTEM_PATH:+"$SYSTEM_PATH/lib"} /usr/trimui/lib /usr/miyoo/lib /usr/lib /usr/local/lib; do
     if [ -f "$_d/libSDL2-2.0.so.0" ]; then
         NATIVE_SDL_LIB="$_d"
         break

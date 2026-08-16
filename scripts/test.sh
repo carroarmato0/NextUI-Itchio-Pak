@@ -105,11 +105,13 @@ fi
 rm -f "$TEST_LOG"
 set -e
 
-# The run above is tagged headless, so it never compiles the !headless files —
-# internal/ui/input.go and its test among them. Those need SDL2 headers, which
-# this image has, but no display: binding button constants opens no window.
-# Without this pass a test can sit in the tree looking green while never having
-# run at all.
+# The run above is tagged headless, so it skips every !headless file in
+# internal/ui — screen.go, dev_scenes.go, dev_start.go, and the two dozen
+# screen_*.go files, not just input.go. This pass compiles and links that
+# whole SDL2 screen package. It needs SDL2 headers, which docker/Dockerfile.dev
+# provides, but no display: binding button constants opens no window.
+# Without this pass a test can sit in the tree looking green while never
+# having been compiled at all.
 echo "==> go test ./internal/ui (non-headless)"
 go test ./internal/ui/ || exit 1
 
