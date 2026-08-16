@@ -23,7 +23,15 @@ fail() { FAIL=$((FAIL + 1)); printf 'FAIL - %s\n' "$1"; }
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# run_launch <platform> <system-lib-has-sdl: yes|no> -> prints LD_LIBRARY_PATH
+# run_launch <platform> <system-lib: none|sdl2|full> -> prints LD_LIBRARY_PATH
+#
+# The second argument controls what $SYSTEM_PATH/lib contains:
+#   none - neither file (the common case today on tg5040/tg5050/my355)
+#   sdl2 - libSDL2-2.0.so.0 only, no libSDL2_ttf (a partial pair — the guard
+#          in launch.sh must NOT fire on this, or a firmware that ships SDL2
+#          without SDL2_ttf would leave the app with no ttf at all)
+#   full - both libSDL2-2.0.so.0 and libSDL2_ttf-2.0.so.0 (a complete pair —
+#          the guard fires, and the bundled directory drops out)
 run_launch() {
     _plat="$1"
     _sys_sdl="$2"
@@ -45,9 +53,11 @@ run_launch() {
 
     _sys="$TMP/$_plat/.system/$_plat"
     mkdir -p "$_sys/lib"
-    if [ "$_sys_sdl" = "yes" ]; then
-        : > "$_sys/lib/libSDL2-2.0.so.0"
-    fi
+    case "$_sys_sdl" in
+        sdl2) : > "$_sys/lib/libSDL2-2.0.so.0" ;;
+        full) : > "$_sys/lib/libSDL2-2.0.so.0"
+              : > "$_sys/lib/libSDL2_ttf-2.0.so.0" ;;
+    esac
 
     PLATFORM="$_plat" \
     SYSTEM_PATH="$_sys" \
@@ -57,7 +67,7 @@ run_launch() {
 }
 
 # --- h700: NextUI's own SDL2 must win, and no bundled dir may be used --------
-OUT="$(run_launch h700 yes)"
+OUT="$(run_launch h700 full)"
 case "$OUT" in
     "$TMP/h700/.system/h700/lib":*|"$TMP/h700/.system/h700/lib")
         ok "h700 puts \$SYSTEM_PATH/lib first" ;;
@@ -71,7 +81,7 @@ case "$OUT" in
 esac
 
 # --- tg5040: unchanged, still falls back to its bundled dir ------------------
-OUT="$(run_launch tg5040 no)"
+OUT="$(run_launch tg5040 none)"
 case "$OUT" in
     *"/lib/tg5040"*) ok "tg5040 still selects its bundled lib dir" ;;
     *)               fail "tg5040 still selects its bundled lib dir (got: $OUT)" ;;
@@ -83,27 +93,15 @@ case "$OUT" in
     *)  ok "tg5040 selects only its own lib dir" ;;
 esac
 
-# --- tg5040 with firmware-provided SDL2: $SYSTEM_PATH/lib wins here too -----
-# Pins "firmware-provided SDL2 is authoritative on every platform" as intended
-# behaviour, not an h700-only quirk. This is the case that would catch a
-# future NextUI release that starts shipping SDL2 in .system/tg5040/lib.
-OUT="$(run_launch tg5040 yes)"
-case "$OUT" in
-    "$TMP/tg5040/.system/tg5040/lib":*|"$TMP/tg5040/.system/tg5040/lib")
-        ok "tg5040 with \$SYSTEM_PATH/lib SDL2 puts it first" ;;
-    *)  fail "tg5040 with \$SYSTEM_PATH/lib SDL2 puts it first (got: $OUT)" ;;
-esac
-
-# --- my355 and tg5050 pick their own ----------------------------------------
-for plat in my355 tg5050; do
-    OUT="$(run_launch "$plat" no)"
-    case "$OUT" in
-        *"/lib/$plat"*) ok "$plat selects its bundled lib dir" ;;
-        *)              fail "$plat selects its bundled lib dir (got: $OUT)" ;;
-    esac
-done
-
 # --- an inherited LD_LIBRARY_PATH is preserved, never replaced --------------
+# Deliberately placed right after the "tg5040 still falls back to its bundled
+# dir" case above (run_launch tg5040 none) and before the "tg5040 with a
+# complete firmware-provided SDL2 pair" case below (run_launch tg5040 full).
+# It reuses that tree without recreating it, so it must run while that
+# tree's $SYSTEM_PATH/lib has no SDL2 stub in it — otherwise the guard
+# fires, the bundled dir drops out, and this stops covering "bundled dir
+# plus inherited path" and starts covering "no bundled dir plus inherited
+# path" instead.
 _pak="$TMP/tg5040/Itch-io.pak"
 OUT="$(PLATFORM=tg5040 \
     SYSTEM_PATH="$TMP/tg5040/.system/tg5040" \
@@ -114,6 +112,55 @@ case "$OUT" in
     *"/inherited/path"*) ok "inherited LD_LIBRARY_PATH is preserved" ;;
     *)                   fail "inherited LD_LIBRARY_PATH is preserved (got: $OUT)" ;;
 esac
+
+case "$OUT" in
+    *"/lib/tg5040"*) ok "inherited LD_LIBRARY_PATH case still covers the bundled dir" ;;
+    *)               fail "inherited LD_LIBRARY_PATH case still covers the bundled dir (got: $OUT)" ;;
+esac
+
+# --- tg5040 with a complete firmware-provided SDL2 pair: guard fires here too
+# Pins "a complete firmware SDL2 pair is authoritative on every platform" as
+# intended behaviour, not an h700-only quirk. This is the case that would
+# catch a future NextUI release that starts shipping SDL2 in
+# .system/tg5040/lib.
+OUT="$(run_launch tg5040 full)"
+case "$OUT" in
+    "$TMP/tg5040/.system/tg5040/lib":*|"$TMP/tg5040/.system/tg5040/lib")
+        ok "tg5040 with a complete \$SYSTEM_PATH/lib pair puts it first" ;;
+    *)  fail "tg5040 with a complete \$SYSTEM_PATH/lib pair puts it first (got: $OUT)" ;;
+esac
+
+case "$OUT" in
+    *"/lib/tg5040"*)
+        fail "tg5040 drops its bundled dir when the firmware pair is complete (got: $OUT)" ;;
+    *)  ok "tg5040 drops its bundled dir when the firmware pair is complete" ;;
+esac
+
+# --- tg5040 with only libSDL2, no libSDL2_ttf: bundled dir must be kept -----
+# The guard must not fire on a partial pair: if it did, and a future NextUI
+# release shipped SDL2 without SDL2_ttf in $SYSTEM_PATH/lib, blanking the
+# bundled directory would leave the app with no ttf at all.
+OUT="$(run_launch tg5040 sdl2)"
+case "$OUT" in
+    *"/lib/tg5040"*)
+        ok "tg5040 keeps its bundled dir when the firmware pair is only SDL2" ;;
+    *)  fail "tg5040 keeps its bundled dir when the firmware pair is only SDL2 (got: $OUT)" ;;
+esac
+
+# --- my355 and tg5050 pick their own ----------------------------------------
+# tg5040 and tg5050's $SYSTEM_PATH/lib were checked over ADB and confirmed to
+# hold no libSDL2 (see the design spec). my355 was not: no Miyoo Flip was
+# available, so whether the real $SYSTEM_PATH/lib on that device also holds
+# no libSDL2 is assumed, not measured. This suite only exercises the guard
+# logic against a fake tree either way — it cannot substitute for that
+# hardware check on my355.
+for plat in my355 tg5050; do
+    OUT="$(run_launch "$plat" none)"
+    case "$OUT" in
+        *"/lib/$plat"*) ok "$plat selects its bundled lib dir" ;;
+        *)              fail "$plat selects its bundled lib dir (got: $OUT)" ;;
+    esac
+done
 
 # --- unset $SYSTEM_PATH must not degrade the search to the literal /lib -----
 _pak="$TMP/tg5040/Itch-io.pak"

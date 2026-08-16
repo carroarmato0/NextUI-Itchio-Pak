@@ -88,7 +88,7 @@ func main() {
 	logger.Info("storage:    root=%s data=%s", env.Root(), env.DataDir())
 	// launch.sh silently picks a native SDL directory and a bundled one with no
 	// log line of its own; this is the one place that records what it resolved.
-	logger.Info("ld_library_path: %s", os.Getenv("LD_LIBRARY_PATH"))
+	logger.Info("ld_libs:    %s", os.Getenv("LD_LIBRARY_PATH"))
 	logRomDirs(env)
 	profilingDesc := "off"
 	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {

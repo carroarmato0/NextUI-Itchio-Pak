@@ -9,31 +9,44 @@ export HOME="$SHARED_USERDATA_PATH/$PAK_NAME"
 # fallback for launches that arrive without it.  h700 is deliberately absent:
 # NextUI installs its own mali-fbdev SDL2 there and the pak ships none, so there
 # is no directory to select.
-PLATFORM_LIB=""
+BUNDLED_LIB=""
 case "${PLATFORM:-}" in
-    h700)   PLATFORM_LIB="" ;;
+    h700)   BUNDLED_LIB="" ;;
     my355|tg5050|tg5040)
-            PLATFORM_LIB="$PAK_DIR/lib/$PLATFORM" ;;
+            BUNDLED_LIB="$PAK_DIR/lib/$PLATFORM" ;;
     *)
         if [ -d /usr/miyoo ]; then
-            PLATFORM_LIB="$PAK_DIR/lib/my355"
+            BUNDLED_LIB="$PAK_DIR/lib/my355"
         elif grep -q "TG5050" /proc/cpuinfo 2>/dev/null; then
-            PLATFORM_LIB="$PAK_DIR/lib/tg5050"
+            BUNDLED_LIB="$PAK_DIR/lib/tg5050"
         else
-            PLATFORM_LIB="$PAK_DIR/lib/tg5040"
+            BUNDLED_LIB="$PAK_DIR/lib/tg5040"
         fi
         ;;
 esac
+PLATFORM_LIB="$BUNDLED_LIB"
 
-# Belt-and-braces: if the firmware ships its own SDL2 in $SYSTEM_PATH/lib, the
-# bundled directory must stay empty regardless of what $PLATFORM says. The
-# case above already handles the documented h700 launch, but if an h700
-# launch ever arrives with $PLATFORM unset or wrong, falling through to
-# lib/tg5040 would pair stock Anbernic's SDL2 2.0.12 with our bundled
-# SDL2_ttf 2.26 — exactly the combination the porting contract forbids. A
-# firmware shipping its own SDL2 is authoritative by definition, so it always
-# wins, on every platform, not just h700.
-if [ -n "${SYSTEM_PATH:-}" ] && [ -f "$SYSTEM_PATH/lib/libSDL2-2.0.so.0" ]; then
+# If the firmware ships a complete SDL2 pair of its own — both
+# libSDL2-2.0.so.0 and libSDL2_ttf-2.0.so.0 in $SYSTEM_PATH/lib — our bundled
+# copy is redundant, and the porting contract asks us not to ship one
+# alongside the firmware's, so drop it from LD_LIBRARY_PATH here. A partial
+# pair (say, a future NextUI release that adds SDL2 to $SYSTEM_PATH/lib but
+# not SDL2_ttf) does not trigger this: PLATFORM_LIB stays set, and
+# NATIVE_SDL_LIB below already puts $SYSTEM_PATH/lib ahead of it on
+# LD_LIBRARY_PATH, so the bundled directory becomes a harmless fallback that
+# supplies only whatever the firmware's copy is missing.
+#
+# Residual risk: if an H700 launch ever arrived without $PLATFORM, the probes
+# above would select a bundled directory (lib/tg5040, since they know nothing
+# about h700). $SYSTEM_PATH is normally unset alongside $PLATFORM too —
+# NextUI exports both together — so this guard would not fire either, and
+# stock Anbernic's /usr/lib SDL2 2.0.12 could load ahead of the bundled
+# SDL2_ttf. Considered unlikely, since NextUI exports $PLATFORM to every pak
+# it launches; the ld_libs: line in the startup log is what would reveal it
+# if it ever happened.
+if [ -n "${SYSTEM_PATH:-}" ] && \
+   [ -f "$SYSTEM_PATH/lib/libSDL2-2.0.so.0" ] && \
+   [ -f "$SYSTEM_PATH/lib/libSDL2_ttf-2.0.so.0" ]; then
     PLATFORM_LIB=""
 fi
 
@@ -45,9 +58,12 @@ rm -f "$PAK_DIR/itchio-pak" 2>/dev/null || true
 # Remove stale versioned SDL2 files left by previous pak versions.  Only the
 # SONAME files (libSDL2-2.0.so.0, libSDL2_ttf-2.0.so.0) are needed at runtime;
 # the versioned siblings are never referenced directly by the dynamic linker.
-if [ -n "$PLATFORM_LIB" ]; then
-    rm -f "$PLATFORM_LIB"/libSDL2-2.0.so.0.* \
-          "$PLATFORM_LIB"/libSDL2_ttf-2.0.so.0.* 2>/dev/null || true
+# Cleans BUNDLED_LIB, not PLATFORM_LIB: the firmware-pair guard above can zero
+# PLATFORM_LIB for LD_LIBRARY_PATH purposes while the bundled directory it
+# zeroed still exists on disk, and still deserves cleaning up.
+if [ -n "$BUNDLED_LIB" ]; then
+    rm -f "$BUNDLED_LIB"/libSDL2-2.0.so.0.* \
+          "$BUNDLED_LIB"/libSDL2_ttf-2.0.so.0.* 2>/dev/null || true
 fi
 
 # Prefer the SDL2 the firmware installed for itself, then the device-native one.
