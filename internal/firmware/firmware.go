@@ -395,6 +395,11 @@ const (
 	FaceSwapped FaceMapping = "swapped"
 	// FaceDirect: SDL's names match the labels on the shell.
 	FaceDirect FaceMapping = "direct"
+	// FaceABDirect: A and B match the labels on the shell, but X and Y are
+	// swapped. This is the H700 family: NextUI's own platform.h reads the
+	// shell's A as joystick button 0 (tg5040 reads it as 1), while X and Y keep
+	// the transposed order every one of these handhelds uses.
+	FaceABDirect FaceMapping = "ab-direct"
 )
 
 // FaceMapping reports how to read this firmware's face buttons.
@@ -407,6 +412,12 @@ const (
 // own default, so it lands where NextUI is.
 func (e *Env) FaceMapping() FaceMapping {
 	if e.kind != KindMuOS {
+		// Derived from upstream source, not measured — nobody here owns the
+		// hardware. logControllerButton records every press, so the first
+		// tester log settles it.
+		if e.device == "h700" {
+			return FaceABDirect
+		}
 		return FaceSwapped
 	}
 

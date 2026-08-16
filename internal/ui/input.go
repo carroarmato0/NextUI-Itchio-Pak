@@ -28,16 +28,36 @@ var (
 	btnY uint8 = sdl.CONTROLLER_BUTTON_X
 )
 
+// faceArrangement is the SDL button each physically labelled face button
+// produces under one arrangement.
+type faceArrangement struct{ a, b, x, y uint8 }
+
+// faceArrangements is the whole relationship in one place. Three arrangements
+// is where a two-branch if/else stops being honest about what varies.
+var faceArrangements = map[firmware.FaceMapping]faceArrangement{
+	firmware.FaceSwapped: {
+		sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_A,
+		sdl.CONTROLLER_BUTTON_Y, sdl.CONTROLLER_BUTTON_X,
+	},
+	firmware.FaceDirect: {
+		sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B,
+		sdl.CONTROLLER_BUTTON_X, sdl.CONTROLLER_BUTTON_Y,
+	},
+	firmware.FaceABDirect: {
+		sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B,
+		sdl.CONTROLLER_BUTTON_Y, sdl.CONTROLLER_BUTTON_X,
+	},
+}
+
 // SetFaceMapping points the face-button bindings at the given arrangement.
 // Called once at startup, before any screen handles an event.
 func SetFaceMapping(m firmware.FaceMapping) {
-	if m == firmware.FaceDirect {
-		btnA, btnB = sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B
-		btnX, btnY = sdl.CONTROLLER_BUTTON_X, sdl.CONTROLLER_BUTTON_Y
-	} else {
-		btnA, btnB = sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_A
-		btnX, btnY = sdl.CONTROLLER_BUTTON_Y, sdl.CONTROLLER_BUTTON_X
+	f, ok := faceArrangements[m]
+	if !ok {
+		logger.Warn("input: unknown face mapping %q, falling back to swapped", m)
+		f = faceArrangements[firmware.FaceSwapped]
 	}
+	btnA, btnB, btnX, btnY = f.a, f.b, f.x, f.y
 	logger.Info("input: face buttons %s — A=SDL_%s B=SDL_%s X=SDL_%s Y=SDL_%s", m,
 		sdlFaceButtonName(btnA), sdlFaceButtonName(btnB),
 		sdlFaceButtonName(btnX), sdlFaceButtonName(btnY))

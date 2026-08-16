@@ -211,6 +211,28 @@ func TestActiveDefaultsToHost(t *testing.T) {
 	SetActive(nil)
 }
 
+// H700 reports its face buttons differently from every other NextUI device.
+// NextUI's own platform.h reads the shell's A as joystick button 0 there and as
+// button 1 on tg5040, and SDL's controller index equals that JOY_ index (a
+// four-for-four match on TrimUI hardware). So A and B land where their labels
+// say and X and Y do not.
+func TestFaceMappingPerPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		platform string
+		want     FaceMapping
+	}{
+		{"tg5040", FaceSwapped},
+		{"tg5050", FaceSwapped},
+		{"my355", FaceSwapped},
+		{"h700", FaceABDirect},
+	} {
+		t.Setenv("PLATFORM", tc.platform)
+		if got := newNextUI("").FaceMapping(); got != tc.want {
+			t.Errorf("PLATFORM=%q FaceMapping() = %q, want %q", tc.platform, got, tc.want)
+		}
+	}
+}
+
 func mkdirAll(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {
