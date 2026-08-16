@@ -113,9 +113,10 @@ notes_file() { printf 'docs/release-notes/%s.md' "$1"; }
 prerelease_banner() {
 	[ "$PRERELEASE" -eq 1 ] || return 0
 	cat <<-'BANNER'
-	> **This is a test build.** It is published for people who want to try muOS
-	> support and report back. It is not offered through the Pak Store, and
-	> NextUI users on a stable release will not be prompted to update to it.
+	> **This is a test build.** It is published for people who want to try what
+	> is new in it and report back — the notes below say what that is. It is not
+	> offered through the Pak Store, and NextUI users on a stable release will
+	> not be prompted to update to it.
 	>
 	> Please report anything odd on the issue tracker, saying which firmware and
 	> device you are on.
