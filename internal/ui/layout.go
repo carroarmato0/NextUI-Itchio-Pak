@@ -22,9 +22,9 @@ func compact(w, h int32) bool {
 // fullTextMinW is the narrowest panel that fits full-length labels and footer
 // hints. Below it, labels abbreviate ("● DL", "LR Sort", "Set").
 //
-// Every shipping panel is 480, 640, 720, 1024 or 1280 wide, so the threshold
-// only has to fall somewhere in (720, 1024]; 1024 is the narrowest panel
-// observed to fit the full set.
+// The threshold is not finely tuned: no shipping panel width falls between
+// 720 and 1024, so any value in that gap behaves identically; 1024 is the
+// narrowest panel actually observed to fit the full set.
 const fullTextMinW = int32(1024)
 
 // abbreviate reports whether a panel of width w is too narrow for full-length
