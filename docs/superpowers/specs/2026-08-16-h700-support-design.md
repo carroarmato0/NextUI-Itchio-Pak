@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-16
 **Branch:** `feature/h700-support` (from `dev`)
-**Ships as:** `v1.0.23-rc3`, gated on upstream
+**Ships as:** `v1.0.23-rc3`
 
 ## Summary
 
