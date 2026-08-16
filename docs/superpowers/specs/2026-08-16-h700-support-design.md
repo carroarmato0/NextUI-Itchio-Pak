@@ -114,9 +114,21 @@ my355 behaving the same way is assumed rather than checked; `launch.sh`'s
 comment on the search order and `scripts/launch_test.sh` both flag this.
 
 Bundled-library selection keys on `$PLATFORM` when set, keeping the
-`/usr/miyoo` and `/proc/cpuinfo` probes as fallback. `h700` selects no bundled
-directory at all. The inherited `$LD_LIBRARY_PATH` continues to be appended
-rather than replaced, as the porting contract requires.
+`/usr/miyoo` and `/proc/cpuinfo` probes as fallback — that part is unchanged
+and is not h700-specific. What is new: a filesystem check can then override
+that selection on any platform, not just h700. If `$SYSTEM_PATH/lib` holds a
+*complete* SDL2 pair — both `libSDL2-2.0.so.0` and `libSDL2_ttf-2.0.so.0` —
+the bundled directory drops out of `LD_LIBRARY_PATH` entirely, because a
+firmware shipping the whole pair makes our copy redundant and the porting
+contract asks us not to ship one alongside it. A partial pair (SDL2 without
+`libSDL2_ttf`, or vice versa) does not trigger this: the bundled directory
+stays, ordered after `$SYSTEM_PATH/lib` on `LD_LIBRARY_PATH`, where it
+supplies only whatever the firmware's copy is missing. `h700` is expected to
+hit the override in practice, since NextUI's mali-fbdev build ships both
+files in `.system/h700/lib`, but the code contains no h700-specific case —
+any platform whose firmware starts shipping a complete pair would hit it the
+same way. The inherited `$LD_LIBRARY_PATH` continues to be appended rather
+than replaced, as the porting contract requires.
 
 `launch.sh` is already `#!/bin/sh` with no bashisms, so the `&>` trap that
 catches TrimUI launchers under dash does not apply — but it stays on the review
