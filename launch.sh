@@ -30,11 +30,13 @@ PLATFORM_LIB="$BUNDLED_LIB"
 # libSDL2-2.0.so.0 and libSDL2_ttf-2.0.so.0 in $SYSTEM_PATH/lib — our bundled
 # copy is redundant, and the porting contract asks us not to ship one
 # alongside the firmware's, so drop it from LD_LIBRARY_PATH here. A partial
-# pair (say, a future NextUI release that adds SDL2 to $SYSTEM_PATH/lib but
-# not SDL2_ttf) does not trigger this: PLATFORM_LIB stays set, and
-# NATIVE_SDL_LIB below already puts $SYSTEM_PATH/lib ahead of it on
-# LD_LIBRARY_PATH, so the bundled directory becomes a harmless fallback that
-# supplies only whatever the firmware's copy is missing.
+# pair does not trigger this, and both shapes of partial stay safe:
+#   SDL2 without SDL2_ttf — PLATFORM_LIB stays set, and NATIVE_SDL_LIB below
+#     puts $SYSTEM_PATH/lib ahead of it, so the bundled directory becomes a
+#     fallback supplying only the ttf the firmware lacks.
+#   SDL2_ttf without SDL2 — the NATIVE_SDL_LIB loop tests for libSDL2-2.0.so.0
+#     only, so $SYSTEM_PATH/lib never reaches LD_LIBRARY_PATH at all and the
+#     bundled pair supplies both. Equally safe, by a different route.
 #
 # Residual risk: if an H700 launch ever arrived without $PLATFORM, the probes
 # above would select a bundled directory (lib/tg5040, since they know nothing
