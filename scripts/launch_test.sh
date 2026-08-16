@@ -29,12 +29,17 @@ run_launch() {
     _sys_sdl="$2"
 
     _pak="$TMP/$_plat/Itch-io.pak"
+    # shellcheck disable=SC2115 # $TMP is always a fresh mktemp -d (set above,
+    # never empty/unset here), so "$TMP/$_plat" can never collapse to "/".
     rm -rf "$TMP/$_plat"
     mkdir -p "$_pak/assets" "$_pak/lib/tg5040" "$_pak/lib/tg5050" "$_pak/lib/my355"
     cp launch.sh "$_pak/launch.sh"
     chmod +x "$_pak/launch.sh"
 
     # Stub app: prints the library path and exits instead of starting SDL.
+    # shellcheck disable=SC2016 # Single-quoting is deliberate: the stub script
+    # must contain the literal text $LD_LIBRARY_PATH, expanded when the stub
+    # itself runs later, not when this printf runs now.
     printf '#!/bin/sh\nprintf "%%s\\n" "$LD_LIBRARY_PATH"\n' > "$_pak/itchio"
     chmod +x "$_pak/itchio"
 
@@ -76,6 +81,17 @@ case "$OUT" in
     *"/lib/my355"*|*"/lib/tg5050"*)
         fail "tg5040 selects only its own lib dir (got: $OUT)" ;;
     *)  ok "tg5040 selects only its own lib dir" ;;
+esac
+
+# --- tg5040 with firmware-provided SDL2: $SYSTEM_PATH/lib wins here too -----
+# Pins "firmware-provided SDL2 is authoritative on every platform" as intended
+# behaviour, not an h700-only quirk. This is the case that would catch a
+# future NextUI release that starts shipping SDL2 in .system/tg5040/lib.
+OUT="$(run_launch tg5040 yes)"
+case "$OUT" in
+    "$TMP/tg5040/.system/tg5040/lib":*|"$TMP/tg5040/.system/tg5040/lib")
+        ok "tg5040 with \$SYSTEM_PATH/lib SDL2 puts it first" ;;
+    *)  fail "tg5040 with \$SYSTEM_PATH/lib SDL2 puts it first (got: $OUT)" ;;
 esac
 
 # --- my355 and tg5050 pick their own ----------------------------------------

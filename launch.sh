@@ -25,6 +25,18 @@ case "${PLATFORM:-}" in
         ;;
 esac
 
+# Belt-and-braces: if the firmware ships its own SDL2 in $SYSTEM_PATH/lib, the
+# bundled directory must stay empty regardless of what $PLATFORM says. The
+# case above already handles the documented h700 launch, but if an h700
+# launch ever arrives with $PLATFORM unset or wrong, falling through to
+# lib/tg5040 would pair stock Anbernic's SDL2 2.0.12 with our bundled
+# SDL2_ttf 2.26 — exactly the combination the porting contract forbids. A
+# firmware shipping its own SDL2 is authoritative by definition, so it always
+# wins, on every platform, not just h700.
+if [ -n "${SYSTEM_PATH:-}" ] && [ -f "$SYSTEM_PATH/lib/libSDL2-2.0.so.0" ]; then
+    PLATFORM_LIB=""
+fi
+
 # Remove the pre-rename binary left behind when upgrading over an older pak.
 # Installing writes the new "itchio" alongside it rather than replacing it, so
 # without this every upgraded device carries a dead 14MB copy for ever.

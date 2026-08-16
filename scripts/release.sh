@@ -190,3 +190,12 @@ chmod +x "$MUOS_APP/mux_launch.sh" "$MUOS_APP/$BIN_NAME"
 
 echo "==> Release artifacts:"
 find dist -maxdepth 2 -type f \( -name '*.zip' -o -name '*.pakz' -o -name '*.muxapp' \) | sort
+
+# ./scripts/test.sh above ran these against an empty (just-cleared) dist/, so
+# they skipped cleanly and proved nothing about this release. Run them again
+# now that the artifacts actually exist, so a release verifies what it just
+# built rather than depending on a human remembering to run a second command.
+# In particular this is what enforces "no artifact may contain lib/h700/".
+echo "==> Verifying release artifacts..."
+./scripts/release-pak_test.sh
+./scripts/release-muxapp_test.sh

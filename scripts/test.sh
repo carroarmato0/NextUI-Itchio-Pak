@@ -55,8 +55,10 @@ if [ -z "${IN_CONTAINER:-}" ]; then
     echo "==> shellcheck (device launchers)"
     if command -v shellcheck >/dev/null 2>&1; then
         # muOS runs mux_launch.sh with its own /bin/sh, so it is checked as
-        # POSIX sh rather than bash.
-        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh || exit 1
+        # POSIX sh rather than bash. launch_test.sh runs under dash too (it
+        # execs launch.sh directly), so it belongs in the same POSIX-sh gate
+        # it exists to protect.
+        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh "$SCRIPT_DIR/launch_test.sh" || exit 1
         echo "ok   - device launch scripts are clean"
     else
         echo "note: skipping shellcheck (not installed)" >&2
