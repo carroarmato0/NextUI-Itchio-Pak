@@ -41,7 +41,7 @@ Commands:
   pull-profile     Pull recorded profile files from the device to ./debug-profiles/
 
 Environment:
-  DEPLOY_PLATFORM=tg5040|tg5050|my355   Target platform (default: tg5040)
+  DEPLOY_PLATFORM=tg5040|tg5050|my355|h700   Target platform (default: tg5040)
 
 Log path on device: /mnt/SDCARD/.userdata/<platform>/logs/itchio.log
 

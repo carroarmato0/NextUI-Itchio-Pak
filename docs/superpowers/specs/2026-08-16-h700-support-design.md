@@ -106,6 +106,13 @@ by definition when present. On tg5040, tg5050 and my355 that directory holds no
 behaviour is unchanged. **This is the one edit that can break a currently
 working device, so it is verified on real TrimUI hardware before merge.**
 
+That verification happened over ADB against real tg5040 and tg5050 hardware
+at firmware `NextUI-20260719-0`: `$SYSTEM_PATH/lib` was confirmed to hold no
+`libSDL2` on either, so the probe falls through exactly as it did before this
+change. It was **not** verified on my355 — no Miyoo Flip was available — so
+my355 behaving the same way is assumed rather than checked; `launch.sh`'s
+comment on the search order and `scripts/launch_test.sh` both flag this.
+
 Bundled-library selection keys on `$PLATFORM` when set, keeping the
 `/usr/miyoo` and `/proc/cpuinfo` probes as fallback. `h700` selects no bundled
 directory at all. The inherited `$LD_LIBRARY_PATH` continues to be appended
@@ -162,7 +169,7 @@ unified-naming toggle, clear-filters, keyboard backspace, and API-key edit.
 This is a derivation, not a measurement. It is confirmed or refuted by the first
 tester log, since `logControllerButton` already records every button press.
 
-### Layout: one predicate, replacing the width test
+### Layout: two predicates, replacing the width test
 
 H700 introduces two panel geometries the app has never rendered: 720×480 and
 720×720. `LayoutFor` splits on `w <= 640`, so 720×480 would take the roomy
@@ -172,20 +179,42 @@ sized for a screen with 60% more height.
 `narrowScreenW` also turns out to be consulted **directly at eight sites** — six
 in `screen_detail.go`, two in `screen_list.go` — independently of `LayoutFor`.
 Height-keying `LayoutFor` alone would leave those eight on the wrong branch, so
-a single shared predicate replaces the width test and all eight call sites:
+the plan going in was a single shared predicate replacing the width test and
+all eight call sites:
 
 > **compact** unless the panel is roomy in *both* dimensions — `!(w > 640 && h > 480)`
 
-| Panel | Device | Class |
-|---|---|---|
-| 640×480 | Miyoo Flip, most RG XX | compact *(unchanged)* |
-| 720×480 | RG34XX, RG34XX SP, RG SP | compact *(the fix)* |
-| 720×720 | RG Cube XX | roomy |
-| 480×640 | RG28XX, if `SDL_ROTATION` misses our window | compact |
-| 1024×768, 1280×720 | TrimUI | roomy *(unchanged)* |
+That single predicate shipped first, then broke: `devshot` rendering every
+scene at 720×720 with `--audit` showed footer hints and a right-aligned page
+indicator drawn on top of each other, in one colour. 720×720 has ample
+*vertical* room, so the single conjunction correctly classed it as roomy —
+but roomy means full-length text, and full hints plus the page indicator do
+not fit across 720 pixels of *width* regardless of height. One predicate
+could not be both "spacing depends on width and height together" and "text
+fit depends on width alone" at the same time, because those two things turned
+out not to be the same question.
 
-The conjunction rather than a plain height test is deliberate: it keeps RG28XX
-safe in the case where rotation does not reach us.
+The fix (commit `50208d6`) splits the one predicate into two, replacing all
+eight call sites with whichever question they were actually asking:
+
+> **`compact(w, h)`** — spacing only: header/row/footer padding, content gap,
+> cover-art column width, overlay margins. Unchanged from the original plan:
+> `!(w > 640 && h > 480)`.
+>
+> **`abbreviate(w)`** — text fit only: footer hints, the QR column width/label.
+> Width alone, since horizontal budget doesn't depend on height: `w < 1024`.
+
+| Panel | Device | `compact` | `abbreviate` |
+|---|---|---|---|
+| 640×480 | Miyoo Flip, most RG XX | yes *(unchanged)* | yes |
+| 720×480 | RG34XX, RG34XX SP, RG SP | yes *(the original fix)* | yes |
+| 720×720 | RG Cube XX | no | yes *(the correction)* |
+| 480×640 | RG28XX, if `SDL_ROTATION` misses our window | yes | yes |
+| 1024×768, 1280×720 | TrimUI | no *(unchanged)* | no |
+
+The conjunction in `compact` rather than a plain height test is deliberate: it
+keeps RG28XX safe in the case where rotation does not reach us. `abbreviate`
+needs no such conjunction — it only ever consulted width.
 
 ### Packaging
 
@@ -204,10 +233,10 @@ directory inside it.
   "render at 1024×768" rule, which exists because pill padding and `LayoutFor`
   constants are fixed pixels — so the rule is amended rather than quietly
   violated, and `palette-audit.sh` covers the new geometries.
-- Unit tests: the `compact(w, h)` table across all six geometries above,
-  `$DEVICE` → label resolution including the two fallbacks, the three face
-  arrangements, and structural assertions that the `.pakz` contains
-  `Tools/h700/Itch-io.pak` and that no artifact ships `lib/h700/`.
+- Unit tests: the `compact(w, h)` and `abbreviate(w)` tables across the
+  geometries above, `$DEVICE` → label resolution including the two fallbacks,
+  the three face arrangements, and structural assertions that the `.pakz`
+  contains `Tools/h700/Itch-io.pak` and that no artifact ships `lib/h700/`.
 
 **Verified on hardware we do have:** the `launch.sh` library-order change is
 regression-tested on the TrimUI (NextUI) and muOS devices — the log must show
