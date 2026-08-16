@@ -128,13 +128,19 @@ mkdir -p dist/nextui/all/Tools
 for t in $(targets_for nextui); do
     dev="$(target_device "$t")"
     PLAT_PAK="dist/nextui/all/Tools/$dev/Itch-io.pak"
-    mkdir -p "$PLAT_PAK/lib/$dev" "$PLAT_PAK/assets"
+    mkdir -p "$PLAT_PAK/assets"
     cp "$(target_binary "$t")" "$PLAT_PAK/$BIN_NAME"
     cp launch.sh               "$PLAT_PAK/launch.sh"
     cp pak.json                "$PLAT_PAK/pak.json"
     cp -r assets/.             "$PLAT_PAK/assets/"
     rm -f "$PLAT_PAK/assets/.gitkeep"
-    cp -L "$(toolchain_libdir "$(target_toolchain "$t")")"/* "$PLAT_PAK/lib/$dev/" 2>/dev/null || true
+    # Only targets that ship their own SDL2 get a lib dir.  h700 links the
+    # SDL2 NextUI installs in .system/h700/lib; a lib dir here would put ours
+    # ahead of it.
+    if target_bundles_sdl "$t"; then
+        mkdir -p "$PLAT_PAK/lib/$dev"
+        cp -L "$(toolchain_libdir "$(target_toolchain "$t")")"/* "$PLAT_PAK/lib/$dev/" 2>/dev/null || true
+    fi
 done
 
 (
