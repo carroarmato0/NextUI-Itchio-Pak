@@ -296,7 +296,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
-		if r.W <= narrowScreenW {
+		if compact(r.W, r.H) {
 			dlLabel = "● DL"
 		}
 		dw, _ := r.SmallTextSize(dlLabel)
@@ -330,7 +330,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// doesn't jump in size once the QR code and detail data arrive.
 	// QR column narrower than before — screenshot gets more horizontal space.
 	qrColW := r.W / 5
-	if r.W <= narrowScreenW {
+	if compact(r.W, r.H) {
 		qrColW = r.W / 6
 	}
 	imgAreaW := r.W - qrColW - margin - 10
@@ -361,14 +361,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		lt := r.Theme.ListText
 		r.DrawText("Loading...", margin, contentTop+imgBoxH+16, lt[0], lt[1], lt[2])
 		ftrY := r.DrawFooterBar(footerH)
-		r.DrawFooterHints(backHints(r.W), ftrY)
+		r.DrawFooterHints(backHints(r.W, r.H), ftrY)
 		return
 	}
 	if s.err != nil {
 		er := r.Theme.Error()
 		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, er[0], er[1], er[2])
 		ftrY := r.DrawFooterBar(footerH)
-		r.DrawFooterHints(backHints(r.W), ftrY)
+		r.DrawFooterHints(backHints(r.W, r.H), ftrY)
 		return
 	}
 
@@ -553,7 +553,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				s.pathScrollX = 0
 				pth := r.Theme.Muted()
 				r.DrawSmallText(pathText, textX, cardY+cp+2, pth[0], pth[1], pth[2])
-			} else if r.W <= narrowScreenW {
+			} else if compact(r.W, r.H) {
 				// On small screens truncate the path rather than scrolling.
 				truncated := truncateSmallToWidth(r, pathText, textMaxW)
 				pth := r.Theme.Muted()
@@ -655,7 +655,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
-		if r.W <= narrowScreenW {
+		if compact(r.W, r.H) {
 			dlLabel = "● DL"
 		}
 		dw, _ := r.SmallTextSize(dlLabel)
@@ -681,7 +681,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgePill, Label: "←→", Text: "Screenshots"},
 	}
-	if r.W > narrowScreenW {
+	if !compact(r.W, r.H) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
 	if s.contentHeight > contentH {
@@ -779,7 +779,7 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 
 	footerH := int32(52)
 	ftrY := r.DrawFooterBar(footerH)
-	r.DrawFooterHints(backHints(r.W), ftrY)
+	r.DrawFooterHints(backHints(r.W, r.H), ftrY)
 }
 
 // drawQR renders the QR code centered within the given box.
@@ -1139,12 +1139,12 @@ func pruneDeletedDirs(files []inventory.DownloadedFile, pico8Core string) {
 	}
 }
 
-// backHints returns standard "back + settings" footer hints scaled to screen width.
-func backHints(screenW int32) []renderer.FooterHint {
+// backHints returns standard "back + settings" footer hints scaled to screen size.
+func backHints(screenW, screenH int32) []renderer.FooterHint {
 	hints := []renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
-	if screenW > narrowScreenW {
+	if !compact(screenW, screenH) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	} else {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})

@@ -1,8 +1,23 @@
 package ui
 
-// narrowScreenW is the display width of the Miyoo Flip (my355). Footer hints
-// are abbreviated at or below this width to prevent overflow.
-const narrowScreenW = int32(640)
+// A panel is compact unless it is roomy in both directions.
+//
+// Width alone used to be enough: every device was either 640 wide or ≥1024.
+// The H700 family broke that — it ships 720×480 (RG34XX, RG34XX SP, RG SP),
+// which is as cramped vertically as a Miyoo Flip, and 720×720 (RG Cube XX),
+// which is not. The conjunction also keeps RG28XX safe: it normally presents
+// 640×480 through SDL_ROTATION, but if rotation does not reach our window we
+// see 480×640, and a height-only test would call that roomy.
+const (
+	compactMaxW = int32(640)
+	compactMaxH = int32(480)
+)
+
+// compact reports whether a w×h panel should use the tight layout: abbreviated
+// footer hints, a narrower QR column, and small overlay margins.
+func compact(w, h int32) bool {
+	return w <= compactMaxW || h <= compactMaxH
+}
 
 // Layout holds screen-size-dependent spacing constants derived at draw time.
 // Use LayoutFor(r.W, r.H) to obtain the appropriate layout for the current screen.
@@ -16,9 +31,9 @@ type Layout struct {
 }
 
 // LayoutFor returns the layout constants appropriate for a screen of size w×h.
-// Two size classes: small (w ≤ narrowScreenW) and wide (w > narrowScreenW).
+// Two size classes, decided by compact().
 func LayoutFor(w, h int32) Layout {
-	if w <= narrowScreenW {
+	if compact(w, h) {
 		return Layout{
 			HeaderPad:      3,
 			RowPad:         2,
