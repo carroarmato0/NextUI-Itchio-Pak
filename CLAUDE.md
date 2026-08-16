@@ -34,7 +34,7 @@ Declared once in `scripts/targets.sh` as `<firmware>/<device>`.
 - **Cover art** is `.media/` on NextUI and the catalogue tree on muOS.
 - **Face buttons** are `btnA`/`btnB`/`btnX`/`btnY` in `internal/ui`, not raw SDL constants: muOS lets the user swap them.
 - **One PLATFORM, eleven devices.** H700 covers the whole Anbernic RG XX family; `$DEVICE` carries the SKU and is what names the handheld in the log. Face buttons differ from every other NextUI device: A/B direct, X/Y swapped.
-- **Screen size class** is `compact(w, h)` in `internal/ui`, not a width comparison — 720×480 is cramped and 720×720 is not.
+- **Screen size class** is two predicates in `internal/ui`, not a width comparison — 720×480 is cramped and 720×720 is not. `compact(w, h)` governs spacing (padding, content gap, overlay margins); `abbreviate(w)` governs text (footer hints, QR column width) and is width-only, since horizontal budget doesn't depend on height.
 
 ## Key Commands
 

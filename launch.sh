@@ -43,8 +43,15 @@ fi
 # $SYSTEM_PATH/lib comes first because when the firmware ships its own SDL2 it
 # is authoritative by definition.  On H700 that is .system/h700/lib, and the
 # alternative is stock Anbernic's /usr/lib SDL2 2.0.12 — mali and dummy video
-# only, with no libSDL2_ttf beside it.  TrimUI and Miyoo keep no libSDL2 there,
-# so they fall through to exactly the directory they used before.
+# only, with no libSDL2_ttf beside it.
+#
+# Verified over ADB that $SYSTEM_PATH/lib holds no libSDL2 on tg5040 and
+# tg5050 at firmware NextUI-20260719-0, so on those two this falls through to
+# exactly the directory they used before. NOT verified on my355 — no Miyoo
+# Flip was available — so my355 behaving the same way is assumed, not
+# checked; the Flip is the platform whose .system layout is least
+# predictable elsewhere in this codebase, so this assumption is the most
+# likely one on this branch to be wrong.
 #
 # The bundled LoveRetro SDL2 in PLATFORM_LIB is the last resort, for devices
 # where no system copy exists.

@@ -13,8 +13,13 @@ const (
 	compactMaxH = int32(480)
 )
 
-// compact reports whether a w×h panel should use the tight layout: abbreviated
-// footer hints, a narrower QR column, and small overlay margins.
+// compact reports whether a w×h panel should use the tight spacing layout:
+// smaller header/row/footer padding, a smaller content gap, a narrower cover
+// art column, and small overlay margins. It governs spacing only — text
+// abbreviation (footer hints, the QR column label) is decided separately by
+// abbreviate(w), since horizontal and vertical room turned out not to move
+// together for H700's panels. Adding a new narrow panel? Spacing goes here,
+// text-fit goes in abbreviate.
 func compact(w, h int32) bool {
 	return w <= compactMaxW || h <= compactMaxH
 }

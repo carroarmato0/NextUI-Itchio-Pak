@@ -57,10 +57,12 @@ func TestLayoutForOverlayMargin(t *testing.T) {
 	}
 }
 
-// The size class is what decides whether a panel gets abbreviated footer hints,
-// a narrower QR column, and 3% instead of 14% overlay margins. H700 introduced
-// two geometries the width test got wrong, so the rule is pinned per device
-// here: a panel is compact unless it is roomy in *both* directions.
+// The size class is what decides whether a panel gets tight spacing — smaller
+// padding, a narrower cover art column, and 3% instead of 14% overlay margins.
+// (Abbreviated footer hints and the narrower QR column are decided separately
+// by abbreviate(w).) H700 introduced two geometries the width test got wrong,
+// so the rule is pinned per device here: a panel is compact unless it is roomy
+// in *both* directions.
 func TestCompactSizeClass(t *testing.T) {
 	for _, tc := range []struct {
 		w, h int32

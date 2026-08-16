@@ -9,6 +9,13 @@ import (
 // nextUISDCard is the SD card mount point on every NextUI platform
 // (workspace/tg5040/platform/platform.h:156, tg5050:151); RES_PATH and
 // SHARED_USERDATA_PATH are derived from it in common/defines.h:19,21.
+//
+// h700 is ASSUMED to match, not checked — no h700 platform.h line was read
+// and nobody here owns the hardware. If the mount point actually differs,
+// every ROM path, palette directory and log path this package resolves is
+// wrong. The "storage: root=" line main.go logs at startup is what falsifies
+// this: a tester's log showing anything other than /mnt/SDCARD/... means this
+// assumption was wrong.
 const nextUISDCard = "/mnt/SDCARD"
 
 // nextUIROMFolders maps our system keys onto NextUI's ROM folder display names.

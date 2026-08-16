@@ -404,12 +404,15 @@ const (
 
 // FaceMapping reports how to read this firmware's face buttons.
 //
-// Measured on hardware, not inferred. NextUI presents the TrimUI pad as an
-// "X360 Controller" and swaps them. muOS presents the same pad as a "TRIMUI
-// Smart Pro Controller" with an identical mapping line, and does not — the raw
-// button indices behind the identical line are ordered differently. muOS's
-// modern controller database then swaps its face buttons back relative to its
-// own default, so it lands where NextUI is.
+// TrimUI and muOS are measured on hardware, not inferred. NextUI presents the
+// TrimUI pad as an "X360 Controller" and swaps them. muOS presents the same
+// pad as a "TRIMUI Smart Pro Controller" with an identical mapping line, and
+// does not — the raw button indices behind the identical line are ordered
+// differently. muOS's modern controller database then swaps its face buttons
+// back relative to its own default, so it lands where NextUI is.
+//
+// H700 is the exception: it is derived from upstream source, not measured —
+// see the inline comment below.
 func (e *Env) FaceMapping() FaceMapping {
 	if e.kind != KindMuOS {
 		// Derived from upstream source, not measured — nobody here owns the
