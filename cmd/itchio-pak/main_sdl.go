@@ -384,23 +384,41 @@ var controllerButtonNames = map[uint8]string{
 	sdl.CONTROLLER_BUTTON_DPAD_RIGHT:    "RIGHT",
 }
 
-// loggedButtonPresses counts CONTROLLERBUTTONDOWN events logged at Info so far.
-// Only ever touched from the single SDL event loop in runSDL (one goroutine),
-// so a plain int is correct here — a mutex or atomic would misleadingly imply
-// concurrent access that does not happen.
-var loggedButtonPresses int
+// loggedFaceButtonPresses counts face-button (A/B/X/Y) CONTROLLERBUTTONDOWN
+// events logged at Info so far. Only ever touched from the single SDL event
+// loop in runSDL (one goroutine), so a plain int is correct here — a mutex or
+// atomic would misleadingly imply concurrent access that does not happen.
+var loggedFaceButtonPresses int
 
-// buttonLogCap is how many button-down events are logged at Info before
+// buttonLogCap is how many face-button presses are logged at Info before
 // dropping to Debug. At the default log level this is the app's only
 // instrument for the face-button arrangement (README tells testers their log
 // records "which buttons you pressed"), so it must be visible without raising
 // verbosity — but a full keypress dump is not the goal, so it is capped.
 const buttonLogCap = 8
 
+// isFaceButton reports whether b is one of the four buttons the arrangement
+// instrument cares about. Everything else — D-pad, shoulders, START, BACK,
+// GUIDE — is not diagnostic for the face-button arrangement and does not draw
+// on the Info budget: the app opens on a scrollable list, so a tester who
+// scrolls before touching a face button must not burn the whole budget on
+// D-pad events before a single A/B/X/Y press is logged at Info.
+func isFaceButton(b uint8) bool {
+	switch b {
+	case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B,
+		sdl.CONTROLLER_BUTTON_X, sdl.CONTROLLER_BUTTON_Y:
+		return true
+	default:
+		return false
+	}
+}
+
 // logControllerButton records button presses so a report of "the buttons are
-// wrong on my device" can be diagnosed from the log alone. The first
-// buttonLogCap presses log at Info (visible at the default level); the rest
-// log at Debug, same as before.
+// wrong on my device" can be diagnosed from the log alone. Only face-button
+// presses count against buttonLogCap; the first buttonLogCap of those log at
+// Info (visible at the default level), the rest log at Debug. Non-face
+// buttons always log at Debug — they never establish the arrangement, so
+// they are not worth the Info budget.
 func logControllerButton(e sdl.Event) {
 	ev, ok := e.(*sdl.ControllerButtonEvent)
 	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
@@ -410,10 +428,10 @@ func logControllerButton(e sdl.Event) {
 	if !known {
 		name = "?"
 	}
-	if loggedButtonPresses < buttonLogCap {
-		loggedButtonPresses++
-		logger.Info("input: button down SDL_%s (raw %d) [%d/%d, capped — further presses log at debug]",
-			name, ev.Button, loggedButtonPresses, buttonLogCap)
+	if isFaceButton(ev.Button) && loggedFaceButtonPresses < buttonLogCap {
+		loggedFaceButtonPresses++
+		logger.Info("input: button down SDL_%s (raw %d) [%d/%d face buttons, capped — further face-button presses log at debug]",
+			name, ev.Button, loggedFaceButtonPresses, buttonLogCap)
 		return
 	}
 	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
