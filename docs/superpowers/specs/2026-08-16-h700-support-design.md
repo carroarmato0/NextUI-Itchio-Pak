@@ -187,8 +187,56 @@ small `{A,B,X,Y}` table rather than an if/else — three arrangements is where a
 boolean-shaped branch stops paying. X and Y are load-bearing: delete,
 unified-naming toggle, clear-filters, keyboard backspace, and API-key edit.
 
-This is a derivation, not a measurement. It is confirmed or refuted by the first
-tester log, since `logControllerButton` already records every button press.
+This started as a derivation, not a measurement. **It has since been confirmed
+on hardware.** A tester captured `/dev/input/event1` while pressing each button
+in a stated order: the shell's A reports evdev code 304 and its B 305, while its
+Y reports 306 and its X 307 — A and B direct, X and Y transposed, exactly as
+derived. That is a statement about codes, so it outlived the index mistake
+below.
+
+The same capture also refuted an assumption this section did not know it was
+making: that H700's pad presents as a game controller at all. It does not. SDL
+ships no database entry for `ANBERNIC-keys`, so it stayed a plain joystick and
+emitted only `SDL_JOYBUTTONDOWN`, which no screen handles — the app rendered
+normally and ignored every press. The arrangement above was correct and
+unreachable. See `firmware.ControllerMapping`.
+
+### Button indices are a property of the device, not of the family
+
+rc4 shipped that mapping with its indices hardcoded, on the assumption that the
+codes above are the lowest keys the pad exposes, so A is `b0`. The rc4 tester
+found every button three bindings out — B acted as L1, X as Select, Y as R1, L1
+as Start, and the volume-down key acted as B, i.e. index 1. Nine observations,
+one uniform `+3`: three keys are enumerated ahead of the pad's own.
+
+The index a code gets is not a property of the code. SDL's Linux backend
+numbers `BTN_JOYSTICK..KEY_MAX` first and everything below `BTN_JOYSTICK`
+after, so a device's face buttons start at zero only if it exposes no other key
+in the upper range — and across eleven RG XX SKUs that is not something to
+assume. **The codes are measured and hardcoded; the indices are derived at
+runtime** from the same `KEY=` bitmap SDL read, in `firmware.padButtonIndexes`.
+
+The enumeration order is not taken on trust either. MinUI's `rg35xxplus`
+`platform.h` — the same H700 hardware — publishes the joystick index of all
+nineteen keys, and `sdlButtonIndexes` reproduces every one of them from that
+bitmap: `A=0 B=1 Y=2 X=3 L1=4 R1=5 SELECT=6 START=7 MENU=8 L2=9 R2=10`, then
+`UP=13 LEFT=14 RIGHT=15 DOWN=16 VOL-=17 VOL+=18`. The six keys the app does not
+bind are what make that a check rather than a restatement: they pin where the
+sub-`BTN_JOYSTICK` keys land, which is the whole question.
+
+Two guards keep a bad read from reaching the pad. The decoded bitmap must
+contain as many keys as SDL reports buttons — that says the right device was
+read — and it must contain the four face codes, which is what catches a bitmap
+decoded at the wrong word width (the kernel prints native words and does not
+say how wide they are; the bit *count* is the same either way, so the count
+alone cannot tell 32 from 64). Failing either, the mapping falls back to the
+rc4 tester's measured `+3`, which is one SKU's measurement and labelled as
+such.
+
+`logJoystickButton` closes the instrument gap that let this ship: the log
+recorded which SDL button a press produced but never which index it came from,
+so a mapping that is uniformly offset reads exactly like one that is wrongly
+bound. One press now distinguishes them.
 
 ### Layout: two predicates, replacing the width test
 

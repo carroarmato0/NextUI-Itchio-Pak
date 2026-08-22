@@ -3,6 +3,7 @@ package firmware
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -276,5 +277,31 @@ func TestNextUIDeviceIgnoredOffH700(t *testing.T) {
 	t.Setenv("DEVICE", "brick")
 	if got, want := newNextUI("").DeviceLabel(), "TrimUI Brick / Smart Pro"; got != want {
 		t.Errorf("label = %q, want %q", got, want)
+	}
+}
+
+// The mapping is a workaround for one device's missing database entry. Every
+// other platform's SDL2 already classifies its pad as a controller, and
+// overriding that would swap face buttons on hardware that works today.
+func TestControllerMappingOnlyH700(t *testing.T) {
+	for _, platform := range []string{"tg5040", "tg5050", "my355"} {
+		t.Setenv("PLATFORM", platform)
+		if _, ok := newNextUI("").ControllerMapping(Pad{GUID: "guid", Name: "pad", Buttons: 19}); ok {
+			t.Errorf("PLATFORM=%q returned a mapping, want none", platform)
+		}
+	}
+}
+
+// A mapping line is comma-separated, so a name containing a comma would shift
+// every binding that follows it by one field.
+func TestControllerMappingSanitisesName(t *testing.T) {
+	t.Setenv("PLATFORM", "h700")
+
+	got, ok := newNextUI("").ControllerMapping(Pad{GUID: "guid", Name: "Ann,Bernic,keys", Buttons: 19})
+	if !ok {
+		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
+	}
+	if !strings.HasPrefix(got, "guid,Ann Bernic keys,platform:Linux,") {
+		t.Errorf("comma in name not sanitised: %q", got)
 	}
 }
