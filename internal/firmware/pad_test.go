@@ -7,45 +7,63 @@ import (
 	"testing"
 )
 
-// The H700 pad's key bitmap as /proc/bus/input/devices prints it, for the
-// button set NextUI's sibling firmware documents.
+// h700PadDevices is /proc/bus/input/devices as an Anbernic RG XX prints it,
+// captured verbatim from the tester who reported rc4's buttons.
 //
-// Decoded, the KEY line is: 102, 103, 105, 106, 108 (power and the d-pad keys),
-// 114, 115 (volume down/up), 304-312, 314, 315 (the pad itself) and 354
-// (KEY_GOTO, which MENU emits alongside 312). Nineteen keys in total, which is
-// what SDL reports as the joystick's button count.
-//
-// This set is not guessed. MinUI's rg35xxplus platform.h — the same H700
-// hardware — publishes the SDL joystick index of every button, and this bitmap
-// run through sdlButtonIndexes reproduces all of them: A=0, B=1, Y=2, X=3,
-// L1=4, R1=5, SELECT=6, START=7, MENU=8, L2=9, R2=10, then UP=13, LEFT=14,
-// RIGHT=15, DOWN=16, VOL-=17, VOL+=18. A six-point match on the keys we do not
-// bind is what establishes the enumeration order used here.
-const h700PadDevices = `I: Bus=0019 Vendor=0001 Product=0001 Version=0100
-N: Name="ANBERNIC-keys"
-P: Phys=gpio-keys/input0
-S: Sysfs=/devices/platform/gpio-keys/input/input2
+// The pad's KEY line decodes to fifteen keys: 1 (KEY_ESC), 114 and 115 (volume
+// down and up), 304-312 and 314, 315 (the pad itself) and 354 (KEY_GOTO, which
+// MENU emits alongside 312). Numbered in ascending order that puts A at b3, and
+// every one of the tester's nine observations follows from it: their B produced
+// L1 (305 -> b4, which rc4 had bound to leftshoulder), their X produced Select,
+// their volume-down key produced B.
+const h700PadDevices = `I: Bus=0000 Vendor=0000 Product=0000 Version=0000
+N: Name="axp2202-pek"
+P: Phys=m1kbd/input2
+S: Sysfs=/devices/platform/soc/twi5/i2c-5/5-0034/axp2101-pek.0/input/input0
 U: Uniq=
-H: Handlers=event1 js0
+H: Handlers=kbd event0
 B: PROP=0
 B: EV=100003
-B: KEY=400000000 dff000000000000 0 0 c16c000000000 0
+B: KEY=12c00000000000 0
+
+I: Bus=0019 Vendor=0001 Product=0001 Version=0100
+N: Name="ANBERNIC-keys"
+P: Phys=gpio-keys-polled/input0
+S: Sysfs=/devices/platform/soc/soc@03000000:gpio_keys/input/input1
+U: Uniq=
+H: Handlers=kbd js0 event1
+B: PROP=0
+B: EV=20000b
+B: KEY=400000000 dff000000000000 0 0 c000000000000 2
+B: ABS=30038
+B: FF=107030000 0
+
+I: Bus=0019 Vendor=0001 Product=0001 Version=0100
+N: Name="dierct-keys-polled"
+P: Phys=dierct-keys-polled/input0
+S: Sysfs=/devices/platform/dierct-keys-polled/input/input2
+U: Uniq=
+H: Handlers=kbd event2
+B: PROP=0
+B: EV=3
+B: KEY=c378000000000 c042e2100000
 `
 
-// The same pad with three extra keys ahead of BTN_SOUTH — 288, 289 and 290,
-// which sit in SDL's first enumeration pass and so push every gamepad button
-// three indices up. This is the shape the rc4 tester's device reports: their
-// B acted as L1, X as Select, Y as R1 and L1 as Start, each exactly three
-// bindings along, and their volume-down key acted as B, i.e. index 1.
-const h700PadDevicesExtraButtons = `I: Bus=0019 Vendor=0001 Product=0001 Version=0100
-N: Name="ANBERNIC-keys"
-P: Phys=gpio-keys/input0
-S: Sysfs=/devices/platform/gpio-keys/input/input2
+// h700PadDevicesNoLowKeys is a pad carrying nothing but its own buttons — no
+// power key, no volume keys. Its twelve keys number from zero, so its A is b0.
+//
+// The family has eleven SKUs and one dump between them, so this stands for the
+// ones nobody has seen: it is the case a fixed offset gets wrong.
+const h700PadDevicesNoLowKeys = `I: Bus=0019 Vendor=0001 Product=0001 Version=0100
+N: Name="other-keys"
+P: Phys=gpio-keys-polled/input0
+S: Sysfs=/devices/platform/other/input/input3
 U: Uniq=
-H: Handlers=event1 js0
+H: Handlers=kbd js0 event3
 B: PROP=0
-B: EV=100003
-B: KEY=400000000 dff000700000000 0 0 16c000000000 0
+B: EV=20000b
+B: KEY=400000000 dff000000000000 0 0 0 0
+B: ABS=30038
 `
 
 func h700Pad(buttons int) Pad {
@@ -89,33 +107,13 @@ func bindings(t *testing.T, mapping string, want map[string]string) {
 	}
 }
 
-// The whole point of deriving: the indices come from the device in front of
-// the app, so a pad with no surprises gets the numbering its own firmware
-// documents.
+// The device the rc4 report came from. These are the indices that report
+// implies, read out of the pad's own key bitmap rather than assumed.
 func TestControllerMappingH700DerivesIndexes(t *testing.T) {
 	t.Setenv("PLATFORM", "h700")
 	withInputDevices(t, h700PadDevices)
 
-	got, ok := newNextUI("").ControllerMapping(h700Pad(19))
-	if !ok {
-		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
-	}
-	bindings(t, got, map[string]string{
-		"a": "b0", "b": "b1", "x": "b2", "y": "b3",
-		"leftshoulder": "b4", "rightshoulder": "b5",
-		"back": "b6", "start": "b7", "guide": "b8",
-		"lefttrigger": "b9", "righttrigger": "b10",
-		"dpup": "h0.1", "dpright": "h0.2", "dpdown": "h0.4", "dpleft": "h0.8",
-	})
-}
-
-// A pad carrying three keys SDL enumerates first. Hardcoded indices are wrong
-// here by exactly three, which is what rc4 shipped and what the tester felt.
-func TestControllerMappingH700DerivesShiftedIndexes(t *testing.T) {
-	t.Setenv("PLATFORM", "h700")
-	withInputDevices(t, h700PadDevicesExtraButtons)
-
-	got, ok := newNextUI("").ControllerMapping(h700Pad(20))
+	got, ok := newNextUI("").ControllerMapping(h700Pad(15))
 	if !ok {
 		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
 	}
@@ -124,33 +122,59 @@ func TestControllerMappingH700DerivesShiftedIndexes(t *testing.T) {
 		"leftshoulder": "b7", "rightshoulder": "b8",
 		"back": "b9", "start": "b10", "guide": "b11",
 		"lefttrigger": "b12", "righttrigger": "b13",
+		"dpup": "h0.1", "dpright": "h0.2", "dpdown": "h0.4", "dpleft": "h0.8",
 	})
 }
 
-// The kernel prints the bitmap in native words, and an armhf kernel's are half
-// as wide. Word width is not stated in the file, so it is inferred — wrongly
-// inferred, and every code lands in the wrong place.
-func TestControllerMappingH700Reads32BitBitmaps(t *testing.T) {
+// The offset is not the fix — reading the device is. A pad without the three
+// low keys numbers its buttons from zero, and gets bound that way even though
+// the only H700 anyone has measured needs three.
+//
+// It also has to be found by name: the fixture holds the rc4 tester's pad too,
+// and binding that one's fifteen keys to this one's twelve buttons would fail
+// the count check and fall back to the offset this asserts against.
+func TestControllerMappingH700DerivesFromTheDeviceNotAnOffset(t *testing.T) {
 	t.Setenv("PLATFORM", "h700")
-	withInputDevices(t, strings.Replace(h700PadDevices,
-		"B: KEY=400000000 dff000000000000 0 0 c16c000000000 0",
-		"B: KEY=4 0 dff0000 0 0 0 0 0 c16c0 0 0 0", 1))
+	withInputDevices(t, h700PadDevices+"\n"+h700PadDevicesNoLowKeys)
 
-	got, ok := newNextUI("").ControllerMapping(h700Pad(19))
+	pad := h700Pad(12)
+	pad.Name = "other-keys"
+	got, ok := newNextUI("").ControllerMapping(pad)
 	if !ok {
 		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
 	}
-	bindings(t, got, map[string]string{"a": "b0", "b": "b1", "leftshoulder": "b4"})
+	bindings(t, got, map[string]string{
+		"a": "b0", "b": "b1", "x": "b2", "y": "b3",
+		"leftshoulder": "b4", "rightshoulder": "b5",
+		"back": "b6", "start": "b7", "guide": "b8",
+		"lefttrigger": "b9", "righttrigger": "b10",
+	})
+}
+
+// The kernel prints the bitmap in native words, and a 32-bit kernel's are half
+// as wide. The file does not say which, and a line read at the wrong width has
+// the same number of bits set — just in the wrong places — so the button count
+// cannot catch it and finding the face buttons is what does.
+func TestControllerMappingH700Reads32BitBitmaps(t *testing.T) {
+	t.Setenv("PLATFORM", "h700")
+	withInputDevices(t, strings.Replace(h700PadDevices,
+		"B: KEY=400000000 dff000000000000 0 0 c000000000000 2",
+		"B: KEY=4 0 dff0000 0 0 0 0 0 c0000 0 0 2", 1))
+
+	got, ok := newNextUI("").ControllerMapping(h700Pad(15))
+	if !ok {
+		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
+	}
+	bindings(t, got, map[string]string{"a": "b3", "b": "b4", "leftshoulder": "b7"})
 }
 
 // Without a readable /proc the app still has to bind something, and the only
-// H700 measurement anyone has taken is the rc4 tester's: three buttons ahead
-// of BTN_SOUTH.
+// H700 anyone has dumped puts three keys ahead of the pad's own.
 func TestControllerMappingH700FallsBackToMeasuredIndexes(t *testing.T) {
 	t.Setenv("PLATFORM", "h700")
 	withInputDevices(t, "")
 
-	got, ok := newNextUI("").ControllerMapping(h700Pad(20))
+	got, ok := newNextUI("").ControllerMapping(h700Pad(15))
 	if !ok {
 		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
 	}
@@ -177,48 +201,31 @@ func TestControllerMappingH700FallsBackToMeasuredIndexes(t *testing.T) {
 // are fiction, and the measured fallback is the better guess.
 func TestControllerMappingH700RejectsMismatchedButtonCount(t *testing.T) {
 	t.Setenv("PLATFORM", "h700")
-	withInputDevices(t, h700PadDevices)
+	withInputDevices(t, h700PadDevicesNoLowKeys)
 
-	got, ok := newNextUI("").ControllerMapping(h700Pad(19 + 1))
+	pad := h700Pad(12 + 1)
+	pad.Name = "other-keys"
+	got, ok := newNextUI("").ControllerMapping(pad)
 	if !ok {
 		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
 	}
+	// Its own bitmap would have said b0. Twelve keys is not thirteen buttons,
+	// so the read is discarded and the fallback binds instead.
 	bindings(t, got, map[string]string{"a": "b3", "b": "b4"})
 }
 
-// Handhelds expose several input devices — a power button, an accelerometer,
-// the HDMI audio jack. The pad is picked by the name SDL reports for it.
-func TestControllerMappingH700PicksThePadByName(t *testing.T) {
-	t.Setenv("PLATFORM", "h700")
-	withInputDevices(t, `I: Bus=0019 Vendor=0000 Product=0001 Version=0000
-N: Name="axp2202-pek"
-P: Phys=m1kbd/input2
-U: Uniq=
-H: Handlers=kbd event0
-B: PROP=0
-B: EV=3
-B: KEY=10000000000000 0
-
-`+h700PadDevices)
-
-	got, ok := newNextUI("").ControllerMapping(h700Pad(19))
-	if !ok {
-		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
-	}
-	bindings(t, got, map[string]string{"a": "b0", "leftshoulder": "b4"})
-}
-
-// SDL enumerates BTN_JOYSTICK..KEY_MAX first and everything below it after, so
-// a key's index depends on which side of 0x120 it falls, not on its value.
+// Every key set in the bitmap takes an index, in ascending order, whether or
+// not a pad button produces it — which is why the power and volume keys move
+// the gamepad's own buttons along.
 func TestSDLButtonIndexes(t *testing.T) {
 	got := sdlButtonIndexes([]int{115, 304, 305, 102, 354, 767, 800})
-	want := map[int]int{304: 0, 305: 1, 354: 2, 102: 3, 115: 4}
+	want := map[int]int{102: 0, 115: 1, 304: 2, 305: 3, 354: 4}
 	for code, idx := range want {
 		if got[code] != idx {
 			t.Errorf("index of %d = %d, want %d", code, got[code], idx)
 		}
 	}
-	// KEY_MAX and anything above it is outside both of SDL's loops.
+	// KEY_MAX and anything above it is outside SDL's enumeration.
 	for _, code := range []int{767, 800} {
 		if _, ok := got[code]; ok {
 			t.Errorf("code %d was given an index, want none", code)

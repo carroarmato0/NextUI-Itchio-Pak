@@ -26,11 +26,8 @@ type Pad struct {
 	Buttons, Hats int
 }
 
-// Boundaries of SDL's two button-enumeration passes over the evdev key bitmap.
-const (
-	btnJoystick = 0x120 // BTN_JOYSTICK
-	keyMax      = 0x2ff // KEY_MAX — SDL's loops stop below this, so it is excluded
-)
+// keyMax is KEY_MAX. SDL stops below it, so it is not a button.
+const keyMax = 0x2ff
 
 // h700PadButtons is the H700 pad's SDL binding -> evdev code table.
 //
@@ -57,8 +54,9 @@ var h700PadButtons = []struct {
 // than buttons or axes. The bits are SDL's: up=1, right=2, down=4, left=8.
 const h700DPadBindings = "dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8"
 
-// h700MeasuredOffset is how many buttons SDL enumerates ahead of the pad's own,
-// on the one H700 device anyone has reported button behaviour from.
+// h700MeasuredOffset is how many keys SDL enumerates ahead of the pad's own, on
+// the one H700 device anyone has dumped: its power key and two volume keys take
+// the first three indices.
 //
 // It is only reached when the derivation cannot run — an unreadable /proc, a
 // pad under a name that does not appear there, a bitmap that decodes to a
@@ -196,18 +194,24 @@ func hasFaceButtons(index map[int]int) bool {
 	return true
 }
 
-// sdlButtonIndexes numbers evdev key codes the way SDL's Linux joystick backend
-// does: BTN_JOYSTICK..KEY_MAX in ascending order first, then everything below
-// BTN_JOYSTICK. A key's index therefore depends on which side of BTN_JOYSTICK
-// it falls, not on its value — a pad whose volume keys are KEY_VOLUMEDOWN and
-// KEY_VOLUMEUP numbers its face buttons from zero, and one whose extra keys are
-// in the BTN_ range does not.
+// sdlButtonIndexes numbers evdev key codes the way the SDL2 build on this
+// hardware does: ascending over the whole key range, one index per key set in
+// the bitmap. Every key counts, including the ones no pad button produces — the
+// power key and the volume keys sit below the gamepad's own codes and take the
+// first indices, which is why the pad's buttons do not start at zero.
 //
-// The order is not taken on trust. MinUI's rg35xxplus platform.h publishes the
-// joystick index of all nineteen keys on this hardware, and this function
-// reproduces every one of them from the device's bitmap — including the six
-// keys the app does not bind, which is what makes it a check rather than a
-// restatement.
+// Stock SDL2 does not do this. Its Linux backend walks BTN_JOYSTICK..KEY_MAX
+// first and everything below BTN_JOYSTICK after, which would put A at b0. The
+// order here is the one the hardware reports: on the tester's device that
+// two-pass order predicts A confirming and B going back, and the tester has
+// both of those doing something else, while this order accounts for all nine
+// buttons they described — including volume-down behaving as B, which is index
+// 1 and only reachable if the low codes are enumerated first.
+//
+// So this is a measurement of NextUI's h700 SDL2, not a restatement of SDL's
+// documented behaviour, and it is the one line to revisit if a future device
+// disagrees. The bindings are logged at startup with the index each button
+// resolved to, so one press settles which order a device is using.
 func sdlButtonIndexes(codes []int) map[int]int {
 	sorted := append([]int(nil), codes...)
 	sort.Ints(sorted)
@@ -215,16 +219,11 @@ func sdlButtonIndexes(codes []int) map[int]int {
 	index := make(map[int]int, len(sorted))
 	n := 0
 	for _, code := range sorted {
-		if code >= btnJoystick && code < keyMax {
-			index[code] = n
-			n++
+		if code >= keyMax {
+			continue
 		}
-	}
-	for _, code := range sorted {
-		if code < btnJoystick {
-			index[code] = n
-			n++
-		}
+		index[code] = n
+		n++
 	}
 	return index
 }

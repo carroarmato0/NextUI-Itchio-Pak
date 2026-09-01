@@ -47,7 +47,7 @@
     }
   ],
   "changelog": {
-    "v1.0.23-rc5": "\n\u2022 Anbernic RG XX (H700): fixes the buttons. On rc4 every button did the job of another one \u2014 B acted as L1, X as Select \u2014 because the app numbered the pad's buttons by hand. It now reads the numbering from the device itself.\n\u2022 Test build: please report whether A confirms, B goes back, and the shoulder buttons change the sort order.",
+    "v1.0.23-rc5": "\n• Anbernic RG XX (H700): fixes the buttons. On rc4 every button did the job of another one — B acted as L1, X as Select — because the app numbered the pad's buttons by hand, three places off. It now reads the numbering out of the device itself, so it is right whichever RG XX you have.\n• Test build: please report whether A confirms, B goes back, X deletes, and the shoulder buttons change the sort order.",
     "v1.0.23-rc4": "\n• Anbernic RG XX (H700): the buttons now work. The app started and drew correctly before, but ignored every press.\n• Test build: please report whether the controls respond, and check that A confirms and B goes back.",
     "v1.0.23-rc3": "\n• Adds support for Anbernic RG XX handhelds (H700) running NextUI.\n• Layouts now fit the 720×480 and 720×720 screens those devices use.\n• Test build: please report how it goes, and say which model you have.",
     "v1.0.23-rc2": "\n• muOS: the Applications icon is lighter and now matches whatever size your theme uses, instead of assuming one.\n• Otherwise identical to rc1 — still a test build.",

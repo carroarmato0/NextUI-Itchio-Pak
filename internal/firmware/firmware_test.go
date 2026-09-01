@@ -286,7 +286,7 @@ func TestNextUIDeviceIgnoredOffH700(t *testing.T) {
 func TestControllerMappingOnlyH700(t *testing.T) {
 	for _, platform := range []string{"tg5040", "tg5050", "my355"} {
 		t.Setenv("PLATFORM", platform)
-		if _, ok := newNextUI("").ControllerMapping(Pad{GUID: "guid", Name: "pad", Buttons: 19}); ok {
+		if _, ok := newNextUI("").ControllerMapping(Pad{GUID: "guid", Name: "pad", Buttons: 15}); ok {
 			t.Errorf("PLATFORM=%q returned a mapping, want none", platform)
 		}
 	}
@@ -297,7 +297,7 @@ func TestControllerMappingOnlyH700(t *testing.T) {
 func TestControllerMappingSanitisesName(t *testing.T) {
 	t.Setenv("PLATFORM", "h700")
 
-	got, ok := newNextUI("").ControllerMapping(Pad{GUID: "guid", Name: "Ann,Bernic,keys", Buttons: 19})
+	got, ok := newNextUI("").ControllerMapping(Pad{GUID: "guid", Name: "Ann,Bernic,keys", Buttons: 15})
 	if !ok {
 		t.Fatal("ControllerMapping() ok = false, want a mapping for h700")
 	}
