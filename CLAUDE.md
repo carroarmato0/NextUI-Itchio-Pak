@@ -110,10 +110,18 @@ testdata/          HTML/RSS fixtures for offline unit tests
 
 ## Branches
 
-`feature/* → dev → main`. `main` is what has been released and is what the Pak
-Store installs; never commit to it directly. Branch features from `dev` and
-merge them back there. Pre-releases for testers are tagged `vX.Y.Z-rcN` and cut
-from `dev` with `release-github.sh --prerelease`; full releases come off `main`.
+`feature/* → dev → main`. `main` is what the Pak Store installs; never commit to
+it directly. Branch features from `dev` and merge them back there. Pre-releases
+for testers are tagged `vX.Y.Z-rcN` and cut from `dev` with
+`release-github.sh --prerelease`; full releases come off `main`.
+
+**Not every merge to `main` is a release.** Changes that ship nothing to a
+device — documentation, skills, build and debug tooling — can merge to `main`
+without a version bump or a GitHub release, so the files are correct wherever
+they are read from. Anything that changes what lands on a device does need a
+release. After merging `dev` into `main`, merge `main` back into `dev`: the
+release merge commits live on `main` only, and without the merge-back
+`git log main..dev` starts reporting divergence instead of pending work.
 
 ## Coding Standards
 

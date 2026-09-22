@@ -652,12 +652,18 @@ For a detailed explanation of how the itch.io web API is used, see
 
 | Branch | Holds |
 |---|---|
-| `main` | What has been released. Only ever updated by merging `dev` for a release. |
+| `main` | What the Pak Store installs. Updated by merging `dev`. |
 | `dev` | Work accumulating towards the next release. May be ahead of the last release. |
 | `feature/*` | One change in progress, branched from `dev` and merged back into it. |
 
-Work goes `feature/* → dev → main`. `main` therefore always matches the newest
-stable release, which is what the Pak Store installs.
+Work goes `feature/* → dev → main`. The newest stable release is always tagged
+on `main`, and that is what the Pak Store installs.
+
+Not every merge to `main` is a release. Changes that ship nothing to a device —
+documentation, build and debug tooling — can land on `main` without a version
+bump or a GitHub release. Anything that changes what reaches a device needs one.
+After merging `dev` into `main`, merge `main` back into `dev` so `main` stays an
+ancestor of `dev` and `git log main..dev` keeps meaning "pending work".
 
 Pre-release builds for testers are cut from `dev` and tagged `vX.Y.Z-rcN`:
 
