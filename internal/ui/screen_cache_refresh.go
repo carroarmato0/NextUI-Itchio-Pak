@@ -190,13 +190,13 @@ func (s *CacheRefreshScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		if state == refreshCacheLoading {
-			if ev.Button == sdl.CONTROLLER_BUTTON_A { // physical B = back/cancel
+			if ev.Button == btnB { // physical B = back/cancel
 				s.cancel()
 			}
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+		case btnB, btnA:
 			return s.prev
 		}
 	}

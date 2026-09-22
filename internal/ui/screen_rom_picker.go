@@ -36,7 +36,7 @@ func NewROMPickerScreen(client *itchio.Client, cfg *settings.Config, cfgPath str
 	}
 }
 
-func (s *ROMPickerScreen) NeedsRedraw() bool { return false }
+func (s *ROMPickerScreen) NeedsRedraw() bool         { return false }
 func (s *ROMPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
@@ -124,11 +124,11 @@ func (s *ROMPickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			if s.cursor < len(s.uploads) {
 				return s.chooseUpload(s.uploads[s.cursor])
 			}
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		}
 	}

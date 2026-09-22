@@ -4,15 +4,18 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 )
 
 // SaveStatePaths returns the set of save-state paths that could exist for a ROM.
 // The caller should filter to only paths that exist on disk before prompting.
 //
 // stateFormat:
-//   0 = MinUI      — <full>.st0 … .st9   (10 paths; .st9 = auto-resume)
-//   1/2 = Retroarch-ish — <stem>.state.1 … .state.8 + .state.auto  (9 paths)
-//   3/4 = Retroarch     — <stem>.state, .state1…8, .state.auto      (10 paths)
+//
+//	0 = MinUI      — <full>.st0 … .st9   (10 paths; .st9 = auto-resume)
+//	1/2 = Retroarch-ish — <stem>.state.1 … .state.8 + .state.auto  (9 paths)
+//	3/4 = Retroarch     — <stem>.state, .state1…8, .state.auto      (10 paths)
 //
 // innerFilename: same semantics as SaveGamePath — only affects format 0.
 // coreTag / coreName: must match the NextUI core directory (e.g. "GB", "gambatte").
@@ -21,7 +24,13 @@ func SaveStatePaths(romDestPath string, stateFormat int, innerFilename, coreTag,
 	if coreTag == "" || coreName == "" {
 		return nil
 	}
-	statesDir := filepath.Join("/mnt/SDCARD/.userdata/shared", coreTag+"-"+coreName)
+	// Empty when the firmware cannot locate save states — muOS assigns the
+	// emulator core per folder, chosen by the user after the ROM is in place,
+	// so there is nothing reliable to point at here.
+	statesDir := firmware.Active().StatesDir(coreTag, coreName)
+	if statesDir == "" {
+		return nil
+	}
 	baseName := filepath.Base(romDestPath)
 	if innerFilename != "" && stateFormat == 0 {
 		baseName = innerFilename

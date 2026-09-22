@@ -29,12 +29,12 @@ type TagFilterScreen struct {
 	setEnabled  func(bool)
 	getDisabled func() []string
 	setDisabled func([]string)
-	cursor     int
-	scrollY    int32
-	tagAreaTop int32 // set during Draw; used in HandleEvent
-	tagAreaH   int32 // set during Draw; used for scroll clamping in HandleEvent
-	rowH       int32 // set during Draw; used in ensureCursorVisible
-	prev       Screen
+	cursor      int
+	scrollY     int32
+	tagAreaTop  int32 // set during Draw; used in HandleEvent
+	tagAreaH    int32 // set during Draw; used for scroll clamping in HandleEvent
+	rowH        int32 // set during Draw; used in ensureCursorVisible
+	prev        Screen
 
 	heldDir    int
 	heldSince  time.Time
@@ -339,9 +339,9 @@ func (s *TagFilterScreen) HandleEvent(e sdl.Event) Screen {
 				s.cursor = s.rowCount() - 1
 			}
 			s.ensureCursorVisible()
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			s.toggle()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.prev
 		}
 	}

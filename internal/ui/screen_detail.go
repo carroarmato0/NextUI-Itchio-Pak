@@ -41,30 +41,30 @@ type detailModal struct {
 }
 
 type DetailScreen struct {
-	client        *itchio.Client
-	cfg           *settings.Config
-	cfgPath       string
-	cache         *renderer.ImageCache
-	game          itchio.Game
-	detail        *itchio.GameDetail
-	loading       bool
-	err           error
-	screenshotIdx int
-	scrollY       int32 // vertical scroll offset for content area
-	contentHeight int32 // total content height (computed during Draw)
-	viewportH     int32 // visible content area height (set during Draw)
-	advisoryTriggered bool // true when a filter match is found after loading
-	modal         detailModal
-	qrTex         *sdl.Texture // cached QR texture; generated once, destroyed on back
+	client            *itchio.Client
+	cfg               *settings.Config
+	cfgPath           string
+	cache             *renderer.ImageCache
+	game              itchio.Game
+	detail            *itchio.GameDetail
+	loading           bool
+	err               error
+	screenshotIdx     int
+	scrollY           int32 // vertical scroll offset for content area
+	contentHeight     int32 // total content height (computed during Draw)
+	viewportH         int32 // visible content area height (set during Draw)
+	advisoryTriggered bool  // true when a filter match is found after loading
+	modal             detailModal
+	qrTex             *sdl.Texture // cached QR texture; generated once, destroyed on back
 
 	// Held-button auto-repeat state for scrolling
-	heldDir       int       // -1 = up, +1 = down, 0 = none
-	heldSince     time.Time
-	lastRepeat    time.Time
+	heldDir    int // -1 = up, +1 = down, 0 = none
+	heldSince  time.Time
+	lastRepeat time.Time
 
 	// Horizontal scroll for the on-device file path in the status card
-	pathScrollX   int32
-	pathScrollAt  time.Time
+	pathScrollX  int32
+	pathScrollAt time.Time
 
 	// Pre-formatted strings cached once when detail/game data is available.
 	screenshotLabels []string // "Image N/M  (←→)" for each screenshot index
@@ -296,7 +296,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
-		if r.W <= narrowScreenW {
+		if abbreviate(r.W) {
 			dlLabel = "● DL"
 		}
 		dw, _ := r.SmallTextSize(dlLabel)
@@ -330,7 +330,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// doesn't jump in size once the QR code and detail data arrive.
 	// QR column narrower than before — screenshot gets more horizontal space.
 	qrColW := r.W / 5
-	if r.W <= narrowScreenW {
+	if abbreviate(r.W) {
 		qrColW = r.W / 6
 	}
 	imgAreaW := r.W - qrColW - margin - 10
@@ -553,7 +553,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 				s.pathScrollX = 0
 				pth := r.Theme.Muted()
 				r.DrawSmallText(pathText, textX, cardY+cp+2, pth[0], pth[1], pth[2])
-			} else if r.W <= narrowScreenW {
+			} else if abbreviate(r.W) {
 				// On small screens truncate the path rather than scrolling.
 				truncated := truncateSmallToWidth(r, pathText, textMaxW)
 				pth := r.Theme.Muted()
@@ -655,7 +655,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}
 	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
 		dlLabel := "● Downloaded"
-		if r.W <= narrowScreenW {
+		if abbreviate(r.W) {
 			dlLabel = "● DL"
 		}
 		dw, _ := r.SmallTextSize(dlLabel)
@@ -681,7 +681,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 		{Kind: renderer.BadgePill, Label: "←→", Text: "Screenshots"},
 	}
-	if r.W > narrowScreenW {
+	if !abbreviate(r.W) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	}
 	if s.contentHeight > contentH {
@@ -898,12 +898,12 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if ev.Type == sdl.CONTROLLERBUTTONDOWN {
 				if s.modal.kind == modalKindDeleteConfirm {
 					switch ev.Button {
-					case sdl.CONTROLLER_BUTTON_B: // physical A = confirm
+					case btnA: // physical A = confirm
 						if s.modal.onConfirm != nil {
 							s.modal.onConfirm()
 						}
 						s.modal.active = false
-					case sdl.CONTROLLER_BUTTON_A: // physical B = cancel
+					case btnB: // physical B = cancel
 						s.modal.active = false
 					}
 				} else {
@@ -981,7 +981,7 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.goBack()
 		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER, sdl.CONTROLLER_BUTTON_DPAD_LEFT:
 			if s.detail != nil && s.screenshotIdx > 0 {
@@ -991,15 +991,15 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if s.detail != nil && s.screenshotIdx < len(s.detail.ScreenshotURLs)-1 {
 				s.screenshotIdx++
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
-		case sdl.CONTROLLER_BUTTON_X: // physical Y = unified naming toggle
+		case btnY: // physical Y = unified naming toggle
 			if s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
 				return s.startUnifiedNamingToggle()
 			}
-		case sdl.CONTROLLER_BUTTON_Y: // physical X = delete
+		case btnX: // physical X = delete
 			return s.triggerDelete()
 		case sdl.CONTROLLER_BUTTON_START:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, nil, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, nil)
@@ -1033,7 +1033,7 @@ func (s *DetailScreen) startUnifiedNamingToggle() Screen {
 	}
 	newDisabled := !entry.UnifiedNamingDisabled
 	s.inv.SetUnifiedNamingDisabled(s.game.URL, newDisabled)
-	formats := inventory.ReadMigrateFormats(inventory.NXSettingsPath)
+	formats := inventory.ReadMigrateFormats(inventory.SettingsPath())
 	return NewMigrateFlowScreen(s.inv, s.inventoryPath, s.game.URL, s.game.Title,
 		entry.Files[0], !newDisabled, formats, s)
 }
@@ -1139,12 +1139,12 @@ func pruneDeletedDirs(files []inventory.DownloadedFile, pico8Core string) {
 	}
 }
 
-// backHints returns standard "back + settings" footer hints scaled to screen width.
+// backHints returns standard "back + settings" footer hints scaled to screen size.
 func backHints(screenW int32) []renderer.FooterHint {
 	hints := []renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
-	if screenW > narrowScreenW {
+	if !abbreviate(screenW) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	} else {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})

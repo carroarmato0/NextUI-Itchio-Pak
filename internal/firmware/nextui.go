@@ -1,0 +1,152 @@
+package firmware
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// nextUISDCard is the SD card mount point on every NextUI platform
+// (workspace/tg5040/platform/platform.h:156, tg5050:151); RES_PATH and
+// SHARED_USERDATA_PATH are derived from it in common/defines.h:19,21.
+//
+// h700 is ASSUMED to match, not checked — no h700 platform.h line was read
+// and nobody here owns the hardware. If the mount point actually differs,
+// every ROM path, palette directory and log path this package resolves is
+// wrong. The "storage: root=" line main.go logs at startup is what falsifies
+// this: a tester's log showing anything other than /mnt/SDCARD/... means this
+// assumption was wrong.
+const nextUISDCard = "/mnt/SDCARD"
+
+// nextUIROMFolders maps our system keys onto NextUI's ROM folder display names.
+// The name is load-bearing beyond placement: NextUI derives the emulator and the
+// save tag from it, and roms.RomCoreInfo matches on it in reverse.
+var nextUIROMFolders = map[string]string{
+	SysGB:       "Game Boy (GB)",
+	SysGBC:      "Game Boy Color (GBC)",
+	SysGBA:      "Game Boy Advance (GBA)",
+	SysGBAAlt:   "Game Boy Advance (MGBA)",
+	SysNES:      "Nintendo Entertainment System (FC)",
+	SysGenesis:  "Sega Genesis (MD)",
+	SysPico8:    "Pico-8 (P8)",
+	SysPico8Alt: "Pico-8 (PICO)",
+}
+
+// nextUIDeviceLabels are the human-readable names for NextUI platform codes.
+var nextUIDeviceLabels = map[string]string{
+	"tg5040": "TrimUI Brick / Smart Pro",
+	"tg5050": "TrimUI Smart Pro S",
+	"my355":  "Miyoo Flip",
+}
+
+// h700DeviceLabels maps NextUI's H700 SKU tokens ($DEVICE) to display names.
+// One PLATFORM covers the whole Anbernic RG XX family, so unlike every other
+// NextUI platform the platform code does not identify the hardware. Panel size
+// is not recorded here: the app reads the real display mode at startup and no
+// longer needs to know which SKU implies which resolution.
+var h700DeviceLabels = map[string]string{
+	"rg28xx":     "Anbernic RG28XX",
+	"rg34xx":     "Anbernic RG34XX",
+	"rg34xxsp":   "Anbernic RG34XX SP",
+	"rg35xxh":    "Anbernic RG35XX H",
+	"rg35xxplus": "Anbernic RG35XX Plus",
+	"rg35xxpro":  "Anbernic RG35XX Pro",
+	"rg35xxsp":   "Anbernic RG35XX SP",
+	"rg40xxh":    "Anbernic RG40XX H",
+	"rg40xxv":    "Anbernic RG40XX V",
+	"rgcubexx":   "Anbernic RG Cube XX",
+	"rgsp":       "Anbernic RG SP",
+}
+
+// h700Label names an H700 handheld from its SKU token, degrading to something
+// still useful in a bug report when the token is unknown or absent. Anbernic
+// will ship a model we have never heard of; "unknown device" would throw away
+// the one string that identifies it.
+func h700Label(device string) string {
+	if label, ok := h700DeviceLabels[strings.ToLower(device)]; ok {
+		return label
+	}
+	if device != "" {
+		return "Anbernic H700 (" + device + ")"
+	}
+	return "Anbernic H700"
+}
+
+func newNextUI(prefix string) *Env {
+	root := filepath.Join(prefix, nextUISDCard)
+
+	romDirs := make(map[string]string, len(nextUIROMFolders))
+	for key, folder := range nextUIROMFolders {
+		romDirs[key] = filepath.Join(root, "Roms", folder) + "/"
+	}
+
+	platform := os.Getenv("PLATFORM")
+	label := nextUIDeviceLabels[platform]
+	if platform == "h700" {
+		label = h700Label(os.Getenv("DEVICE"))
+	}
+	if label == "" {
+		label = "unknown device"
+	}
+
+	sharedUserdata := filepath.Join(root, ".userdata", "shared")
+
+	// NextUI writes pak logs under the platform directory. Without PLATFORM we
+	// are almost certainly not on a device, so keep the log beside app state.
+	data := dataDirFor()
+	logPath := filepath.Join(data, "itchio.log")
+	if platform != "" {
+		logPath = filepath.Join(root, ".userdata", platform, "logs", "itchio.log")
+	}
+
+	return &Env{
+		kind:        KindNextUI,
+		device:      platform,
+		deviceLabel: label,
+		prefix:      prefix,
+
+		root:    root,
+		romDirs: romDirs,
+
+		musicRoot:       filepath.Join(root, "Music") + "/",
+		browseRoot:      root,
+		musicBrowseRoot: filepath.Join(root, "Music"),
+
+		sharedUserdata:    sharedUserdata,
+		settingsFile:      filepath.Join(sharedUserdata, "minuisettings.txt"),
+		builtinPaletteDir: filepath.Join(root, ".system", "res", "palettes"),
+		userPaletteDir:    filepath.Join(root, "Palettes"),
+		versionFile:       filepath.Join(root, ".system", "version.txt"),
+
+		dataDir: data,
+		logPath: logPath,
+
+		caps: Caps{
+			NextUIPalette:     true,
+			MinUISaveFormats:  true,
+			SaveStateSync:     true,
+			GBAEmulatorChoice: true,
+			Pico8CoreChoice:   true,
+		},
+	}
+}
+
+// newHost is the environment on a developer machine or in CI. It deliberately
+// exposes no device paths: code that would write to the SD card gets "" and
+// must handle it, which is what surfaces missing guards in tests.
+func newHost(prefix string) *Env {
+	data := dataDirFor()
+	return &Env{
+		kind:        KindHost,
+		device:      "",
+		deviceLabel: "host",
+		prefix:      prefix,
+
+		romDirs: map[string]string{},
+
+		dataDir: data,
+		logPath: filepath.Join(data, "itchio.log"),
+
+		caps: Caps{},
+	}
+}

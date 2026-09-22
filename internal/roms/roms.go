@@ -3,6 +3,8 @@ package roms
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 )
 
 // ROMExt returns the effective ROM extension for filename.
@@ -34,46 +36,33 @@ func ScoreUpload(filename string) int {
 	}
 }
 
-// GBADir is the default NextUI GBA ROM directory (uses the built-in GBA emulator).
-const GBADir = "/mnt/SDCARD/Roms/Game Boy Advance (GBA)/"
+// The ROM destinations below used to be hardcoded NextUI paths. They now come
+// from internal/firmware, because muOS puts ROMs somewhere else entirely and
+// lets the user name the folders. The functions keep their original shape so
+// the ~15 call sites in internal/ui did not have to change.
 
-// GBAMGBADir is the alternative NextUI GBA ROM directory (uses the MGBA emulator).
-const GBAMGBADir = "/mnt/SDCARD/Roms/Game Boy Advance (MGBA)/"
+// GBADir is the primary GBA ROM directory (the firmware's default emulator).
+func GBADir() string { return firmware.Active().ROMDirForSystem(firmware.SysGBA) }
 
-// NESDir is the NextUI NES/Famicom ROM directory.
-const NESDir = "/mnt/SDCARD/Roms/Nintendo Entertainment System (FC)/"
+// GBAMGBADir is the alternative GBA ROM directory, for firmware that ships a
+// second GBA emulator in its own folder. Empty when there is no such folder —
+// guard with firmware.Active().Caps().GBAEmulatorChoice before offering it.
+func GBAMGBADir() string { return firmware.Active().ROMDirForSystem(firmware.SysGBAAlt) }
 
-// GenesisDir is the NextUI Sega Genesis/Mega Drive ROM directory.
-const GenesisDir = "/mnt/SDCARD/Roms/Sega Genesis (MD)/"
+// NESDir is the NES/Famicom ROM directory.
+func NESDir() string { return firmware.Active().ROMDirForSystem(firmware.SysNES) }
+
+// GenesisDir is the Sega Genesis/Mega Drive ROM directory.
+func GenesisDir() string { return firmware.Active().ROMDirForSystem(firmware.SysGenesis) }
 
 // Pico8ROMDir returns the Pico-8 ROM directory for the given core.
 // core: "fakeo8" | "pico8" — any other value falls back to "fakeo8".
-func Pico8ROMDir(core string) string {
-	if core == "pico8" {
-		return "/mnt/SDCARD/Roms/Pico-8 (PICO)/"
-	}
-	return "/mnt/SDCARD/Roms/Pico-8 (P8)/"
-}
+func Pico8ROMDir(core string) string { return firmware.Active().Pico8Dir(core) }
 
+// DestinationDir returns the directory a ROM with this extension belongs in,
+// or "" for extensions we do not place.
 func DestinationDir(ext, pico8Core string) string {
-	switch strings.ToLower(ext) {
-	case ".gbc":
-		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
-	case ".gb":
-		return "/mnt/SDCARD/Roms/Game Boy (GB)/"
-	case ".gba":
-		return GBADir
-	case ".nes":
-		return NESDir
-	case ".md", ".gen", ".smd":
-		return GenesisDir
-	case ".p8", ".p8.png":
-		return Pico8ROMDir(pico8Core)
-	case ".zip":
-		return "/mnt/SDCARD/Roms/Game Boy Color (GBC)/"
-	default:
-		return ""
-	}
+	return firmware.Active().ROMDir(ext, pico8Core)
 }
 
 func SelectBest(uploads []Upload) *Upload {
@@ -90,7 +79,7 @@ func SelectBest(uploads []Upload) *Upload {
 }
 
 // MusicBaseDir is the root directory for all extracted game soundtracks.
-const MusicBaseDir = "/mnt/SDCARD/Music/"
+func MusicBaseDir() string { return firmware.Active().MusicRoot() }
 
 // MusicDestinationDir returns the target directory for a game's music files.
 func MusicDestinationDir(gameTitle string) string {
@@ -98,7 +87,7 @@ func MusicDestinationDir(gameTitle string) string {
 	if safe == "" {
 		safe = "Unknown"
 	}
-	return MusicBaseDir + safe + "/"
+	return MusicBaseDir() + safe + "/"
 }
 
 // Pico8GameSubDir returns the subdirectory for a Pico-8 game that ships with

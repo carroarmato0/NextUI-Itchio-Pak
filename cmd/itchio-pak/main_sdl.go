@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -25,9 +26,14 @@ const (
 )
 
 func runSDL() {
-	cfgPath := os.Getenv("HOME") + "/config.json"
-	cachePath := filepath.Join(filepath.Dir(cfgPath), "games_cache.json")
-	ownedCachePath := filepath.Join(filepath.Dir(cfgPath), "owned_cache.json")
+	env := firmware.Active()
+
+	// All mutable app state lives in one directory chosen by the firmware, so a
+	// launcher can put it somewhere that survives a firmware update.
+	dataDir := env.DataDir()
+	cfgPath := filepath.Join(dataDir, "config.json")
+	cachePath := filepath.Join(dataDir, "games_cache.json")
+	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
 	cfg, _ := settings.Load(cfgPath)
 
 	// Apply log level and register the API key for redaction before anything
@@ -39,7 +45,7 @@ func runSDL() {
 	}
 	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
 
-	inventoryPath := filepath.Join(filepath.Dir(cfgPath), "inventory.json")
+	inventoryPath := filepath.Join(dataDir, "inventory.json")
 	inv, _ := inventory.Load(inventoryPath)
 	inv.VerifyAndClean(inventoryPath)
 
@@ -48,6 +54,23 @@ func runSDL() {
 		level = "info"
 	}
 	logger.Info("log_level:  %s", level)
+
+	// The version actually loaded, not the one we compiled against. On H700 this
+	// is the difference between NextUI's own SDL2 from .system/h700/lib and
+	// stock Anbernic's 2.0.12 from /usr/lib — which has no SDL2_ttf beside it
+	// and would otherwise fail in a way no log explains.
+	//
+	// This must run BEFORE sdl.Init: GetVersion/VERSION/GetRevision are safe to
+	// call pre-init, and stock Anbernic's 2.0.12 is built with only the mali and
+	// dummy video backends — exactly the library for which sdl.Init(INIT_VIDEO)
+	// below FAILS. Logging the version after Init means the one case this line
+	// exists to diagnose is the one case it would never run.
+	var linked, compiled sdl.Version
+	sdl.GetVersion(&linked)
+	sdl.VERSION(&compiled)
+	logger.Info("sdl:        runtime %d.%d.%d (compiled against %d.%d.%d, rev %s)",
+		linked.Major, linked.Minor, linked.Patch,
+		compiled.Major, compiled.Minor, compiled.Patch, sdl.GetRevision())
 
 	// Pre-init SDL2 to detect display resolution before creating the window.
 	// Include JOYSTICK + GAMECONTROLLER so the device's physical buttons are
@@ -60,27 +83,90 @@ func runSDL() {
 	}
 
 	// Open all connected game controllers so button events are delivered.
+	//
+	// The mapping is logged because it is the thing that decides which physical
+	// button produces SDL_CONTROLLER_BUTTON_A. Firmware disagrees about this:
+	// muOS ships two mappings for the same hardware and lets the user pick,
+	// which swaps the face buttons. Without this line, "confirm and cancel are
+	// the wrong way round" is unanswerable from a log.
 	for i := 0; i < sdl.NumJoysticks(); i++ {
-		if sdl.IsGameController(i) {
-			if gc := sdl.GameControllerOpen(i); gc != nil {
-				defer gc.Close()
+		// A pad SDL has no mapping for stays a plain joystick and emits only
+		// SDL_JOYBUTTONDOWN, which no screen in this app handles — the UI
+		// renders and then ignores every press. H700 is such a pad, so ask the
+		// Env for a mapping before giving up on it. The GUID comes from SDL
+		// rather than from a constant: it is derived from the pad's bus/vendor/
+		// product/version plus a hash of its name, and SDL silently ignores a
+		// mapping carrying the wrong one.
+		if !sdl.IsGameController(i) {
+			pad := firmware.Pad{
+				GUID: sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)),
+				Name: sdl.JoystickNameForIndex(i),
 			}
-		} else {
+			// The pad has to be opened to be counted, and the counts are not
+			// cosmetic: the mapping derivation checks the button count against
+			// the key bitmap it reads for this device, and refuses to guess
+			// indices from a bitmap that disagrees with SDL.
+			axes := 0
 			if js := sdl.JoystickOpen(i); js != nil {
-				defer js.Close()
+				pad.Buttons, pad.Hats, axes = js.NumButtons(), js.NumHats(), js.NumAxes()
+				js.Close()
+			}
+			logger.Info("input: joystick %d %q guid=%s buttons=%d hats=%d axes=%d",
+				i, pad.Name, pad.GUID, pad.Buttons, pad.Hats, axes)
+			mapping, ok := env.ControllerMapping(pad)
+			if !ok {
+				// The shape logged above is the whole diagnosis for "the app
+				// starts but nothing responds" on an unrecognised device, and
+				// is what a mapping would have to be written against.
+				logger.Warn("input: joystick %d %q — no controller mapping and none available, its buttons will not reach the UI", i, pad.Name)
+				continue
+			}
+			if sdl.GameControllerAddMapping(mapping) < 0 {
+				logger.Error("input: joystick %d %q guid=%s — adding mapping failed: %v", i, pad.Name, pad.GUID, sdl.GetError())
+				continue
+			}
+			logger.Info("input: joystick %d %q guid=%s — applied built-in mapping", i, pad.Name, pad.GUID)
+			// AddMapping only makes SDL willing to treat it as a controller;
+			// it does not open it. Fall through to the open below, which now
+			// takes the controller branch.
+			if !sdl.IsGameController(i) {
+				logger.Error("input: joystick %d %q still not a game controller after adding its mapping", i, pad.Name)
+				continue
 			}
 		}
+		if gc := sdl.GameControllerOpen(i); gc != nil {
+			logger.Info("input: controller %d %q", i, gc.Name())
+			logger.Debug("input: mapping %s", gc.Mapping())
+			defer gc.Close()
+		} else {
+			logger.Error("input: opening controller %d failed: %v", i, sdl.GetError())
+		}
 	}
+	// muOS exports this; it is what makes its retro/modern face-button choice
+	// take effect. Shadowing the settings cfg here would be a trap.
+	if gcConfig := os.Getenv("SDL_GAMECONTROLLERCONFIG"); gcConfig != "" {
+		logger.Debug("input: SDL_GAMECONTROLLERCONFIG=%s", gcConfig)
+	}
+
+	// Bind the face buttons before any screen can handle an event.
+	ui.SetFaceMapping(env.FaceMapping())
 
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
 		w, h = dm.W, dm.H
+	} else {
+		// Three new panel geometries (720x480, 720x720, and H700's HDMI-out
+		// case) now depend on this number for layout. Logging only the
+		// fallback value, with no indication it IS a fallback, would make a
+		// wrong layout in a tester report untraceable.
+		logger.Error("display: GetCurrentDisplayMode failed (%v), falling back to %dx%d", err, w, h)
 	}
 	logger.Info("display: %dx%d", w, h)
 
-	// theme.SettingsPath is the same file inventory.NXSettingsPath names; both
-	// point at NextUI's shared minuisettings.txt.
-	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(theme.SettingsPath)
+	// The firmware's own settings file — NextUI's minuisettings.txt. Empty on
+	// firmware with no palette system, where LoadSettings reports unavailable
+	// and the app falls back to its own theme.
+	nextUITheme, paletteName, themeAvailable := theme.LoadSettings(env.SettingsFile())
 	defaultTheme := theme.Defaults()
 
 	activeTheme := defaultTheme
@@ -95,7 +181,7 @@ func runSDL() {
 	// minuisettings.txt — but it records in the log what a user actually has
 	// installed, which is the first thing worth knowing when a theme bug is
 	// reported.
-	theme.EnumeratePalettes(theme.BuiltinPaletteDir, theme.UserPaletteDir)
+	theme.EnumeratePalettes(env.PaletteDirs())
 
 	r, err := renderer.New("Itch.io", int(w), int(h), activeTheme)
 	if err != nil {
@@ -151,8 +237,10 @@ func runSDL() {
 		pendingAction = power.ActionSleep
 	)
 
-	platform := readPlatform()
-	if platform == "my355" {
+	// Keyed off the firmware's device code rather than the PLATFORM variable
+	// directly: only NextUI exports PLATFORM, and this workaround is about the
+	// hardware, not the firmware that happens to be on it.
+	if env.Device() == "my355" {
 		const joyTypePath = "/sys/class/miyooio_chr_dev/joy_type"
 		logger.Debug("input: checking for my355 joy_type workaround at %s", joyTypePath)
 		if _, err := os.Stat(joyTypePath); err == nil {
@@ -201,6 +289,7 @@ loop:
 		}
 		for e != nil {
 			gotEvent = true
+			logButtonPress(e)
 			if pendingQuit {
 				e = sdl.PollEvent()
 				continue // drain input while waiting for tasks
@@ -258,8 +347,10 @@ loop:
 					}
 					break loop // exit cleanly; NextUI detects /tmp/poweroff and shuts down
 				}
-				suspendPath := filepath.Join(os.Getenv("SYSTEM_PATH"), "bin", "suspend")
-				if _, err := os.Stat(suspendPath); err != nil {
+				// Empty when the firmware suspends the app itself rather than
+				// exposing a script for it.
+				suspendPath := env.SuspendCmd()
+				if _, err := os.Stat(suspendPath); suspendPath == "" || err != nil {
 					logger.Warn("power: suspend script not found at %s, exiting instead", suspendPath)
 					current = nil
 				} else {
@@ -311,4 +402,104 @@ func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
 	r.DrawTextCentered("Please wait", 0, mid-mainH-6, r.W, mt[0], mt[1], mt[2])
 	r.DrawSmallTextCentered(subtitle, 0, mid+6, r.W, ht[0], ht[1], ht[2])
 	r.Present()
+}
+
+// controllerButtonNames maps SDL's logical face and shoulder buttons to their
+// SDL names. Deliberately SDL's names, not the labels printed on any particular
+// shell: which physical button produces which of these is what varies.
+var controllerButtonNames = map[uint8]string{
+	sdl.CONTROLLER_BUTTON_A:             "A",
+	sdl.CONTROLLER_BUTTON_B:             "B",
+	sdl.CONTROLLER_BUTTON_X:             "X",
+	sdl.CONTROLLER_BUTTON_Y:             "Y",
+	sdl.CONTROLLER_BUTTON_BACK:          "BACK",
+	sdl.CONTROLLER_BUTTON_GUIDE:         "GUIDE",
+	sdl.CONTROLLER_BUTTON_START:         "START",
+	sdl.CONTROLLER_BUTTON_LEFTSHOULDER:  "L1",
+	sdl.CONTROLLER_BUTTON_RIGHTSHOULDER: "R1",
+	sdl.CONTROLLER_BUTTON_DPAD_UP:       "UP",
+	sdl.CONTROLLER_BUTTON_DPAD_DOWN:     "DOWN",
+	sdl.CONTROLLER_BUTTON_DPAD_LEFT:     "LEFT",
+	sdl.CONTROLLER_BUTTON_DPAD_RIGHT:    "RIGHT",
+}
+
+// loggedFaceButtonPresses counts face-button (A/B/X/Y) CONTROLLERBUTTONDOWN
+// events logged at Info so far. Only ever touched from the single SDL event
+// loop in runSDL (one goroutine), so a plain int is correct here — a mutex or
+// atomic would misleadingly imply concurrent access that does not happen.
+var loggedFaceButtonPresses int
+
+// loggedJoystickPresses is the same budget for raw SDL_JOYBUTTONDOWN indices,
+// counted separately: the two logs answer different questions, and a pad whose
+// d-pad is keys rather than a hat would otherwise spend the face-button budget
+// on scrolling.
+var loggedJoystickPresses int
+
+// buttonLogCap is how many face-button presses are logged at Info before
+// dropping to Debug. At the default log level this is the app's only
+// instrument for the face-button arrangement (README tells testers their log
+// records "which buttons you pressed"), so it must be visible without raising
+// verbosity — but a full keypress dump is not the goal, so it is capped.
+const buttonLogCap = 8
+
+// isFaceButton reports whether b is one of the four buttons the arrangement
+// instrument cares about. Everything else — D-pad, shoulders, START, BACK,
+// GUIDE — is not diagnostic for the face-button arrangement and does not draw
+// on the Info budget: the app opens on a scrollable list, so a tester who
+// scrolls before touching a face button must not burn the whole budget on
+// D-pad events before a single A/B/X/Y press is logged at Info.
+func isFaceButton(b uint8) bool {
+	switch b {
+	case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B,
+		sdl.CONTROLLER_BUTTON_X, sdl.CONTROLLER_BUTTON_Y:
+		return true
+	default:
+		return false
+	}
+}
+
+// logJoystickButton records the raw joystick index of a press, which is the
+// number a controller mapping is written in terms of.
+//
+// Without it a log can only say which SDL button a press produced, never which
+// index it came from — so a mapping whose indices are uniformly wrong reads
+// exactly like a mapping whose bindings are wrong, and rc4 shipped with every
+// H700 binding three indices out. One press now settles it. Presses reach here
+// alongside the controller event, not instead of it: SDL posts both.
+func logJoystickButton(ev *sdl.JoyButtonEvent) {
+	if loggedJoystickPresses < buttonLogCap {
+		loggedJoystickPresses++
+		logger.Info("input: joystick %d button down b%d [%d/%d, capped — further presses log at debug]",
+			ev.Which, ev.Button, loggedJoystickPresses, buttonLogCap)
+		return
+	}
+	logger.Debug("input: joystick %d button down b%d", ev.Which, ev.Button)
+}
+
+// logButtonPress records button presses so a report of "the buttons are
+// wrong on my device" can be diagnosed from the log alone. Only face-button
+// presses count against buttonLogCap; the first buttonLogCap of those log at
+// Info (visible at the default level), the rest log at Debug. Non-face
+// buttons always log at Debug — they never establish the arrangement, so
+// they are not worth the Info budget.
+func logButtonPress(e sdl.Event) {
+	if ev, ok := e.(*sdl.JoyButtonEvent); ok && ev.Type == sdl.JOYBUTTONDOWN {
+		logJoystickButton(ev)
+		return
+	}
+	ev, ok := e.(*sdl.ControllerButtonEvent)
+	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
+		return
+	}
+	name, known := controllerButtonNames[ev.Button]
+	if !known {
+		name = "?"
+	}
+	if isFaceButton(ev.Button) && loggedFaceButtonPresses < buttonLogCap {
+		loggedFaceButtonPresses++
+		logger.Info("input: button down SDL_%s (raw %d) [%d/%d face buttons, capped — further face-button presses log at debug]",
+			name, ev.Button, loggedFaceButtonPresses, buttonLogCap)
+		return
+	}
+	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
 }

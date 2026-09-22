@@ -2,13 +2,13 @@ package power
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
 
 	evdev "github.com/holoplot/go-evdev"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
@@ -25,7 +25,7 @@ const (
 type Action int
 
 const (
-	ActionSleep    Action = iota
+	ActionSleep Action = iota
 	ActionShutdown
 )
 
@@ -119,7 +119,7 @@ func (m *Manager) run() {
 // The my355 (Miyoo Flip) rk805 pwrkey lives at /dev/input/event2 and may advertise
 // only keycode 102 rather than KEY_POWER, so we open it directly rather than scanning.
 func openPowerDevice() (*evdev.InputDevice, error) {
-	if os.Getenv("PLATFORM") == "my355" {
+	if firmware.Active().Device() == "my355" {
 		logger.Debug("power: my355 platform — opening /dev/input/event2 directly")
 		return evdev.Open("/dev/input/event2")
 	}

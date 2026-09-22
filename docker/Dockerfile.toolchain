@@ -1,10 +1,14 @@
-# Platform cross-compilation image.
-# Layers Go (from Alpine) on top of the LoveRetro platform toolchain so that
-# CGo builds pick up the device-native SDL2 from the toolchain sysroot rather
-# than the Debian desktop SDL2.  Supported PLATFORM values: tg5040, tg5050, my355.
-ARG PLATFORM=tg5040
+# Cross-compilation image, one per LoveRetro toolchain.
+# Layers Go (from Alpine) on top of the LoveRetro toolchain so that CGo builds
+# pick up the device-native SDL2 from the toolchain sysroot rather than the
+# Debian desktop SDL2.
+#
+# TOOLCHAIN is the LoveRetro image code, not a firmware or a device: several
+# build targets can share one toolchain.  See scripts/targets.sh for the mapping.
+# Supported values: tg5040, tg5050, my355.
+ARG TOOLCHAIN=tg5040
 FROM golang:1.22-alpine AS golang
-FROM ghcr.io/loveretro/${PLATFORM}-toolchain:latest
+FROM ghcr.io/loveretro/${TOOLCHAIN}-toolchain:latest
 COPY --from=golang /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:$PATH
 ENV GOPATH=/go

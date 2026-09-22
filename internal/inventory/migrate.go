@@ -7,29 +7,41 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 )
 
 // MigrateFormats carries the user's configured save and state format indices,
-// read from /mnt/SDCARD/.userdata/shared/minuisettings.txt before calling MigrateFile.
+// read from the firmware's settings file before calling MigrateFile.
 type MigrateFormats struct {
 	SaveFormat           int  // 0=MinUI, 1=Retroarch SRM compressed, 2=Generic, 3=Retroarch SRM uncompressed
 	StateFormat          int  // 0=MinUI, 1/2=Retroarch-ish (legacy), 3/4=Retroarch
 	UseExtractedFileName bool // mirrors useExtractedFileName from minuisettings.txt
+	// Known reports whether these values were actually read from a settings
+	// file. The zero value of the fields above means "MinUI defaults", which is
+	// a fair assumption on NextUI when the file is simply absent, but a wrong
+	// one on firmware that has no such file at all. Consult
+	// firmware.Caps().MinUISaveFormats before acting on an unknown result.
+	Known bool
 }
 
-// NXSettingsPath is the on-device path to NextUI's shared settings file.
-const NXSettingsPath = "/mnt/SDCARD/.userdata/shared/minuisettings.txt"
+// SettingsPath returns the firmware's settings file, or "" when it has none.
+func SettingsPath() string { return firmware.Active().SettingsFile() }
 
 // ReadMigrateFormats reads saveFormat, stateFormat, and useExtractedFileName
-// from path. Missing or unreadable file returns all-zero (MinUI defaults).
+// from path. A missing or unreadable file returns a zero value with Known
+// false, so callers can tell "the user chose MinUI defaults" apart from "this
+// firmware does not have save formats".
 func ReadMigrateFormats(path string) MigrateFormats {
+	if path == "" {
+		return MigrateFormats{}
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return MigrateFormats{}
 	}
-	var f MigrateFormats
+	f := MigrateFormats{Known: true}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		var n int

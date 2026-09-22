@@ -9,7 +9,7 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
 Usage: test.sh [--coverage]
 
 Run the full test suite inside a container using the headless build tag (no SDL2).
-The dev container (itchio-pak-dev) is built automatically on first run.
+The dev container (itchio-dev) is built automatically on first run.
 
 Options:
   --coverage    Generate an HTML coverage report at coverage.html
@@ -30,7 +30,7 @@ detect_runtime() {
     else echo ""; fi
 }
 
-IMAGE="itchio-pak-dev"
+IMAGE="itchio-dev"
 CACHE_DIR="$(pwd)/.go_cache"
 if [ -z "${IN_CONTAINER:-}" ]; then
     # Host-side shell-tooling tests (release scripts). These exercise host tools
@@ -41,6 +41,27 @@ if [ -z "${IN_CONTAINER:-}" ]; then
         "$SCRIPT_DIR/release-github_test.sh" || exit 1
     else
         echo "note: skipping release-github_test.sh (jq not found on host)" >&2
+    fi
+
+    echo "==> release-pak_test.sh"
+    "$SCRIPT_DIR/release-pak_test.sh" || exit 1
+
+    echo "==> release-muxapp_test.sh"
+    "$SCRIPT_DIR/release-muxapp_test.sh" || exit 1
+
+    echo "==> launch_test.sh"
+    "$SCRIPT_DIR/launch_test.sh" || exit 1
+
+    echo "==> shellcheck (device launchers)"
+    if command -v shellcheck >/dev/null 2>&1; then
+        # muOS runs mux_launch.sh with its own /bin/sh, so it is checked as
+        # POSIX sh rather than bash. launch_test.sh runs under dash too (it
+        # execs launch.sh directly), so it belongs in the same POSIX-sh gate
+        # it exists to protect.
+        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh "$SCRIPT_DIR/launch_test.sh" || exit 1
+        echo "ok   - device launch scripts are clean"
+    else
+        echo "note: skipping shellcheck (not installed)" >&2
     fi
 
     echo "==> no-color-literals.sh"
@@ -85,6 +106,16 @@ else
 fi
 rm -f "$TEST_LOG"
 set -e
+
+# The run above is tagged headless, so it skips every !headless file in
+# internal/ui — screen.go, dev_scenes.go, dev_start.go, and the two dozen
+# screen_*.go files, not just input.go. This pass compiles and links that
+# whole SDL2 screen package. It needs SDL2 headers, which docker/Dockerfile.dev
+# provides, but no display: binding button constants opens no window.
+# Without this pass a test can sit in the tree looking green while never
+# having been compiled at all.
+echo "==> go test ./internal/ui (non-headless)"
+go test ./internal/ui/ || exit 1
 
 if [ -n "$COVER" ] && [ $EXIT_CODE -eq 0 ]; then
     go tool cover -html=coverage.out -o coverage.html

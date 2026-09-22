@@ -13,7 +13,7 @@ const (
 
 // rotateLog trims the log file at path before a new run begins so that at most
 // (logMaxRuns-1) prior runs are retained and the file stays under logMaxBytes.
-// A "run" starts at the line emitted by: logger.Info("itchio-pak %s starting", version).
+// A "run" starts at the line emitted by: logger.Info("itchio %s starting", version).
 // The file is left unchanged if it does not exist, is empty, or needs no trimming.
 func rotateLog(path string) {
 	data, err := os.ReadFile(path)
@@ -63,8 +63,10 @@ func splitLogRuns(data []byte) [][]byte {
 }
 
 // isRunStartLine reports whether line is the startup sentinel written by main.
+// Matching on "itchio" rather than the full binary name keeps logs written by
+// pre-rename builds ("itchio-pak ... starting") splitting into runs correctly.
 func isRunStartLine(line string) bool {
-	return strings.Contains(line, "itchio-pak") && strings.Contains(line, "starting")
+	return strings.Contains(line, "itchio") && strings.Contains(line, "starting")
 }
 
 func totalRunBytes(runs [][]byte) int {

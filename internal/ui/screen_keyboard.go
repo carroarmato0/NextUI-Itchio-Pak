@@ -74,7 +74,7 @@ func NewKeyboardScreen(prev Screen, seed string, onConfirm func(string)) *Keyboa
 	}
 }
 
-func (s *KeyboardScreen) NeedsRedraw() bool        { return true }
+func (s *KeyboardScreen) NeedsRedraw() bool         { return true }
 func (s *KeyboardScreen) HasPendingAnimation() bool { return false }
 
 func (s *KeyboardScreen) Draw(r *renderer.Renderer) {
@@ -249,9 +249,9 @@ func (s *KeyboardScreen) handleKey(sym sdl.Keycode) Screen {
 
 func (s *KeyboardScreen) handleButton(btn uint8) Screen {
 	switch btn {
-	case sdl.CONTROLLER_BUTTON_B: // physical A — type/confirm
+	case btnA: // physical A — type/confirm
 		return s.activate()
-	case sdl.CONTROLLER_BUTTON_A: // physical B — cancel
+	case btnB: // physical B — cancel
 		if s.onConfirm != nil {
 			s.onConfirm(s.seed)
 		}
@@ -274,7 +274,7 @@ func (s *KeyboardScreen) handleButton(btn uint8) Screen {
 	case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
 		s.page = (s.page + 1) % 3
 		s.clampCol()
-	case sdl.CONTROLLER_BUTTON_X: // physical Y — delete last character
+	case btnY: // physical Y — delete last character
 		if len(s.value) > 0 {
 			s.value = s.value[:len(s.value)-1]
 		}

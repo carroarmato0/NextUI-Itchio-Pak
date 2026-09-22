@@ -276,9 +276,9 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_A: // physical B — cancel at any time
+		case btnB: // physical B — cancel at any time
 			return s.prev
-		case sdl.CONTROLLER_BUTTON_B: // physical A — dismiss error
+		case btnA: // physical A — dismiss error
 			if s.loadState() == fetchError {
 				return s.prev
 			}

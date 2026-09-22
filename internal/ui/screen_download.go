@@ -265,7 +265,7 @@ func (s *DownloadScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		if s.loadState() != dlDownloading {
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_A:
+			case btnA, btnB:
 				return s.prev
 			}
 		}

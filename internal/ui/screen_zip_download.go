@@ -1136,7 +1136,7 @@ func (s *ZIPDownloadScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		if s.loadState() != zipDLDownloading && s.loadState() != zipDLExtracting {
 			switch ev.Button {
-			case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B:
+			case btnB, btnA:
 				return s.prev
 			}
 		}

@@ -29,18 +29,11 @@ const (
 	PaletteColorCount = 7
 )
 
-// Device paths. SDCardPath is "/mnt/SDCARD" on both TrimUI platforms
-// (workspace/tg5040/platform/platform.h:156, tg5050:151); RES_PATH and
-// SHARED_USERDATA_PATH are derived from it in common/defines.h:19,21.
-//
-// The Miyoo Flip (my355) has no NextUI platform upstream and may have none of
-// these — every reader here degrades to "absent" rather than failing.
-const (
-	SDCardPath        = "/mnt/SDCARD"
-	BuiltinPaletteDir = SDCardPath + "/.system/res/palettes"
-	UserPaletteDir    = SDCardPath + "/Palettes"
-	SettingsPath      = SDCardPath + "/.userdata/shared/minuisettings.txt"
-)
+// This package takes every path as an argument and never names a device path
+// itself, so it works unchanged on firmware that has no palette system at all.
+// Ask internal/firmware for the paths: Env.SettingsFile() and
+// Env.PaletteDirs() return "" when the firmware has no equivalent, and every
+// reader here degrades to "absent" rather than failing.
 
 // NextUIDefaultColors are CFG_DEFAULT_COLOR1..7 from common/config.h. A palette
 // file that omits a colour inherits the corresponding default, so a partial file

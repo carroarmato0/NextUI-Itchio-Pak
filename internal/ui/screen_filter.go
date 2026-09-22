@@ -11,7 +11,7 @@ import (
 type filterSection int
 
 const (
-	filterSectionSearch   filterSection = iota
+	filterSectionSearch filterSection = iota
 	filterSectionPlatform
 	filterSectionSort
 )
@@ -75,7 +75,7 @@ func NewFilterScreen(
 	}
 }
 
-func (s *FilterScreen) NeedsRedraw() bool        { return false }
+func (s *FilterScreen) NeedsRedraw() bool         { return false }
 func (s *FilterScreen) HasPendingAnimation() bool { return false }
 
 func (s *FilterScreen) Draw(r *renderer.Renderer) {
@@ -294,14 +294,14 @@ func (s *FilterScreen) handleButton(btn uint8) Screen {
 		s.movePillLeft()
 	case sdl.CONTROLLER_BUTTON_DPAD_RIGHT:
 		s.movePillRight()
-	case sdl.CONTROLLER_BUTTON_B: // physical A — select/activate
+	case btnA: // physical A — select/activate
 		return s.activate()
-	case sdl.CONTROLLER_BUTTON_A: // physical B — cancel
+	case btnB: // physical B — cancel
 		logger.Debug("filter: cancelled")
 		return s.prev
 	case sdl.CONTROLLER_BUTTON_BACK: // SELECT — apply
 		return s.applyAndClose()
-	case sdl.CONTROLLER_BUTTON_Y: // Y — clear all
+	case btnX: // Y — clear all
 		s.clearAll()
 	}
 	return s

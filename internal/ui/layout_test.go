@@ -57,15 +57,81 @@ func TestLayoutForOverlayMargin(t *testing.T) {
 	}
 }
 
-func TestLayoutForBoundary(t *testing.T) {
-	// exactly at narrowScreenW should use small layout
-	l := LayoutFor(narrowScreenW, 480)
-	if l.RowPad != 2 {
-		t.Errorf("at boundary RowPad = %d, want 2 (small)", l.RowPad)
+// The size class is what decides whether a panel gets tight spacing — smaller
+// padding, a narrower cover art column, and 3% instead of 14% overlay margins.
+// (Abbreviated footer hints and the narrower QR column are decided separately
+// by abbreviate(w).) H700 introduced two geometries the width test got wrong,
+// so the rule is pinned per device here: a panel is compact unless it is roomy
+// in *both* directions.
+func TestCompactSizeClass(t *testing.T) {
+	for _, tc := range []struct {
+		w, h int32
+		want bool
+		why  string
+	}{
+		{640, 480, true, "Miyoo Flip and most RG XX"},
+		{720, 480, true, "RG34XX / RG34XX SP / RG SP"},
+		{720, 720, false, "RG Cube XX"},
+		{480, 640, true, "RG28XX if SDL_ROTATION misses our window"},
+		{1024, 768, false, "TrimUI Brick"},
+		{1280, 720, false, "TrimUI Smart Pro"},
+		{641, 481, false, "one pixel past both limits"},
+		{641, 480, true, "wide enough, too short"},
+		{640, 481, true, "tall enough, too narrow"},
+	} {
+		if got := compact(tc.w, tc.h); got != tc.want {
+			t.Errorf("compact(%d, %d) = %v, want %v (%s)", tc.w, tc.h, got, tc.want, tc.why)
+		}
 	}
-	// one pixel wider → wide layout
-	l = LayoutFor(narrowScreenW+1, 720)
-	if l.RowPad != 4 {
-		t.Errorf("above boundary RowPad = %d, want 4 (wide)", l.RowPad)
+}
+
+// LayoutFor must follow the same rule, not a second copy of it.
+func TestLayoutForFollowsSizeClass(t *testing.T) {
+	if l := LayoutFor(720, 480); l.RowPad != 2 {
+		t.Errorf("720x480 RowPad = %d, want 2 (compact)", l.RowPad)
+	}
+	if l := LayoutFor(720, 720); l.RowPad != 4 {
+		t.Errorf("720x720 RowPad = %d, want 4 (roomy)", l.RowPad)
+	}
+	if l := LayoutFor(640, 480); l.OverlayMarginX != 640*3/100 {
+		t.Errorf("640x480 OverlayMarginX = %d, want %d", l.OverlayMarginX, 640*3/100)
+	}
+	if l := LayoutFor(1280, 720); l.OverlayMarginX != 1280*14/100 {
+		t.Errorf("1280x720 OverlayMarginX = %d, want %d", l.OverlayMarginX, 1280*14/100)
+	}
+}
+
+// Text abbreviation is a width question, not a width-and-height question.
+// 720×720 (RG Cube XX) has plenty of vertical room — so it gets roomy padding —
+// but not enough width for "L1R1 Sort" plus "Settings" plus a right-aligned
+// "Page 1/1", which overlapped and rendered as unreadable text on itself.
+func TestAbbreviateKeysOnWidthAlone(t *testing.T) {
+	for _, tc := range []struct {
+		w, h int32
+		want bool
+		why  string
+	}{
+		{640, 480, true, "Miyoo Flip and most RG XX"},
+		{720, 480, true, "RG34XX line"},
+		{720, 720, true, "RG Cube XX — roomy vertically, still too narrow for full hints"},
+		{480, 640, true, "RG28XX unrotated"},
+		{1024, 768, false, "TrimUI Brick"},
+		{1280, 720, false, "TrimUI Smart Pro"},
+	} {
+		if got := abbreviate(tc.w); got != tc.want {
+			t.Errorf("abbreviate(%d) = %v, want %v (%dx%d, %s)",
+				tc.w, got, tc.want, tc.w, tc.h, tc.why)
+		}
+	}
+}
+
+// The two predicates must disagree exactly where the bug was: 720×720 takes
+// roomy spacing but abbreviated text.
+func TestSizeClassesDivergeOnTallNarrowPanels(t *testing.T) {
+	if compact(720, 720) {
+		t.Error("compact(720, 720) = true, want false — it has vertical room")
+	}
+	if !abbreviate(720) {
+		t.Error("abbreviate(720) = false, want true — it has no horizontal room")
 	}
 }

@@ -8,14 +8,15 @@ import (
 	"image/draw"
 	"image/gif"
 	_ "image/jpeg"
-	_ "image/png"
 	"image/png"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
@@ -42,8 +43,8 @@ func compositeGIFFrames(g *gif.GIF) image.Image {
 	draw.Draw(canvas, bounds, bgFill, image.Point{}, draw.Src)
 
 	var (
-		bestCanvas    *image.RGBA
-		bestVariance  float64
+		bestCanvas   *image.RGBA
+		bestVariance float64
 	)
 
 	for i, frame := range g.Image {
@@ -119,8 +120,8 @@ func coverArtBasename(romDestPath string) string {
 }
 
 // DownloadCoverArt fetches the cover image at coverURL and saves it as a PNG
-// into the .media/ subdirectory of the ROM's directory. The filename is the
-// exact ROM stem (matching NextUI's art lookup convention) with a .png extension.
+// where the firmware looks for box art. The filename is the exact ROM stem
+// (matching the firmware's art lookup convention) with a .png extension.
 // GIF, JPEG, and other formats are all re-encoded as PNG. Any stale art files
 // with the same stem but a different extension are removed. Returns nil for an
 // empty coverURL.
@@ -130,8 +131,7 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 		return nil
 	}
 
-	dir := filepath.Dir(romDestPath)
-	mediaDir := filepath.Join(dir, ".media")
+	mediaDir := firmware.Active().CoverArtDirFor(filepath.Dir(romDestPath))
 	if err := os.MkdirAll(mediaDir, 0755); err != nil {
 		return fmt.Errorf("cover-art: mkdir: %w", err)
 	}
@@ -215,13 +215,12 @@ func (c *Client) DownloadCoverArt(coverURL, romDestPath string) error {
 	return nil
 }
 
-// CopyCoverArt copies the ROM file at romDestPath into the .media/ directory
-// alongside it, using the same art filename that DownloadCoverArt would produce.
+// CopyCoverArt copies the ROM file at romDestPath into the firmware's box art
+// directory, using the same art filename that DownloadCoverArt would produce.
 // Used for .p8.png cartridges, which are themselves valid PNG images — no
 // separate network request is needed.
 func CopyCoverArt(romDestPath string) error {
-	dir := filepath.Dir(romDestPath)
-	mediaDir := filepath.Join(dir, ".media")
+	mediaDir := firmware.Active().CoverArtDirFor(filepath.Dir(romDestPath))
 	if err := os.MkdirAll(mediaDir, 0755); err != nil {
 		return fmt.Errorf("cover-art: mkdir: %w", err)
 	}

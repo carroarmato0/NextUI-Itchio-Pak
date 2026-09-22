@@ -27,7 +27,7 @@ func NewAboutScreen(prev Screen) *AboutScreen {
 	return &AboutScreen{prev: prev}
 }
 
-func (s *AboutScreen) NeedsRedraw() bool { return false }
+func (s *AboutScreen) NeedsRedraw() bool         { return false }
 func (s *AboutScreen) HasPendingAnimation() bool { return false }
 
 func (s *AboutScreen) Draw(r *renderer.Renderer) {
@@ -102,7 +102,7 @@ func (s *AboutScreen) HandleEvent(e sdl.Event) Screen {
 			return s
 		}
 		switch ev.Button {
-		case sdl.CONTROLLER_BUTTON_A, sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_START:
+		case btnB, btnA, sdl.CONTROLLER_BUTTON_START:
 			return s.prev
 		}
 	}

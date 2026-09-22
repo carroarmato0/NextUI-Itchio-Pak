@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -16,7 +17,7 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-const musicLocationRoot = "/mnt/SDCARD/Music"
+func musicLocationRoot() string { return firmware.Active().MusicBrowseRoot() }
 
 // MusicLocationPickerScreen lets the user choose where to save a game soundtrack.
 // It mirrors LocationPickerScreen but is rooted at /mnt/SDCARD/Music and
@@ -46,7 +47,7 @@ func NewMusicLocationPickerScreen(
 ) *MusicLocationPickerScreen {
 	startDir := roms.MusicDestinationDir(game.Title)
 	if _, err := os.Stat(startDir); err != nil {
-		startDir = musicLocationRoot + "/"
+		startDir = musicLocationRoot() + "/"
 	}
 	s := &MusicLocationPickerScreen{
 		client: client, cfg: cfg, cfgPath: cfgPath,
@@ -62,16 +63,16 @@ func (s *MusicLocationPickerScreen) loadDir(dir string) {
 		dir += "/"
 	}
 	s.currentDir = dir
-	s.rows = buildRows(dir, musicLocationRoot)
+	s.rows = buildRows(dir, musicLocationRoot())
 	s.cursor = 0
 	s.scrollOffset = 0
 }
 
 func (s *MusicLocationPickerScreen) atRoot() bool {
-	return strings.TrimRight(s.currentDir, "/") == musicLocationRoot
+	return strings.TrimRight(s.currentDir, "/") == musicLocationRoot()
 }
 
-func (s *MusicLocationPickerScreen) NeedsRedraw() bool        { return false }
+func (s *MusicLocationPickerScreen) NeedsRedraw() bool         { return false }
 func (s *MusicLocationPickerScreen) HasPendingAnimation() bool { return false }
 
 func (s *MusicLocationPickerScreen) Draw(r *renderer.Renderer) {
@@ -214,9 +215,9 @@ func (s *MusicLocationPickerScreen) HandleEvent(e sdl.Event) Screen {
 			if s.cursor > 0 {
 				s.cursor--
 			}
-		case sdl.CONTROLLER_BUTTON_B:
+		case btnA:
 			return s.activate()
-		case sdl.CONTROLLER_BUTTON_A:
+		case btnB:
 			return s.goUp()
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev

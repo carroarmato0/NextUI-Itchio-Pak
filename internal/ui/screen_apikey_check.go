@@ -26,10 +26,10 @@ type KeyTestScreen struct {
 	cfg    *settings.Config
 	prev   Screen
 
-	state      keyTestState
-	username   string
-	ownedCount int
-	err        error
+	state        keyTestState
+	username     string
+	ownedCount   int
+	err          error
 	onOwnedReady func([]itchio.OwnedGame)
 }
 
@@ -55,7 +55,7 @@ func NewKeyTestScreen(client *itchio.Client, cfg *settings.Config, prev Screen, 
 	return s
 }
 
-func (s *KeyTestScreen) NeedsRedraw() bool { return s.state == keyTestRunning }
+func (s *KeyTestScreen) NeedsRedraw() bool         { return s.state == keyTestRunning }
 func (s *KeyTestScreen) HasPendingAnimation() bool { return false }
 
 func (s *KeyTestScreen) Draw(r *renderer.Renderer) {
