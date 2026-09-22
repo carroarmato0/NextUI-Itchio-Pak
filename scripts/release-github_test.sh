@@ -22,7 +22,19 @@ check() { # desc  haystack  needle
 }
 
 VERSION="$(grep '"version"' "$PAK_JSON" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-PREV="$(jq -r --arg v "$VERSION" '.changelog | keys_unsorted | (index($v) + 1) as $i | .[$i] // ""' "$PAK_JSON")"
+
+# What the compare link should start at. A stable release compares against the
+# previous *stable* one, skipping the rc entries that stay in the changelog for
+# the on-device history — comparing v1.0.23 against v1.0.23-rc5 would show two
+# commits and hide the release. A pre-release compares against whatever came
+# immediately before it, rc or not, since that is what its testers last had.
+case "$VERSION" in
+	*-rc*) PREV="$(jq -r --arg v "$VERSION" \
+		'.changelog | keys_unsorted | (index($v) + 1) as $i | .[$i] // ""' "$PAK_JSON")" ;;
+	*)     PREV="$(jq -r --arg v "$VERSION" \
+		'.changelog | keys_unsorted | .[(index($v) + 1):] | map(select(contains("-rc") | not)) | .[0] // ""' \
+		"$PAK_JSON")" ;;
+esac
 FIRST_BULLET="$(jq -r --arg v "$VERSION" '.changelog[$v]' "$PAK_JSON" | sed '/^[[:space:]]*$/d' | head -1)"
 
 # --- --print-notes ---
@@ -50,6 +62,24 @@ check "notes offer the NextUI multi-device bundle" "$notes" "Itch-io.NextUI.$VER
 check "notes keep the Pak Store filename" "$notes" '`Itch-io.pak.zip`'
 check "compare link ends at current version" "$notes" "...$VERSION"
 [ -n "$PREV" ] && check "compare link starts at previous version" "$notes" "/compare/$PREV..."
+
+# Semantic guard, independent of how prev_version is implemented: a stable
+# release must never compare against a pre-release. That link is the one thing
+# on the page that says what actually changed, and pointing it at the last rc
+# reduces it to the handful of commits between the two.
+case "$VERSION" in
+	*-rc*) printf 'ok   - compare-link stability check skipped (this is a pre-release)\n' ;;
+	*)
+		# Greedy \(.*\) before the literal "..." — version strings are full of
+		# dots, so a [^.]* class matches nothing useful here.
+		compare_from="$(printf '%s' "$notes" | sed -n 's|.*/compare/\(.*\)\.\.\..*|\1|p' | head -1)"
+		case "$compare_from" in
+			"")     printf 'FAIL - could not read the compare link\n'; fail=1 ;;
+			*-rc*)  printf 'FAIL - stable release compares against a pre-release (%s)\n' "$compare_from"; fail=1 ;;
+			*)      printf 'ok   - stable release compares against a stable release (%s)\n' "$compare_from" ;;
+		esac
+		;;
+esac
 
 # --- --dry-run lists both artifacts and does not create a release ---
 # Requires built dist/ artifacts; skip when absent (e.g. a fresh CI checkout).

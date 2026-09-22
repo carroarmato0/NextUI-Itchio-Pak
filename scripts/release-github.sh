@@ -47,9 +47,26 @@ MUXAPP="$DIST_DIR/muos/Itch-io.muOS.$_v.muxapp"
 # changelog_entry VERSION — the raw changelog string for a version (newlines rendered).
 changelog_entry() { jq -r --arg v "$1" '.changelog[$v] // ""' "$PAK_JSON"; }
 
-# prev_version VERSION — the changelog key immediately after VERSION (file order = newest first).
+# prev_version VERSION — what the compare link should start at (file order = newest first).
+#
+# For a stable release this is the previous *stable* version, skipping the rc
+# entries. Those stay in the changelog so the on-device history reads correctly,
+# but a stable release that compares against its own last rc shows the two or
+# three commits since that rc and hides everything the release is actually made
+# of — v1.0.23 against v1.0.23-rc5 is two commits; against v1.0.22 it is 60.
+#
+# A pre-release still compares against whatever came immediately before it, rc
+# or not, because that is the build its testers are coming from.
 prev_version() {
-	jq -r --arg v "$1" '.changelog | keys_unsorted | (index($v) + 1) as $i | .[$i] // ""' "$PAK_JSON"
+	case "$1" in
+		*-rc*)
+			jq -r --arg v "$1" \
+				'.changelog | keys_unsorted | (index($v) + 1) as $i | .[$i] // ""' "$PAK_JSON" ;;
+		*)
+			jq -r --arg v "$1" \
+				'.changelog | keys_unsorted | .[(index($v) + 1):]
+				 | map(select(contains("-rc") | not)) | .[0] // ""' "$PAK_JSON" ;;
+	esac
 }
 
 # bundle_version — the version embedded in the built .pakz artifact, or "" if unreadable.
