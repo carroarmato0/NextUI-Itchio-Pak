@@ -90,17 +90,56 @@ func runSDL() {
 	// which swaps the face buttons. Without this line, "confirm and cancel are
 	// the wrong way round" is unanswerable from a log.
 	for i := 0; i < sdl.NumJoysticks(); i++ {
-		if sdl.IsGameController(i) {
-			if gc := sdl.GameControllerOpen(i); gc != nil {
-				logger.Info("input: controller %d %q", i, gc.Name())
-				logger.Debug("input: mapping %s", gc.Mapping())
-				defer gc.Close()
+		// A pad SDL has no mapping for stays a plain joystick and emits only
+		// SDL_JOYBUTTONDOWN, which no screen in this app handles — the UI
+		// renders and then ignores every press. H700 is such a pad, so ask the
+		// Env for a mapping before giving up on it. The GUID comes from SDL
+		// rather than from a constant: it is derived from the pad's bus/vendor/
+		// product/version plus a hash of its name, and SDL silently ignores a
+		// mapping carrying the wrong one.
+		if !sdl.IsGameController(i) {
+			pad := firmware.Pad{
+				GUID: sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)),
+				Name: sdl.JoystickNameForIndex(i),
 			}
-		} else {
+			// The pad has to be opened to be counted, and the counts are not
+			// cosmetic: the mapping derivation checks the button count against
+			// the key bitmap it reads for this device, and refuses to guess
+			// indices from a bitmap that disagrees with SDL.
+			axes := 0
 			if js := sdl.JoystickOpen(i); js != nil {
-				logger.Info("input: joystick %d %q (no controller mapping)", i, js.Name())
-				defer js.Close()
+				pad.Buttons, pad.Hats, axes = js.NumButtons(), js.NumHats(), js.NumAxes()
+				js.Close()
 			}
+			logger.Info("input: joystick %d %q guid=%s buttons=%d hats=%d axes=%d",
+				i, pad.Name, pad.GUID, pad.Buttons, pad.Hats, axes)
+			mapping, ok := env.ControllerMapping(pad)
+			if !ok {
+				// The shape logged above is the whole diagnosis for "the app
+				// starts but nothing responds" on an unrecognised device, and
+				// is what a mapping would have to be written against.
+				logger.Warn("input: joystick %d %q — no controller mapping and none available, its buttons will not reach the UI", i, pad.Name)
+				continue
+			}
+			if sdl.GameControllerAddMapping(mapping) < 0 {
+				logger.Error("input: joystick %d %q guid=%s — adding mapping failed: %v", i, pad.Name, pad.GUID, sdl.GetError())
+				continue
+			}
+			logger.Info("input: joystick %d %q guid=%s — applied built-in mapping", i, pad.Name, pad.GUID)
+			// AddMapping only makes SDL willing to treat it as a controller;
+			// it does not open it. Fall through to the open below, which now
+			// takes the controller branch.
+			if !sdl.IsGameController(i) {
+				logger.Error("input: joystick %d %q still not a game controller after adding its mapping", i, pad.Name)
+				continue
+			}
+		}
+		if gc := sdl.GameControllerOpen(i); gc != nil {
+			logger.Info("input: controller %d %q", i, gc.Name())
+			logger.Debug("input: mapping %s", gc.Mapping())
+			defer gc.Close()
+		} else {
+			logger.Error("input: opening controller %d failed: %v", i, sdl.GetError())
 		}
 	}
 	// muOS exports this; it is what makes its retro/modern face-button choice
@@ -250,7 +289,7 @@ loop:
 		}
 		for e != nil {
 			gotEvent = true
-			logControllerButton(e)
+			logButtonPress(e)
 			if pendingQuit {
 				e = sdl.PollEvent()
 				continue // drain input while waiting for tasks
@@ -390,6 +429,12 @@ var controllerButtonNames = map[uint8]string{
 // atomic would misleadingly imply concurrent access that does not happen.
 var loggedFaceButtonPresses int
 
+// loggedJoystickPresses is the same budget for raw SDL_JOYBUTTONDOWN indices,
+// counted separately: the two logs answer different questions, and a pad whose
+// d-pad is keys rather than a hat would otherwise spend the face-button budget
+// on scrolling.
+var loggedJoystickPresses int
+
 // buttonLogCap is how many face-button presses are logged at Info before
 // dropping to Debug. At the default log level this is the app's only
 // instrument for the face-button arrangement (README tells testers their log
@@ -413,13 +458,35 @@ func isFaceButton(b uint8) bool {
 	}
 }
 
-// logControllerButton records button presses so a report of "the buttons are
+// logJoystickButton records the raw joystick index of a press, which is the
+// number a controller mapping is written in terms of.
+//
+// Without it a log can only say which SDL button a press produced, never which
+// index it came from — so a mapping whose indices are uniformly wrong reads
+// exactly like a mapping whose bindings are wrong, and rc4 shipped with every
+// H700 binding three indices out. One press now settles it. Presses reach here
+// alongside the controller event, not instead of it: SDL posts both.
+func logJoystickButton(ev *sdl.JoyButtonEvent) {
+	if loggedJoystickPresses < buttonLogCap {
+		loggedJoystickPresses++
+		logger.Info("input: joystick %d button down b%d [%d/%d, capped — further presses log at debug]",
+			ev.Which, ev.Button, loggedJoystickPresses, buttonLogCap)
+		return
+	}
+	logger.Debug("input: joystick %d button down b%d", ev.Which, ev.Button)
+}
+
+// logButtonPress records button presses so a report of "the buttons are
 // wrong on my device" can be diagnosed from the log alone. Only face-button
 // presses count against buttonLogCap; the first buttonLogCap of those log at
 // Info (visible at the default level), the rest log at Debug. Non-face
 // buttons always log at Debug — they never establish the arrangement, so
 // they are not worth the Info budget.
-func logControllerButton(e sdl.Event) {
+func logButtonPress(e sdl.Event) {
+	if ev, ok := e.(*sdl.JoyButtonEvent); ok && ev.Type == sdl.JOYBUTTONDOWN {
+		logJoystickButton(ev)
+		return
+	}
 	ev, ok := e.(*sdl.ControllerButtonEvent)
 	if !ok || ev.Type != sdl.CONTROLLERBUTTONDOWN {
 		return

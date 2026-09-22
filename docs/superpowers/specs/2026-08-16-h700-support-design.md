@@ -178,8 +178,9 @@ On TrimUI we know from hardware that the shell's A arrives as
 `CONTROLLER_BUTTON_B` (=1) and its X as `BUTTON_Y` (=3) — a four-for-four match
 with the `JOY_*` indices, establishing that SDL's controller index equals
 NextUI's `JOY_` index. H700's `platform.h` sets `CODE_A=304` (`BTN_SOUTH`),
-`CODE_B=305`, `CODE_Y=306`, `CODE_X=307`, which SDL's evdev classification maps
-to `b0`–`b3` in ascending order — consistent with its `JOY_*` values. Applying
+`CODE_B=305`, `CODE_Y=306`, `CODE_X=307`, in the same relative order as its
+`JOY_*` values. (Their absolute values do not survive contact with hardware —
+see the section below — but the ordering is what this argument needs.) Applying
 the validated model: **A and B are direct, X and Y are swapped.**
 
 `FaceMapping` therefore gains a third value, and `SetFaceMapping` becomes a
@@ -187,8 +188,68 @@ small `{A,B,X,Y}` table rather than an if/else — three arrangements is where a
 boolean-shaped branch stops paying. X and Y are load-bearing: delete,
 unified-naming toggle, clear-filters, keyboard backspace, and API-key edit.
 
-This is a derivation, not a measurement. It is confirmed or refuted by the first
-tester log, since `logControllerButton` already records every button press.
+This started as a derivation, not a measurement. **It has since been confirmed
+on hardware.** A tester captured `/dev/input/event1` while pressing each button
+in a stated order: the shell's A reports evdev code 304 and its B 305, while its
+Y reports 306 and its X 307 — A and B direct, X and Y transposed, exactly as
+derived. That is a statement about codes, so it outlived the index mistake
+below.
+
+The same capture also refuted an assumption this section did not know it was
+making: that H700's pad presents as a game controller at all. It does not. SDL
+ships no database entry for `ANBERNIC-keys`, so it stayed a plain joystick and
+emitted only `SDL_JOYBUTTONDOWN`, which no screen handles — the app rendered
+normally and ignored every press. The arrangement above was correct and
+unreachable. See `firmware.ControllerMapping`.
+
+### Button indices are a property of the device, not of the family
+
+rc4 shipped that mapping with its indices hardcoded, on the assumption that the
+codes above are the lowest keys the pad exposes, so A is `b0`. The rc4 tester
+found every button three bindings out — B acted as L1, X as Select, Y as R1, L1
+as Start, and the volume-down key acted as B, i.e. index 1. Nine observations,
+one uniform `+3`: three keys are enumerated ahead of the pad's own.
+
+The index a code gets is not a property of the code: it depends on which
+*other* keys the device exposes. **The codes are measured and hardcoded; the
+indices are derived at runtime** from the same `KEY=` bitmap SDL read, in
+`firmware.padButtonIndexes`.
+
+rc5 derived them in the order stock SDL2 documents — `BTN_JOYSTICK..KEY_MAX`
+first, everything below `BTN_JOYSTICK` after — and would have reproduced rc4's
+indices exactly. The tester's `/proc/bus/input/devices` refuted it. Their pad
+sets fifteen keys: `1` (`KEY_ESC`), `114`/`115` (volume), `304`–`312`,
+`314`/`315` (the pad) and `354` (`KEY_GOTO`, which MENU emits alongside `312`).
+Under the two-pass order A is `b0`, and the tester's A confirms; it does not.
+Under plain ascending order the three low keys take `b0`–`b2` and the pad
+starts at `b3`, which accounts for **all nine** of their observations, volume-
+down-acts-as-B included — and that one is only reachable if the low codes are
+enumerated first. So `sdlButtonIndexes` numbers ascending over the whole key
+range. That is a measurement of NextUI's h700 SDL2 rather than a restatement of
+upstream SDL, and it is the one line to revisit if a device disagrees.
+
+An earlier version of this section cited MinUI's `rg35xxplus` `platform.h` as
+independent confirmation of the two-pass order. It was not: that device's key
+set was never dumped, and the set used to "reproduce" its `JOY_*` table had been
+chosen to reproduce it. A fitted input is not a check.
+
+Two guards keep a bad read from reaching the pad. The decoded bitmap must
+contain as many keys as SDL reports buttons — that says the right device was
+read — and it must contain the four face codes, which is what catches a bitmap
+decoded at the wrong word width (the kernel prints native words and does not
+say how wide they are; the bit *count* is the same either way, so the count
+alone cannot tell 32 from 64). Failing either, the mapping falls back to the
+rc4 tester's measured `+3` — the same three low keys, hardcoded — which is one
+SKU's measurement and labelled as such.
+
+`logJoystickButton` closes the instrument gap that let this ship: the log
+recorded which SDL button a press produced but never which index it came from,
+so a mapping that is uniformly offset reads exactly like one that is wrongly
+bound. One press now distinguishes them.
+
+Both rounds of this bug were settled by asking the tester for
+`/proc/bus/input/devices` rather than by reasoning about SDL. The reasoning was
+wrong twice; the dump was decisive in an afternoon. Ask for it first.
 
 ### Layout: two predicates, replacing the width test
 

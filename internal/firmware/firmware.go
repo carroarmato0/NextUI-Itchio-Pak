@@ -411,13 +411,17 @@ const (
 // differently. muOS's modern controller database then swaps its face buttons
 // back relative to its own default, so it lands where NextUI is.
 //
-// H700 is the exception: it is derived from upstream source, not measured —
-// see the inline comment below.
+// H700 is measured too, though it reached that state the long way round — see
+// the inline comment below.
 func (e *Env) FaceMapping() FaceMapping {
 	if e.kind != KindMuOS {
-		// Derived from upstream source, not measured — nobody here owns the
-		// hardware. logControllerButton records every press, so the first
-		// tester log settles it.
+		// Originally derived from NextUI's upstream JOY_* indices, since nobody
+		// here owns the hardware. Since confirmed on a device: a tester's evdev
+		// capture reads the shell's A as code 304 and its B as 305, but its Y
+		// as 306 and its X as 307 — A and B direct, X and Y transposed, exactly
+		// as derived. This is about the codes the shell's keys emit, so it
+		// survived rc4's indices being wrong; h700PadButtons encodes the same
+		// measurement from the other side and the two must stay in step.
 		if e.device == "h700" {
 			return FaceABDirect
 		}
