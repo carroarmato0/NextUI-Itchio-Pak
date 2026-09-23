@@ -24,7 +24,7 @@ func serveFile(t *testing.T, path string) *httptest.Server {
 }
 
 func TestFetchGameDetailExtractsGameID(t *testing.T) {
-	srv := serveFile(t, "../../testdata/game_page_free.html")
+	srv := serveFile(t, "../../testdata/game_page_nyop.html")
 	defer srv.Close()
 
 	c := itchio.NewClient()
@@ -38,7 +38,7 @@ func TestFetchGameDetailExtractsGameID(t *testing.T) {
 }
 
 func TestFetchGameDetailExtractsPageTags(t *testing.T) {
-	srv := serveFile(t, "../../testdata/game_page_free.html")
+	srv := serveFile(t, "../../testdata/game_page_nyop.html")
 	defer srv.Close()
 
 	c := itchio.NewClient()
@@ -49,7 +49,7 @@ func TestFetchGameDetailExtractsPageTags(t *testing.T) {
 	if len(detail.PageTags) == 0 {
 		t.Fatal("PageTags is empty — tag links not found in page")
 	}
-	// The free fixture (Opossum Country) has "horror" slug among its tags
+	// The name-your-own-price fixture (Opossum Country) has "horror" slug among its tags
 	found := false
 	for _, tag := range detail.PageTags {
 		if tag == "horror" {
