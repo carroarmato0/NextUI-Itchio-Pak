@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -337,4 +338,74 @@ func (c *Client) FetchFileHeader(cdnURL string, n int) ([]byte, error) {
 	}
 	logger.Debug("header fetch: read %d bytes from %s", len(data), cdnURL)
 	return data, nil
+}
+
+var (
+	priceInputRegex  = regexp.MustCompile(`<input[^>]+name="price"[^>]*>`)
+	priceValueRegex  = regexp.MustCompile(`value="([^"]*)"`)
+	priceSanityRegex = regexp.MustCompile(`^\p{Sc}?[\d.,]+$`)
+)
+
+// FetchSuggestedPrice returns the developer's suggested amount for a
+// name-your-own-price game, as itch.io displays it (e.g. "$2.00"). It returns
+// an empty string, and no error, when the game has no purchase page or the
+// developer suggested nothing: both are ordinary states, not failures.
+func (c *Client) FetchSuggestedPrice(gameURL string) (string, error) {
+	purchaseURL := gameURL + "/purchase"
+	resp, err := c.http.Get(purchaseURL)
+	if err != nil {
+		logger.Error("uploads: fetch purchase page: %v", err)
+		return "", fmt.Errorf("fetch purchase page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		logger.Info("uploads: no purchase page for %s (genuinely free)", gameURL)
+		return "", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		logger.Error("uploads: purchase page HTTP %d for %s", resp.StatusCode, gameURL)
+		return "", fmt.Errorf("fetch purchase page: HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Error("uploads: read purchase page: %v", err)
+		return "", fmt.Errorf("read purchase page: %w", err)
+	}
+
+	tag := priceInputRegex.FindString(string(body))
+	if tag == "" {
+		logger.Warn("uploads: no price input found on purchase page for %s", gameURL)
+		return "", nil
+	}
+	m := priceValueRegex.FindStringSubmatch(tag)
+	if len(m) < 2 {
+		logger.Warn("uploads: price input has no value attribute for %s", gameURL)
+		return "", nil
+	}
+	value := strings.TrimSpace(m[1])
+	if value == "" || !priceSanityRegex.MatchString(value) {
+		logger.Warn("uploads: price value %q failed sanity check for %s", value, gameURL)
+		return "", nil
+	}
+	if isZeroAmount(value) {
+		logger.Info("uploads: suggested price is zero for %s (donations enabled, no suggestion)", gameURL)
+		return "", nil
+	}
+	logger.Info("uploads: suggested price %s for %s", value, gameURL)
+	return value, nil
+}
+
+// isZeroAmount reports whether value's digits are all zero (e.g. "$0.00"),
+// without parsing it as a number — the value is only ever displayed, never
+// computed with.
+func isZeroAmount(value string) bool {
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, value)
+	return digits == "" || strings.Trim(digits, "0") == ""
 }
