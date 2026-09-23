@@ -15,6 +15,17 @@ import (
 	"golang.org/x/net/html"
 )
 
+// PricingModel is how a developer has chosen to charge for a game. It is
+// derived from the game page, not the feed: the feed reports $0.00 for both
+// free and name-your-own-price games.
+type PricingModel int
+
+const (
+	PricingFree             PricingModel = iota // downloadable, no purchase section
+	PricingNameYourOwnPrice                     // purchase section with no minimum price
+	PricingPaid                                 // purchase section with a minimum price
+)
+
 type GameDetail struct {
 	Game
 	Description    string
@@ -25,6 +36,8 @@ type GameDetail struct {
 	PageTags       []string // itch.io tag labels scraped from the game page
 	BundleNames    []string // names of bundles that include this game (from public page)
 	BrowserOnly    bool     // true when page has HTML5 embed but no downloadable or paid files
+	Pricing        PricingModel // how the developer charges; see PricingModel
+	SuggestedPrice string       // developer's suggested amount as itch.io displays it (e.g. "$2.00"); empty when unknown or not applicable
 }
 
 type Upload struct {
@@ -46,6 +59,9 @@ var (
 	pageTagRegex = regexp.MustCompile(`href="https://itch\.io/games/tag-([^"]+)"`)
 	// bundle_title div: <div class="bundle_title"><a href="...">Bundle Name</a></div>
 	bundleNameRegex = regexp.MustCompile(`(?s)<div\s+class="bundle_title"[^>]*>\s*<a[^>]*>\s*([^<]+?)\s*</a>`)
+	// dollars span appears only when a buy row has a minimum price:
+	// <span class="dollars" itemprop="price">$3.00 USD</span>
+	dollarsRegex = regexp.MustCompile(`class="[^"]*\bdollars\b[^"]*"`)
 )
 
 func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
@@ -127,7 +143,45 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 	logger.Debug("game: browserOnly=%v (embed=%v downloadBtn=%v buySection=%v)",
 		detail.BrowserOnly, hasHTML5Embed, hasDownloadBtn, hasBuySection)
 
+	// Classify how the developer charges. The check is structural rather than
+	// textual: itch.io renders a `dollars` span only when a minimum price
+	// exists, so its absence inside the buy row means name-your-own-price.
+	// Matching the English string "Name your own price" would break on a
+	// localised page.
+	buyRow := extractBuyRow(s)
+	hasMinPrice := buyRow != "" && dollarsRegex.MatchString(buyRow)
+	switch {
+	case hasBuySection && !hasMinPrice:
+		detail.Pricing = PricingNameYourOwnPrice
+	case hasBuySection:
+		detail.Pricing = PricingPaid
+	default:
+		detail.Pricing = PricingFree
+	}
+	logger.Info("game: pricing=%d (buyRow=%v minPrice=%v) for %s",
+		detail.Pricing, hasBuySection, hasMinPrice, gameURL)
+
 	return detail, nil
+}
+
+// extractBuyRow returns the buy_row section of the page — from its "buy_row"
+// class marker up to the uploads list that always follows it on itch.io game
+// pages — so pricing detection stays scoped to the purchase widget and never
+// reads a bundle banner's or related game's price elsewhere on the page.
+func extractBuyRow(s string) string {
+	start := strings.Index(s, "buy_row")
+	if start == -1 {
+		return ""
+	}
+	rest := s[start:]
+	if end := strings.Index(rest, `<div class="uploads">`); end != -1 {
+		return rest[:end]
+	}
+	const maxBuyRowScan = 1000
+	if len(rest) > maxBuyRowScan {
+		return rest[:maxBuyRowScan]
+	}
+	return rest
 }
 
 // extractScreenshotURLs walks the parsed HTML and returns the src of every

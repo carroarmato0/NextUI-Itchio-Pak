@@ -243,6 +243,14 @@ var devScenes = []Scene{
 		}
 		return s
 	}},
+	{"detail-donation", "Detail for a name-your-own-price game, showing the donation band", func(d SceneDeps) Screen {
+		s := devDetail(d)
+		detailCopy := *d.Detail
+		detailCopy.Pricing = itchio.PricingNameYourOwnPrice
+		detailCopy.SuggestedPrice = "$2.00"
+		s.detail = &detailCopy
+		return s
+	}},
 	{"settings", "Settings menu", func(d SceneDeps) Screen {
 		return NewSettingsScreen(d.Client, d.Cfg, d.CfgPath, d.Inv, d.InvPath, d.Cache,
 			devList(d), nil, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {}, nil)
