@@ -201,6 +201,21 @@ func NewDetailScreen(
 		}
 		s.loading = false // publish last — renderer sees consistent state
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+
+		// Progressive enhancement: the classification above is already enough
+		// to draw the donation band with generic wording, so this second
+		// request runs after that first redraw rather than blocking it. A
+		// slow or failed purchase-page fetch costs only the amount, never
+		// the ask, and is skipped entirely for free and paid games.
+		if d != nil && err == nil && d.Pricing == itchio.PricingNameYourOwnPrice {
+			price, perr := client.FetchSuggestedPrice(game.URL)
+			if perr != nil {
+				logger.Warn("detail: FetchSuggestedPrice: %v", perr)
+			} else {
+				d.SuggestedPrice = price
+			}
+			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+		}
 	}()
 	return s
 }
