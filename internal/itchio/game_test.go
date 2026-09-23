@@ -24,7 +24,7 @@ func serveFile(t *testing.T, path string) *httptest.Server {
 }
 
 func TestFetchGameDetailExtractsGameID(t *testing.T) {
-	srv := serveFile(t, "../../testdata/game_page_free.html")
+	srv := serveFile(t, "../../testdata/game_page_nyop.html")
 	defer srv.Close()
 
 	c := itchio.NewClient()
@@ -38,7 +38,7 @@ func TestFetchGameDetailExtractsGameID(t *testing.T) {
 }
 
 func TestFetchGameDetailExtractsPageTags(t *testing.T) {
-	srv := serveFile(t, "../../testdata/game_page_free.html")
+	srv := serveFile(t, "../../testdata/game_page_nyop.html")
 	defer srv.Close()
 
 	c := itchio.NewClient()
@@ -49,7 +49,7 @@ func TestFetchGameDetailExtractsPageTags(t *testing.T) {
 	if len(detail.PageTags) == 0 {
 		t.Fatal("PageTags is empty — tag links not found in page")
 	}
-	// The free fixture (Opossum Country) has "horror" slug among its tags
+	// The name-your-own-price fixture (Opossum Country) has "horror" slug among its tags
 	found := false
 	for _, tag := range detail.PageTags {
 		if tag == "horror" {
@@ -392,6 +392,79 @@ func TestBrowserOnlyDetection_PaidGame(t *testing.T) {
 	}
 	if detail.BrowserOnly {
 		t.Error("BrowserOnly should be false when buy_row is present (paid game with HTML5 demo)")
+	}
+}
+
+func TestPricingClassification_Free(t *testing.T) {
+	srv := serveFile(t, "../../testdata/game_page_free.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.Pricing != itchio.PricingFree {
+		t.Errorf("Pricing = %v, want PricingFree", detail.Pricing)
+	}
+}
+
+func TestPricingClassification_NameYourOwnPrice(t *testing.T) {
+	srv := serveFile(t, "../../testdata/game_page_nyop.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.Pricing != itchio.PricingNameYourOwnPrice {
+		t.Errorf("Pricing = %v, want PricingNameYourOwnPrice", detail.Pricing)
+	}
+}
+
+func TestPricingClassification_Paid(t *testing.T) {
+	srv := serveFile(t, "../../testdata/game_page_paid.html")
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.Pricing != itchio.PricingPaid {
+		t.Errorf("Pricing = %v, want PricingPaid", detail.Pricing)
+	}
+}
+
+func TestPricingClassification_BundlePriceDoesNotLeak(t *testing.T) {
+	// A name-your-own-price buy row, followed by a bundle promo further down
+	// the page that carries its own "dollars" span. A page-wide search for
+	// "dollars" would misclassify this as paid; the bundle's price must not
+	// leak into this game's classification.
+	const pageHTML = `<html><body>
+<div class="buy_row">
+  <a class="button buy_btn" href="/game/purchase">Download Now</a>
+  <span class="buy_message"><span class="sub">Name your own price</span></span>
+</div>
+<div class="uploads"><p>Click download now to get access to the following files:</p></div>
+<div class="related_games">
+  <div class="bundle_title"><a href="/b/999">Support Ukraine Bundle</a></div>
+  <span class="dollars" itemprop="price">$5.00 USD</span>
+</div>
+</body></html>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(pageHTML))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	detail, err := c.FetchGameDetail(srv.URL)
+	if err != nil {
+		t.Fatalf("FetchGameDetail: %v", err)
+	}
+	if detail.Pricing != itchio.PricingNameYourOwnPrice {
+		t.Errorf("Pricing = %v, want PricingNameYourOwnPrice (bundle price leaked into classification)", detail.Pricing)
 	}
 }
 

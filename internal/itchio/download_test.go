@@ -470,3 +470,79 @@ func TestResolveAuthURL(t *testing.T) {
 		t.Errorf("cdnURL = %q, want %q", cdnURL, "https://cdn.example.com/auth-file.zip")
 	}
 }
+
+func TestFetchSuggestedPrice_ReturnsAmount(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/game/purchase", func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("../../testdata/purchase_page.html")
+		if err != nil {
+			t.Fatalf("read fixture: %v", err)
+		}
+		w.Write(data)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	price, err := c.FetchSuggestedPrice(srv.URL + "/game")
+	if err != nil {
+		t.Fatalf("FetchSuggestedPrice: %v", err)
+	}
+	if price != "$3.00" {
+		t.Errorf("price = %q, want %q", price, "$3.00")
+	}
+}
+
+func TestFetchSuggestedPrice_NoPurchasePage(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/game/purchase", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	price, err := c.FetchSuggestedPrice(srv.URL + "/game")
+	if err != nil {
+		t.Fatalf("FetchSuggestedPrice: %v", err)
+	}
+	if price != "" {
+		t.Errorf("price = %q, want empty string for a 404 purchase page", price)
+	}
+}
+
+func TestFetchSuggestedPrice_NoSuggestion(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/game/purchase", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body><input value="$0.00" name="price" class="money_input"/></body></html>`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	price, err := c.FetchSuggestedPrice(srv.URL + "/game")
+	if err != nil {
+		t.Fatalf("FetchSuggestedPrice: %v", err)
+	}
+	if price != "" {
+		t.Errorf("price = %q, want empty string when the developer suggested $0.00", price)
+	}
+}
+
+func TestFetchSuggestedPrice_MalformedInput(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/game/purchase", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body>No price input on this page.</body></html>`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClient()
+	price, err := c.FetchSuggestedPrice(srv.URL + "/game")
+	if err != nil {
+		t.Fatalf("FetchSuggestedPrice: %v", err)
+	}
+	if price != "" {
+		t.Errorf("price = %q, want empty string when no price input is present", price)
+	}
+}
