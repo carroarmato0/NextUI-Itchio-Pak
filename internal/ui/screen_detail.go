@@ -454,6 +454,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		y += qrBoxH + 10
 	}
 
+	if s.detail != nil && s.detail.Pricing == itchio.PricingNameYourOwnPrice {
+		y = s.drawDonationBand(r, margin, y, usableW)
+	}
+
 	// ── Action area (full width) ────────────────────────────
 	isPresent := s.inv.IsPresent(s.game.URL)
 
@@ -841,6 +845,36 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	mu := r.Theme.Muted()
 	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])
 	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, mu[0], mu[1], mu[2])
+}
+
+// drawDonationBand renders the developer's request for support as a
+// full-width section between the screenshot row and the action row. It is
+// drawn only for name-your-own-price games and never blocks or alters the
+// download path.
+func (s *DetailScreen) drawDonationBand(r *renderer.Renderer, x, y, w int32) int32 {
+	_, fontH := r.TextSize("Ag")
+	text := "Consider donating to the developer"
+	if s.detail.SuggestedPrice != "" {
+		amountText := "Consider donating — " + s.detail.SuggestedPrice + " suggested"
+		tw, _ := r.TextSize(amountText)
+		if tw <= w {
+			text = amountText
+		}
+		// Falls back to the no-amount wording above if the amount text would
+		// overflow — not observed at any shipping geometry during design, but
+		// an unusually wide currency format is not something to overflow on.
+	}
+
+	sep := r.Theme.Separator()
+	tone := r.Theme.ToneOn(r.Theme.Price(), r.Theme.Background)
+
+	y += 8
+	r.DrawRect(x, y, w, 1, sep[0], sep[1], sep[2])
+	y += 10
+	r.DrawTextCentered(text, x, y, w, tone[0], tone[1], tone[2])
+	y += fontH + 10
+	r.DrawRect(x, y, w, 1, sep[0], sep[1], sep[2])
+	return y + 10
 }
 
 // goBack destroys any cached SDL resources and returns the previous screen.
