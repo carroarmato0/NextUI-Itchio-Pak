@@ -1,8 +1,10 @@
 package itchio_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 )
 
@@ -710,5 +713,33 @@ func TestFetchSuggestedPrice_MalformedInput(t *testing.T) {
 	}
 	if price != "" {
 		t.Errorf("price = %q, want empty string when no price input is present", price)
+	}
+}
+
+// Signed CDN URLs carry credentials in the query string; they must never
+// reach the log, including through the text of a failed request's error.
+func TestFetchFileHeader_doesNotLogSignedURL(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	logger.SetLevel(logger.LevelDebug)
+	t.Cleanup(func() { logger.SetLevel(logger.LevelInfo) })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write([]byte("PK\x03\x04"))
+	}))
+	defer srv.Close()
+	c := itchio.NewClientWithBase(srv.URL)
+	if _, err := c.FetchFileHeader(srv.URL+"/upload2/game/1/2?X-Amz-Credential=SECRET&X-Amz-Signature=SIG", 4); err != nil {
+		t.Fatal(err)
+	}
+	// A failed request: its error text must not quote the URL either.
+	_, err := c.FetchFileHeader("http://127.0.0.1:1/f?X-Amz-Credential=SECRET", 4)
+	if err == nil || strings.Contains(err.Error(), "SECRET") {
+		t.Errorf("error leaks the signed URL: %v", err)
+	}
+	if strings.Contains(buf.String(), "SECRET") || strings.Contains(buf.String(), "SIG") {
+		t.Errorf("signed URL logged:\n%s", buf.String())
 	}
 }

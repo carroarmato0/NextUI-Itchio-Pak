@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -100,7 +101,7 @@ func (t *rateLimitTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
 		resp.Body.Close()
-		logger.Info("ratelimit: retrying %s %s (%d/%d)", req.Method, req.URL.Path, attempt+1, rateLimitMaxRetries)
+		logger.Info("ratelimit: retrying %s %s (%d/%d)", req.Method, loggablePath(req.URL.Path), attempt+1, rateLimitMaxRetries)
 	}
 }
 
@@ -195,4 +196,17 @@ func parseRetryAfter(v string, now time.Time) (time.Duration, string) {
 		d = rateLimitMaxRetryAfter
 	}
 	return d, "Retry-After " + v
+}
+
+// loggablePath shortens path segments long enough to be tokens — the web
+// download flow's /download/{signed key} and similar — so a retry log line
+// never records a download credential.
+func loggablePath(p string) string {
+	segs := strings.Split(p, "/")
+	for i, seg := range segs {
+		if len(seg) > 32 {
+			segs[i] = seg[:6] + "…"
+		}
+	}
+	return strings.Join(segs, "/")
 }
