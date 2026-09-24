@@ -45,6 +45,9 @@ func runSDL() {
 	}
 	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
 
+	// Before the first request: every client shares this User-Agent.
+	itchio.ConfigureUserAgent(itchio.UAInfoFromEnv(version, env), cfg.ShareDeviceInfo)
+
 	inventoryPath := filepath.Join(dataDir, "inventory.json")
 	inv, _ := inventory.Load(inventoryPath)
 	inv.VerifyAndClean(inventoryPath)
