@@ -1,11 +1,14 @@
 package itchio
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -267,5 +270,25 @@ func TestParseRetryAfter(t *testing.T) {
 		if (src != "") != tc.ok || (tc.ok && d != tc.want) {
 			t.Errorf("parseRetryAfter(%q) = %v, %q; want %v, ok=%v", tc.in, d, src, tc.want, tc.ok)
 		}
+	}
+}
+
+// Every 429 must appear in the log, including ones that join a pause already
+// running — otherwise the log shows more retries than 429s.
+func TestRateLimit_logsEvery429(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	clock := newFakeClock()
+	rt := newTestRateLimit(clock)
+	rt.record429("itch.io", "30")
+	rt.record429("itch.io", "5") // inside the 30s pause
+
+	if n := strings.Count(buf.String(), "ratelimit: HTTP 429 from itch.io"); n != 2 {
+		t.Errorf("logged %d 429 line(s), want 2:\n%s", n, buf.String())
+	}
+	if !strings.Contains(buf.String(), "already paused for another 30s") {
+		t.Errorf("second 429 should report the running pause:\n%s", buf.String())
 	}
 }
