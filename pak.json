@@ -1,6 +1,6 @@
 {
   "name": "Itch-io",
-  "version": "v1.0.25-rc1",
+  "version": "v1.0.25-rc2",
   "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
@@ -47,6 +47,7 @@
     }
   ],
   "changelog": {
+    "v1.0.25-rc2": "\n• Paid downloads now ask itch.io for just the game you picked, instead of fetching your whole library first.\n• Built with a current, supported Go release (1.27), which brings its security fixes to the app's secure connections. The app is about 2 MB bigger as a result.\n• Everything from rc1: Itch-io identifies itself to itch.io, backs off when itch.io is busy, no longer fails \"Refresh Game List\" when a feed runs out, and downloads through itch.io's newer API.\n• Test build: please try a free and a paid download, and report anything that does not work as before.",
     "v1.0.25-rc1": "\n• Itch-io now tells itch.io who it is. It used to pose as a Chrome browser; it now sends its own name, version, firmware and device, at itch.io's request, so they can see and support its traffic. Settings → \"Share device info with itch.io\" turns the firmware and device details off.\n• Slows down properly when itch.io says it is busy (HTTP 429): every request pauses briefly, instead of each one retrying on its own.\n• Fixes \"Refresh Game List\" failing after a few thousand games when a feed ran out.\n• Paid downloads use itch.io's newer API, which keeps your API key out of web addresses. With an API key set, free games download through it too.\n• Test build: please try a free and a paid download, and report anything that does not work as before.",
     "v1.0.24": "\n• Game pages for name-your-own-price games now show the amount the developer suggests, so you can decide whether to chip in before you download.\n• Nothing about downloading changes — pay-what-you-want games still download for free.",
     "v1.0.23": "\n• Adds muOS support — Itch-io now runs on MustardOS as well as NextUI.\n• Adds support for Anbernic RG XX handhelds (H700) running NextUI.\n• On muOS: downloads land in your existing ROM folders, and box art goes to the muOS catalogue.\n• If you have an RG XX, please report whether the buttons do the right things.",
