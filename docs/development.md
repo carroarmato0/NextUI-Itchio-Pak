@@ -122,6 +122,13 @@ For a detailed explanation of how the itch.io web API is used, see
   which wraps on light palettes.
 - **All logging goes through `internal/logger`**, never `fmt.Println` or
   `log.Printf`.
+- **HTTP 429 pauses the whole client, per host.** `internal/itchio/ratelimit.go`
+  sits under every request: a 429 sets a cooldown for that host (the
+  `Retry-After` value, else 2s doubling to 60s with jitter) that all requests
+  to it wait out — feeds, pages, the update checker and API calls alike.
+  GET/HEAD are retried there twice; POSTs are not. Do not add per-caller retry
+  loops on top of it: the parallel feed fetchers used to each retry on their
+  own schedule, which barely lowered the request rate at all.
 
 ---
 
