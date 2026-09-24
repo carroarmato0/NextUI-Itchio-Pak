@@ -50,9 +50,10 @@ is never put in a URL (the old `itch.io/api/1/{key}/...` endpoints were dropped
 at itch.io's request, issue #4).
 
 ```
-1. GET https://api.itch.io/profile/owned-keys?game_id={id}&page=N
-   → game_id is sent, but as of 2026-09-24 itch.io still returns the whole
-     library, so filter client-side. Last page is {"owned_keys":{}} (object).
+1. GET https://api.itch.io/profile/owned-keys?game_ids={id,id,...}&page=N
+   → game_ids: comma-separated, max 50 per request (scanOwnedKeys enforces
+     it). NOT game_id — the singular is ignored and returns the whole library.
+     Still filtered client-side. Last page is {"owned_keys":{}} (object).
    → BundleSize = distinct games per purchase_id over the WHOLE library; a
      filtered answer uses the counts cached by the startup ValidateAPIKey scan.
 

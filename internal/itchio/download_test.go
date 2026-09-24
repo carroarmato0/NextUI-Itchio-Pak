@@ -609,10 +609,14 @@ func TestFetchOwnedKeys_serverFilteredUsesFullScanForBundleSize(t *testing.T) {
 	var fullScans int32
 	mux := http.NewServeMux()
 	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
-		if gid := r.URL.Query().Get("game_id"); gid != "" {
+		if ids := r.URL.Query().Get("game_ids"); ids != "" {
+			want := map[string]bool{}
+			for _, id := range strings.Split(ids, ",") {
+				want[id] = true
+			}
 			var out []map[string]interface{}
 			for _, k := range library {
-				if fmt.Sprint(k["game_id"]) == gid {
+				if want[fmt.Sprint(k["game_id"])] {
 					out = append(out, k)
 				}
 			}
@@ -637,6 +641,28 @@ func TestFetchOwnedKeys_serverFilteredUsesFullScanForBundleSize(t *testing.T) {
 	}
 	if fullScans != 1 {
 		t.Errorf("full library scans = %d, want 1 (second call uses the cached counts)", fullScans)
+	}
+}
+
+// itch.io's parameter is game_ids (comma-separated), not game_id.
+func TestFetchOwnedKeys_sendsGameIDs(t *testing.T) {
+	var got url.Values // the first request; a full scan for bundle sizes may follow
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got == nil {
+			got = r.URL.Query()
+		}
+		w.Write(ownedKeysPage(50, []map[string]interface{}{
+			{"id": 1, "game_id": 42, "purchase_id": 7, "created_at": "2026-01-01T00:00:00Z"},
+		}))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	if _, err := c.FetchOwnedKeys("k", "42"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Get("game_ids") != "42" || got.Has("game_id") {
+		t.Errorf("query = %v, want game_ids=42 and no game_id", got)
 	}
 }
 
