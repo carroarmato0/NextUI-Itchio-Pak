@@ -165,7 +165,11 @@ func (t *rateLimitTransport) record429(host, retryAfter string) {
 	if until.After(hc.notBefore) {
 		hc.notBefore = until
 		logger.Warn("ratelimit: HTTP 429 from %s — pausing all requests to it for %s (%s)", host, delay.Round(time.Millisecond), source)
+		return
 	}
+	// Every 429 is logged, so the count in the log matches the retries: this
+	// one arrived while a longer pause was already running, which it joins.
+	logger.Warn("ratelimit: HTTP 429 from %s — already paused for another %s (%s)", host, hc.notBefore.Sub(now).Round(time.Millisecond), source)
 }
 
 // parseRetryAfter reads a Retry-After header in either of its forms (delay in
