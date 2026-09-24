@@ -7,7 +7,7 @@
 # build targets can share one toolchain.  See scripts/targets.sh for the mapping.
 # Supported values: tg5040, tg5050, my355.
 ARG TOOLCHAIN=tg5040
-FROM golang:1.22-alpine AS golang
+FROM golang:1.27-alpine AS golang
 FROM ghcr.io/loveretro/${TOOLCHAIN}-toolchain:latest
 COPY --from=golang /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:$PATH
