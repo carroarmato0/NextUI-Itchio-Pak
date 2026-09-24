@@ -1,6 +1,9 @@
-# Bullseye (glibc 2.31) keeps GLIBC_2.34 pthread symbols out of the binary,
-# ensuring compatibility with TrimUI/Miyoo devices that ship glibc 2.33.
-FROM golang:1.22-bullseye
+# Host image for tests and `build.sh native` only. Device binaries are built in
+# Dockerfile.toolchain against the LoveRetro sysroots, whose glibc sets their
+# symbol ceiling (enforced by build.sh) — so this image's Debian release does
+# not affect what ships. It used to be bullseye for that reason, from before
+# the toolchain images existed; bullseye's archive has since been retired.
+FROM golang:1.27-bookworm
 ENV GOTOOLCHAIN=local
 RUN dpkg --add-architecture arm64 && \
     apt-get update && apt-get install -y \

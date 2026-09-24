@@ -8,7 +8,7 @@ Itch-io is written in Go and rendered with SDL2, cross-compiled for ARM64.
 
 ## Requirements
 
-- Go 1.22+
+- Go 1.22+ (the build images use Go 1.27)
 - Docker or Podman (for cross-compilation)
 - `libsdl2-dev`, `libsdl2-ttf-dev`, `libsdl2-image-dev` (for native headless builds)
 
