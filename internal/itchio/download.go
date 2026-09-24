@@ -3,6 +3,7 @@ package itchio
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -260,7 +261,7 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 	}
 	resp, err := dlClient.Get(srcURL)
 	if err != nil {
-		return fmt.Errorf("fetch file: %w", err)
+		return fmt.Errorf("fetch file: %w", withoutURL(err))
 	}
 	defer resp.Body.Close()
 
@@ -325,7 +326,7 @@ func (c *Client) FetchFileHeader(cdnURL string, n int) ([]byte, error) {
 	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", n-1))
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("header fetch: %w", err)
+		return nil, fmt.Errorf("header fetch: %w", withoutURL(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
@@ -336,7 +337,8 @@ func (c *Client) FetchFileHeader(cdnURL string, n int) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("header fetch: read: %w", err)
 	}
-	logger.Debug("header fetch: read %d bytes from %s", len(data), cdnURL)
+	// The CDN URL is signed — log the host only.
+	logger.Debug("header fetch: read %d bytes from %s", len(data), req.URL.Host)
 	return data, nil
 }
 
@@ -408,4 +410,15 @@ func isZeroAmount(value string) bool {
 		return -1
 	}, value)
 	return digits == "" || strings.Trim(digits, "0") == ""
+}
+
+// withoutURL strips the request URL from a net/http error. Signed CDN URLs
+// carry credentials in their query string, and the error text of a failed
+// request quotes the whole URL — which would put them in the log.
+func withoutURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("%s: %w", ue.Op, ue.Err)
+	}
+	return err
 }

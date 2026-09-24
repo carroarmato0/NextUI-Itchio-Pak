@@ -97,13 +97,13 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 			atomic.StoreInt64(&s.dlTotal, total)
 		}
 
-		isAuth := dl.Upload.DownloadKeyID != ""
+		isAuth := dl.Upload.ViaAPI()
 		logger.Info("multi-download: [%d/%d] starting %s → %s auth=%v",
 			i+1, len(s.downloads), dl.Upload.Filename, dl.DestPath, isAuth)
 
 		var err error
 		if isAuth {
-			err = s.client.DownloadAuthUpload(s.cfg.APIKey, dl.Upload.UploadID, dl.Upload.DownloadKeyID, dl.DestPath, progress)
+			err = s.client.DownloadAuthUpload(s.cfg.APIKey, dl.Upload.UploadID, dl.Upload.Session, dl.DestPath, progress)
 		} else {
 			itchUpload := itchio.Upload{Filename: dl.Upload.Filename, URL: dl.Upload.URL}
 			err = s.client.DownloadFree(itchUpload, dl.DestPath, progress)

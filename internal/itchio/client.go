@@ -158,6 +158,12 @@ type Client struct {
 	// Background API key validation state (atomic, written once per session).
 	apiKeyStatus   int32 // stores APIKeyStatus constants
 	apiKeyChecking int32 // 0 = not started, 1 = started (CAS gate)
+
+	// purchaseCounts maps purchase_id to the number of distinct games it
+	// covers, from the last full owned-keys scan. Lets a game_id-filtered
+	// owned-keys answer still tell bundles from individual purchases.
+	ownedMu        sync.Mutex
+	purchaseCounts map[int64]int
 }
 
 func NewClient() *Client {

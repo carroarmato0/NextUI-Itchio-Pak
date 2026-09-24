@@ -292,3 +292,13 @@ func TestRateLimit_logsEvery429(t *testing.T) {
 		t.Errorf("second 429 should report the running pause:\n%s", buf.String())
 	}
 }
+
+func TestLoggablePath(t *testing.T) {
+	got := loggablePath("/virtual-aquarium/download/eyJpZCI6Mjg5NTY1MCwiZXhwaXJlcyI6MTc5MDI1NzYyNn0=.Y3cLM")
+	if strings.Contains(got, "MTc5MDI1") || !strings.HasPrefix(got, "/virtual-aquarium/download/eyJpZC") {
+		t.Errorf("loggablePath = %q", got)
+	}
+	if p := "/games/tag-gameboy-rom.xml"; loggablePath(p) != p {
+		t.Errorf("ordinary path changed: %q", loggablePath(p))
+	}
+}

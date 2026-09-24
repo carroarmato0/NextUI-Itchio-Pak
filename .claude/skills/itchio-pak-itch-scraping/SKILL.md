@@ -43,21 +43,37 @@ GET https://itch.io/games/made-with-gb-studio.xml?page=N
 
 HTTP client needs: cookie jar (session persists across requests), redirect following.
 
-## Authenticated Download Flow (API key)
+## Authenticated Download Flow (API v2, key in the header)
+
+Every call goes to `api.itch.io` with `Authorization: Bearer {api_key}`. The key
+is never put in a URL (the old `itch.io/api/1/{key}/...` endpoints were dropped
+at itch.io's request, issue #4).
 
 ```
-1. GET https://api.itch.io/profile/owned-keys?page=N
-   Header: Authorization: Bearer {api_key}
-   → paginates all owned keys (50/page), filters client-side for game_id
-   → last page returns {"owned_keys":{}} (object, NOT array) — detect with RawMessage check
+1. GET https://api.itch.io/profile/owned-keys?game_id={id}&page=N
+   → game_id is sent, but as of 2026-09-24 itch.io still returns the whole
+     library, so filter client-side. Last page is {"owned_keys":{}} (object).
+   → BundleSize = distinct games per purchase_id over the WHOLE library; a
+     filtered answer uses the counts cached by the startup ValidateAPIKey scan.
 
-2. GET https://itch.io/api/1/{key}/game/{game_id}/uploads?download_key_id={key_id}
-   → list .gb/.gbc uploads for the game
+2. GET https://api.itch.io/games/{game_id}/uploads[?download_key_id={key_id}]
+   → {"uploads":[{id, filename, size, md5_hash, build_id?, updated_at, type, traits}]}
+   → download_key_id is optional: free and name-your-own-price games list
+     without it, so signed-in users skip the web flow. A paid game without
+     it lists only its demo uploads.
+   → "traits" is {} when empty and an array otherwise — do not decode it.
 
-3. GET https://itch.io/api/1/{key}/upload/{upload_id}/download?download_key_id={key_id}
-   → JSON {"url": "..."} with signed CDN URL (expires ~60s, resolve immediately before streaming)
+3. POST https://api.itch.io/games/{game_id}/download-sessions  [download_key_id]
+   → {"uuid": "..."} — ONE per install (roms.DownloadSession, shared by every
+     upload of one listing), created lazily on the first resolve. Failure is
+     non-fatal: the download proceeds ungrouped.
 
-4. GET {cdn_url}  →  stream to file
+4. GET https://api.itch.io/uploads/{upload_id}/download?download_key_id=&uuid=
+   → 302 to a signed R2 URL. Do NOT follow it (CheckRedirect →
+     ErrUseLastResponse): the caller needs the URL for ZIP range reads and the
+     magic-byte probe, and the Authorization header must not reach the CDN.
+
+5. GET {cdn_url}  →  stream to file (resolve right before streaming; it expires)
 ```
 
 game_id comes from `data-game_id` on the game page (same as free flow step 1).

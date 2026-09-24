@@ -3,6 +3,7 @@ package roms
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 )
@@ -18,11 +19,53 @@ func ROMExt(filename string) string {
 }
 
 type Upload struct {
-	Filename      string
-	URL           string
-	UploadID      string // itch.io upload ID (API-based paid download)
-	DownloadKeyID string // itch.io download key ID (API-based paid download)
-	NeedsFormat   bool   // true if user must choose the format (GB, GBC, or ZIP)
+	Filename    string
+	URL         string
+	UploadID    string // itch.io upload ID (API-based download)
+	NeedsFormat bool   // true if user must choose the format (GB, GBC, or ZIP)
+	// Session is set when the upload is fetched through the itch.io API
+	// rather than the web download flow. Every upload from one listing
+	// shares it, so all requests of one install count as one download.
+	Session *DownloadSession
+}
+
+// ViaAPI reports whether the upload is downloaded through the itch.io API.
+func (u Upload) ViaAPI() bool { return u.Session != nil }
+
+// DownloadSession groups the requests of one install — range reads for ZIP
+// inspection, the magic-byte probe, the download itself — so itch.io counts
+// them as a single download. The itchio package creates the server-side
+// session lazily, on the first request that needs it.
+type DownloadSession struct {
+	GameID string
+	KeyID  string // download key ID; empty for free games
+
+	mu      sync.Mutex
+	uuid    string
+	created bool // a create attempt was made, successful or not
+}
+
+// NewDownloadSession returns a session for one install of gameID.
+func NewDownloadSession(gameID, keyID string) *DownloadSession {
+	return &DownloadSession{GameID: gameID, KeyID: keyID}
+}
+
+// UUID returns the session ID, calling create on first use. A failed create
+// is not retried: the download still works without a session, it just is
+// not grouped.
+func (s *DownloadSession) UUID(create func() (string, error)) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.created {
+		return s.uuid, nil
+	}
+	s.created = true
+	id, err := create()
+	if err != nil {
+		return "", err
+	}
+	s.uuid = id
+	return id, nil
 }
 
 func ScoreUpload(filename string) int {
