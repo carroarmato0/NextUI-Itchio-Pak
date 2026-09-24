@@ -569,3 +569,36 @@ func TestPlatformFilterBackwardsCompatible(t *testing.T) {
 		t.Errorf("old config PlatformFilter = %q, want empty string", loaded.PlatformFilter)
 	}
 }
+
+func TestShareDeviceInfo_OldConfigDefaultsTrue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	// Configs written before the setting existed must keep sharing on.
+	if err := os.WriteFile(path, []byte(`{"api_key": ""}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ShareDeviceInfo {
+		t.Error("ShareDeviceInfo should default to true when absent from config")
+	}
+}
+
+func TestShareDeviceInfo_OptOutSurvivesRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg, _ := settings.Load(filepath.Join(dir, "missing.json"))
+	cfg.ShareDeviceInfo = false
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.ShareDeviceInfo {
+		t.Error("ShareDeviceInfo=false should survive save/load round-trip")
+	}
+}

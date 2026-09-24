@@ -474,13 +474,12 @@ func TestFetchGamesFromURL_PublishedAt(t *testing.T) {
 	}
 }
 
-func TestFetchGamesFromURL_sendsBrowserHeaders(t *testing.T) {
-	var gotUA, gotAccept, gotLang, gotFetchMode string
+func TestFetchGamesFromURL_sendsDefaultHeaders(t *testing.T) {
+	var gotUA, gotAccept, gotLang string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
 		gotAccept = r.Header.Get("Accept")
 		gotLang = r.Header.Get("Accept-Language")
-		gotFetchMode = r.Header.Get("Sec-Fetch-Mode")
 		w.Header().Set("Content-Type", "application/rss+xml")
 		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
 	}))
@@ -497,8 +496,5 @@ func TestFetchGamesFromURL_sendsBrowserHeaders(t *testing.T) {
 	}
 	if gotLang == "" {
 		t.Error("Accept-Language header not sent")
-	}
-	if gotFetchMode == "" {
-		t.Error("Sec-Fetch-Mode header not sent")
 	}
 }

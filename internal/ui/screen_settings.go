@@ -35,6 +35,7 @@ const (
 	sItemMusicLocation
 	sItemUnifiedNaming
 	sItemNextUITheme
+	sItemShareDeviceInfo
 	sItemLogLevel
 	sItemClearCache
 	sItemRefreshCache
@@ -244,6 +245,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	if s.themeAvailable {
 		items = append(items, menuItem{sItemNextUITheme, "NextUI Theme: " + nextUIThemeLabel})
 	}
+	shareDeviceInfoVal := "OFF"
+	if s.cfg.ShareDeviceInfo {
+		shareDeviceInfoVal = "ON"
+	}
+	items = append(items, menuItem{sItemShareDeviceInfo, "Share device info with itch.io: " + shareDeviceInfoVal})
 	items = append(items, menuItem{sItemLogLevel, "Log Level: " + logLevelLabel})
 	items = append(items, menuItem{sItemClearCache, "Clear Image Cache"})
 	if s.onRefreshGames != nil {
@@ -569,6 +575,13 @@ func (s *SettingsScreen) activate() Screen {
 		if s.onThemeToggle != nil {
 			s.onThemeToggle(s.cfg.NextUITheme)
 		}
+	case sItemShareDeviceInfo:
+		s.cfg.ShareDeviceInfo = !s.cfg.ShareDeviceInfo
+		if err := s.cfg.Save(s.cfgPath); err != nil {
+			logger.Warn("settings: save failed: %v", err)
+		}
+		// Applies to the next request; the UA itself is logged by itchio.
+		itchio.SetShareDeviceInfo(s.cfg.ShareDeviceInfo)
 	case sItemLogLevel:
 		if s.cfg.LogLevel == "debug" {
 			s.cfg.LogLevel = ""

@@ -108,14 +108,15 @@ For a detailed explanation of how the itch.io web API is used, see
 
 ## Things that look wrong but are deliberate
 
-- **The HTTP client uses uTLS, not `net/http`'s TLS.** `internal/itchio/client.go`
-  dials with `utls.HelloChrome_Auto` and sends matching Chrome headers. itch.io
-  sits behind Cloudflare; `.xml` feeds are exempt from bot protection (itch.io
-  made that change in response to
-  [issue #1](https://github.com/carroarmato0/NextUI-Itchio-Pak/issues/1)), but
-  game pages and downloads are not. Replacing this with a plain `net/http`
-  client would break page fetching in a way that only shows up on real networks.
-  The aggressive caching serves the same goal — keeping request volume polite.
+- **The HTTP client sends a real User-Agent and a standard TLS handshake.**
+  Earlier versions posed as Chrome (uTLS fingerprint plus `sec-ch-ua` /
+  `Sec-Fetch-*` headers) to get past Cloudflare. itch.io asked for an honest
+  User-Agent and exempted the pages and endpoints the app uses
+  ([issue #4](https://github.com/carroarmato0/NextUI-Itchio-Pak/issues/4)), so
+  `internal/itchio/useragent.go` builds one from the detected firmware. Do not
+  reintroduce browser impersonation; if a request is challenged, report it on
+  that issue instead. The aggressive caching still matters — it keeps request
+  volume polite.
 - **Every colour comes from `internal/theme`.** `scripts/no-color-literals.sh`
   (run by `test.sh`) rejects numeric RGB triples and `uint8` channel arithmetic,
   which wraps on light palettes.

@@ -279,6 +279,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 - **NextUI Theme** — when `On`, Itch-io follows the colour palette configured in
   NextUI, and the row shows which one is active. Only appears when NextUI's
   settings file is present. Defaults to `Off`
+- **Share device info with itch.io** — `ON` (default) adds the firmware, its version, the device and the CPU platform to the User-Agent sent to itch.io; `OFF` sends only the app name, version and project URL. Takes effect immediately. See [Privacy](#privacy)
 - **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio.log` on the SD card.
 - **Clear Image Cache** — removes cached cover art from `/tmp`
 - **Refresh Game List** — re-fetches the full game list from itch.io across all platform feeds with a live progress screen showing how many games have been retrieved; the cache is updated on completion. Press **B** at any time to cancel the fetch cleanly — no partial cache is written
@@ -290,9 +291,28 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
 ## Network notes
 
-itch.io sits behind Cloudflare. Its `.xml` feeds are exempt from bot protection
-(itch.io made that change in response to
-[issue #1](https://github.com/carroarmato0/NextUI-Itchio-Pak/issues/1)), so the
-game list loads normally. Individual game pages are not exempt, so a rare
-`HTTP 403` on a single game is possible — retrying usually clears it. Itch-io
-caches aggressively to keep its request volume polite.
+Itch-io identifies itself honestly on every request instead of posing as a web
+browser, so itch.io can see and support its traffic
+([issue #4](https://github.com/carroarmato0/NextUI-Itchio-Pak/issues/4)).
+itch.io has exempted the pages and endpoints the app uses from Cloudflare's
+bot challenges. Itch-io caches aggressively to keep its request volume polite.
+
+### Privacy
+
+The User-Agent looks like this:
+
+```
+NextUI-Itchio-Pak/1.0.25 (+https://github.com/carroarmato0/NextUI-Itchio-Pak; NextUI 6.3.0; tg5040; TrimUI Brick; linux/arm64)
+```
+
+It contains the app version, the firmware (NextUI or muOS) and its version,
+the device code and name, and the CPU platform. Anything the app cannot
+recognise is left out rather than guessed — on an unsupported system it reads
+`unknown-system; linux/arm64`. It never contains anything about you: no
+username, settings, file names, serial numbers or hardware IDs.
+
+Turning **Share device info with itch.io** off in Settings reduces it to:
+
+```
+NextUI-Itchio-Pak/1.0.25 (+https://github.com/carroarmato0/NextUI-Itchio-Pak)
+```
