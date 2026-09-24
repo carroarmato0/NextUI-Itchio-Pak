@@ -29,6 +29,12 @@ func TestBuildUserAgent(t *testing.T) {
 			want:     uaHead + "; NextUI 6.3.0; tg5040; TrimUI Brick; linux/arm64)",
 		},
 		{
+			name:     "nextui version file repeats the system name",
+			info:     itchio.UAInfo{AppVersion: "v1.0.25", System: "NextUI", FirmwareVersion: "NextUI-20260719-0", Device: "tg5040", DeviceLabel: "TrimUI Brick / Smart Pro", Platform: "linux/arm64"},
+			detailed: true,
+			want:     uaHead + "; NextUI 20260719-0; tg5040; TrimUI Brick / Smart Pro; linux/arm64)",
+		},
+		{
 			name:     "muos fully known",
 			info:     itchio.UAInfo{AppVersion: "v1.0.25", System: "muOS", FirmwareVersion: "2601.0", Device: "tui-spoon", DeviceLabel: "TrimUI Smart Pro", Platform: "linux/arm64"},
 			detailed: true,

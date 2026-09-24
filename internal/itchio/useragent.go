@@ -74,7 +74,13 @@ func BuildUserAgent(info UAInfo, detailed bool) string {
 	if system == "" {
 		system = "unknown-system"
 	}
-	if fw := sanitizeUAField(info.FirmwareVersion); fw != "" && !strings.EqualFold(fw, "unknown") {
+	fw := sanitizeUAField(info.FirmwareVersion)
+	// NextUI's version file already names itself ("NextUI-20260719-0").
+	if len(fw) > len(system) && strings.EqualFold(fw[:len(system)], system) &&
+		(fw[len(system)] == '-' || fw[len(system)] == ' ') {
+		fw = strings.TrimLeft(fw[len(system):], "- ")
+	}
+	if fw != "" && !strings.EqualFold(fw, "unknown") {
 		system += " " + fw
 	}
 	fields = append(fields, system)

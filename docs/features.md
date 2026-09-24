@@ -302,7 +302,7 @@ bot challenges. Itch-io caches aggressively to keep its request volume polite.
 The User-Agent looks like this:
 
 ```
-NextUI-Itchio-Pak/1.0.25 (+https://github.com/carroarmato0/NextUI-Itchio-Pak; NextUI 6.3.0; tg5040; TrimUI Brick; linux/arm64)
+NextUI-Itchio-Pak/1.0.25 (+https://github.com/carroarmato0/NextUI-Itchio-Pak; NextUI 20260719-0; tg5040; TrimUI Brick / Smart Pro; linux/arm64)
 ```
 
 It contains the app version, the firmware (NextUI or muOS) and its version,
