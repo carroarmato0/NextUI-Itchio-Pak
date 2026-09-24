@@ -43,10 +43,9 @@ type rawOwnedKey struct {
 
 // FetchOwnedKeys returns every purchase key the user holds for the given game.
 //
-// It asks api.itch.io/profile/owned-keys with game_id, which itch.io added
-// for this app. Until that filter is applied server-side the endpoint still
-// returns the whole library (verified 2026-09-24), so the result is filtered
-// here as well and both shapes work.
+// It asks api.itch.io/profile/owned-keys with game_ids, which itch.io added
+// for this app, so the answer normally holds only this game's keys. The
+// result is still filtered here, so an unfiltered answer works too.
 //
 // BundleSize on each returned key reflects how many distinct games share the
 // same purchase transaction: 1 = individual purchase; >1 = bundle purchase.
@@ -61,7 +60,7 @@ func (c *Client) FetchOwnedKeys(apiKey, gameID string) ([]OwnedKey, error) {
 		return nil, fmt.Errorf("invalid game_id %q: %w", gameID, err)
 	}
 
-	all, err := c.scanOwnedKeys(apiKey, gameID)
+	all, err := c.scanOwnedKeys(apiKey, []string{gameID})
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +76,8 @@ func (c *Client) FetchOwnedKeys(apiKey, gameID string) ([]OwnedKey, error) {
 	if filtered {
 		counts = c.cachedPurchaseCounts(all)
 		if counts == nil {
-			logger.Debug("auth: owned-keys filtered by game_id; no cached bundle sizes, scanning library")
-			full, err := c.scanOwnedKeys(apiKey, "")
+			logger.Debug("auth: owned-keys filtered by game_ids; no cached bundle sizes, scanning library")
+			full, err := c.scanOwnedKeys(apiKey, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -112,15 +111,22 @@ func (c *Client) FetchOwnedKeys(apiKey, gameID string) ([]OwnedKey, error) {
 	return matches, nil
 }
 
-// scanOwnedKeys pages through api.itch.io/profile/owned-keys, optionally
-// passing game_id, and returns every entry.
-func (c *Client) scanOwnedKeys(apiKey, gameID string) ([]rawOwnedKey, error) {
+// maxOwnedKeysGameIDs is the most game IDs owned-keys accepts in one request.
+const maxOwnedKeysGameIDs = 50
+
+// scanOwnedKeys pages through api.itch.io/profile/owned-keys and returns every
+// entry. With gameIDs it asks only for those games (game_ids, comma-separated,
+// at most maxOwnedKeysGameIDs); with none it scans the whole library.
+func (c *Client) scanOwnedKeys(apiKey string, gameIDs []string) ([]rawOwnedKey, error) {
+	if len(gameIDs) > maxOwnedKeysGameIDs {
+		return nil, fmt.Errorf("owned keys: %d game IDs, at most %d per request", len(gameIDs), maxOwnedKeysGameIDs)
+	}
 	var all []rawOwnedKey
 	const maxPages = 20
 	for page := 1; page <= maxPages; page++ {
 		q := url.Values{"page": {strconv.Itoa(page)}}
-		if gameID != "" {
-			q.Set("game_id", gameID)
+		if len(gameIDs) > 0 {
+			q.Set("game_ids", strings.Join(gameIDs, ","))
 		}
 		req, err := http.NewRequest("GET", c.butler+"/profile/owned-keys?"+q.Encode(), nil)
 		if err != nil {

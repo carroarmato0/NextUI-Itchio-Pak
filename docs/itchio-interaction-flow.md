@@ -190,16 +190,21 @@ taken automatically when all three conditions are true:
 - `cfg.APIKey != ""`
 - `detail.GameID != ""`
 
-### Step 1 — Page through all owned keys and find the matching one
+### Step 1 — Find the owned keys for the game
 
 ```
-GET https://api.itch.io/profile/owned-keys?page={N}
+GET https://api.itch.io/profile/owned-keys?game_ids={GAME_ID}&page={N}
 Authorization: Bearer {API_KEY}
 ```
 
-The endpoint returns up to 50 keys per page. The code pages through all pages
-until it finds the target `game_id` or exhausts the list. Filtering is done
-client-side; passing `game_id` as a query parameter has no effect server-side.
+`game_ids` takes up to 50 comma-separated game IDs and returns only their
+keys. (The parameter is `game_ids`; a singular `game_id` is ignored and returns
+the whole library.) The answer is still filtered client-side, so an unfiltered
+response also works.
+
+Telling a bundle purchase from an individual one needs the number of games in
+each purchase, which only the whole library shows. Those counts are cached by
+the full scan at startup; if the cache is cold, one full scan follows.
 
 Normal page response (JSON):
 
