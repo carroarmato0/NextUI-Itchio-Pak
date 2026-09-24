@@ -148,16 +148,25 @@ func (c *Client) FetchGamesFromURL(url string) ([]Game, error) {
 	var lastErr error
 	for attempt := 0; attempt <= feedMaxRetries; attempt++ {
 		if attempt > 0 {
-			logger.Warn("feed: retry %d/%d after %v (last error: %v)", attempt, feedMaxRetries, feedRetryDelay, lastErr)
-			time.Sleep(feedRetryDelay)
+			delay := feedRetryDelay
+			// The request never went out because itch.io asked us to slow
+			// down: wait out the whole cooldown instead of a fixed delay.
+			var rl *RateLimitedError
+			if errors.As(lastErr, &rl) {
+				if d := time.Until(rl.Until); d > delay {
+					delay = d
+				}
+			}
+			logger.Warn("feed: retry %d/%d after %v (last error: %v)", attempt, feedMaxRetries, delay.Round(time.Millisecond), lastErr)
+			time.Sleep(delay)
 		}
 		games, err := c.fetchGamesFromURLOnce(url)
 		if err == nil {
 			return games, nil
 		}
 		lastErr = err
-		// Only retry on transient server-side errors, not permanent ones.
-		if err == ErrCloudflareBlocked {
+		// Only retry on transient errors, not permanent ones.
+		if errors.Is(err, ErrCloudflareBlocked) || errors.Is(err, ErrFeedPageNotFound) {
 			return nil, err
 		}
 	}
@@ -175,6 +184,10 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	if resp.StatusCode == http.StatusForbidden {
 		logger.Error("feed: HTTP 403 from %s (Cloudflare bot-protection)", url)
 		return nil, ErrCloudflareBlocked
+	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		logger.Info("feed: HTTP %d from %s", resp.StatusCode, url)
+		return nil, ErrFeedPageNotFound
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("feed: HTTP %d from %s", resp.StatusCode, url)
@@ -257,6 +270,12 @@ func (c *Client) fetchSlug(ctx context.Context, platformCode, slug string, onPag
 		}
 		url := fmt.Sprintf("%s/games/%s.xml?page=%d", c.base, slug, page)
 		pageGames, err := c.FetchGamesFromURL(url)
+		if errors.Is(err, ErrFeedPageNotFound) && page > 1 {
+			// itch.io usually repeats the last page past the end, but may
+			// also answer 404 there. Either way the slug is complete.
+			logger.Info("feed: platform=%s slug=%s page=%d not found — end of feed, keeping %d game(s)", platformCode, slug, page, len(games))
+			break
+		}
 		if err != nil {
 			logger.Warn("feed: platform=%s slug=%s page=%d error: %v", platformCode, slug, page, err)
 			return games, fmt.Errorf("platform=%s slug=%s page %d: %w", platformCode, slug, page, err)
