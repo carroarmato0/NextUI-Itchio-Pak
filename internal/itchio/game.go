@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
@@ -45,6 +46,12 @@ type Upload struct {
 	URL         string // resolver or CDN URL
 	UploadID    string // itch.io upload ID (from data-upload_id)
 	NeedsFormat bool   // true if extension unknown; user must choose GB, GBC, or ZIP
+
+	// Set only for uploads listed through the API; update checks use them.
+	Size      int64
+	MD5       string
+	BuildID   int64 // 0 when the upload is not a butler build
+	UpdatedAt time.Time
 }
 
 var (

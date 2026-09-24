@@ -244,27 +244,38 @@ for any game the API key owner did not create. The butler-style
 ### Step 2 — List uploads
 
 ```
-GET https://itch.io/api/1/{API_KEY}/game/{GAME_ID}/uploads?download_key_id={KEY_ID}
+GET https://api.itch.io/games/{GAME_ID}/uploads?download_key_id={KEY_ID}
+Authorization: Bearer {API_KEY}
 ```
 
-Returns all uploads for the game, authenticated by the download key. Only
-`.gb` and `.gbc` uploads are kept. The upload ID (`id` field) is stored
-on each `Upload` struct alongside the download key ID.
+Returns every upload with `id`, `filename`, `size`, `md5_hash`, `updated_at`
+and, for butler builds, `build_id`. ROM extensions are kept; unknown ones are
+offered with a format picker. `download_key_id` is optional: free and
+name-your-own-price games list without it, so a user with a key skips the
+web download flow for those entirely.
 
 ### Step 3 — Resolve CDN URL
 
 ```
-GET https://itch.io/api/1/{API_KEY}/upload/{UPLOAD_ID}/download?download_key_id={KEY_ID}
+POST https://api.itch.io/games/{GAME_ID}/download-sessions   (download_key_id)
+→ {"uuid": "..."}
+
+GET https://api.itch.io/uploads/{UPLOAD_ID}/download?download_key_id={KEY_ID}&uuid={UUID}
+→ 302 Location: https://itchio-mirror.{hash}.r2.cloudflarestorage.com/upload2/...
 ```
 
-Response (JSON):
+One download session is opened per install and its `uuid` is passed on every
+resolve of that install — the ZIP range reads, the magic-byte probe and the
+download itself — so itch.io counts them as a single download.
 
-```json
-{ "url": "https://itchio-mirror.{hash}.r2.cloudflarestorage.com/upload2/..." }
-```
+The redirect is **not followed**: the app needs the signed URL before the
+download for ZIP inspection, and not following it keeps the `Authorization`
+header away from the CDN. The signed URL expires quickly, so it is resolved
+immediately before streaming, not cached.
 
-The signed CDN URL expires quickly (60 seconds). It is resolved immediately
-before streaming, not cached.
+These replaced the v1 `itch.io/api/1/{API_KEY}/...` endpoints, which put the
+key in the URL
+([issue #4](https://github.com/carroarmato0/NextUI-Itchio-Pak/issues/4)).
 
 ### Step 4 — Stream file
 
