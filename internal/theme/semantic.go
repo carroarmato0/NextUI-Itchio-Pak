@@ -111,6 +111,13 @@ func (t Theme) WarningBG() [3]uint8 { return Mix(t.Background, t.Warning(), stat
 // PriceBG backs a price pill.
 func (t Theme) PriceBG() [3]uint8 { return Mix(t.Background, t.Price(), statusBlend) }
 
+// PricePillText and SuccessPillText are Price and Success for a label drawn
+// on its own tinted pill (PriceBG, SuccessBG). The pill, not the background,
+// is what the text has to read against: on a light palette it is the darker
+// of the two, and the background-toned hue fell to a contrast of 51 on it.
+func (t Theme) PricePillText() [3]uint8   { return t.ToneOn(t.Price(), t.PriceBG()) }
+func (t Theme) SuccessPillText() [3]uint8 { return t.ToneOn(t.Success(), t.SuccessBG()) }
+
 // ErrorText is Error softened toward the body-text colour, for the multi-line
 // message under an error heading. Full-strength red over several wrapped lines
 // is tiring to read, but dropping the red entirely loses the signal.

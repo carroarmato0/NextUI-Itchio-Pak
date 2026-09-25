@@ -50,7 +50,7 @@ type FetchUploadsScreen struct {
 	uploads       []roms.Upload
 	ownedKeys     []itchio.OwnedKey // populated when fetchNeedsPurchasePick
 	err           error
-	isNotOwned    bool // true when error is "game not owned" — triggers auto-modal on prev screen
+	isNotOwned    bool // true when error is "game not owned" — the game page switches to Buy
 	inv           *inventory.Inventory
 	inventoryPath string
 }
@@ -284,11 +284,12 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.UserEvent:
 		_ = ev
-		// "Not owned" error: go back to the detail screen and show a modal there
-		// instead of showing a standalone error screen.
+		// Not owned after all (a refund, say): back to the game page, which
+		// now shows how to buy it — no error screen, no modal.
 		if s.isNotOwned {
 			if ds, ok := s.prev.(*DetailScreen); ok {
-				ds.ShowModal("Cannot Download", s.err.Error())
+				logger.Info("fetch: itch.io says %s is not owned; showing the buy state", s.game.URL)
+				ds.owned.Store(false)
 			}
 			return s.prev
 		}
