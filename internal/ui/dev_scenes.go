@@ -252,8 +252,7 @@ var devScenes = []Scene{
 		return s
 	}},
 	{"settings", "Settings menu", func(d SceneDeps) Screen {
-		return NewSettingsScreen(d.Client, d.Cfg, d.CfgPath, d.Inv, d.InvPath, d.Cache,
-			devList(d), nil, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {}, nil)
+		return devSettings(d)
 	}},
 	{"about", "About screen", func(d SceneDeps) Screen {
 		return NewAboutScreen(devList(d))
@@ -317,4 +316,9 @@ type DevScrollable interface {
 func (s *DetailScreen) DevSetScroll(y int32) { s.scrollY = y }
 func (s *DetailScreen) DevScrollExtent() (int32, int32) {
 	return s.contentHeight, s.viewportH
+}
+
+func devSettings(d SceneDeps) *SettingsScreen {
+	return NewSettingsScreen(d.Client, d.Cfg, d.CfgPath, d.Inv, d.InvPath, d.Cache,
+		devList(d), nil, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {}, nil)
 }

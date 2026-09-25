@@ -68,7 +68,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 
 		var err error
 		if isAuth {
-			err = client.DownloadAuthUpload(cfg.APIKey, upload.UploadID, upload.Session, dest, progress)
+			err = client.DownloadAuthUpload(cfg.AuthToken, upload.UploadID, upload.Session, dest, progress)
 		} else {
 			itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
 			err = client.DownloadFree(itchUpload, dest, progress)

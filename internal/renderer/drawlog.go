@@ -49,7 +49,13 @@ func (r *Renderer) logTextDraw(text string, x, y int32, fg [3]uint8, small bool)
 		return
 	}
 	w, h := r.textSizeImpl(text, small, false)
-	if w <= 0 || h <= 0 {
+	r.logSizedTextDraw(text, x, y, w, h, fg, small)
+}
+
+// logSizedTextDraw records a text draw whose size the caller measured, for
+// text drawn outside the two standard fonts.
+func (r *Renderer) logSizedTextDraw(text string, x, y, w, h int32, fg [3]uint8, small bool) {
+	if !r.drawLogOn || text == "" || w <= 0 || h <= 0 {
 		return
 	}
 	// Sample the middle of the run: the left edge often sits on a border or the

@@ -130,11 +130,14 @@ type ListScreen struct {
 	// ownedUpdateCh carries owned-URL map updates from the background goroutine
 	// (post-API-key-validation) to the SDL thread. Capacity 1: stale updates
 	// are silently discarded, same as cacheUpdateCh.
-	ownedUpdateCh  chan map[string]bool
-	ownedURLs      map[string]bool
-	ownedCachePath string
+	ownedUpdateCh chan map[string]bool
+	// tokenRejectedCh tells the UI goroutine that itch.io refused the saved
+	// sign-in, so it signs out where cfg is safe to write.
+	tokenRejectedCh chan struct{}
+	ownedURLs       map[string]bool
+	ownedCachePath  string
 
-	// onOwnedReady is called by KeyTestScreen after a successful key validation.
+	// onOwnedReady is called after a successful sign-in or startup token check.
 	// It saves the owned cache to disk and sends the new map to ownedUpdateCh.
 	onOwnedReady func([]itchio.OwnedGame)
 
@@ -178,6 +181,10 @@ type ListScreen struct {
 	badgePriceCache map[string]string
 }
 
+// OwnedReady is the callback that takes a fresh owned-games list after a
+// sign-in, for screens opened before the list (the account prompt).
+func (s *ListScreen) OwnedReady() func([]itchio.OwnedGame) { return s.onOwnedReady }
+
 func NewListScreen(
 	client *itchio.Client,
 	cfg *settings.Config,
@@ -215,6 +222,7 @@ func NewListScreen(
 	}
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
+	s.tokenRejectedCh = make(chan struct{}, 1)
 	s.ownedURLs = make(map[string]bool)
 
 	if urls, err := itchio.LoadOwnedCache(ownedCachePath); err == nil && len(urls) > 0 {
@@ -247,13 +255,24 @@ func NewListScreen(
 		logger.Info("owned: %d owned game URL(s) received from key validation", len(m))
 	}
 
-	// If an API key is already configured, validate it in the background so that
-	// owned game data is refreshed without requiring the user to open Settings.
-	if cfg.APIKey != "" {
+	// When signed in, check the token in the background so owned-game data is
+	// fresh without opening Settings. A token itch.io now refuses (revoked on
+	// the website) signs the user out; a network failure does not.
+	if cfg.SignedIn() {
+		token := cfg.AuthToken
 		go func() {
-			_, owned, err := client.ValidateAPIKey(cfg.APIKey)
+			_, owned, err := client.ValidateAPIKey(token)
+			if errors.Is(err, itchio.ErrTokenRejected) {
+				logger.Warn("owned: itch.io rejected the sign-in; signing out (installed games are kept)")
+				select {
+				case s.tokenRejectedCh <- struct{}{}:
+				default:
+				}
+				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+				return
+			}
 			if err != nil {
-				logger.Warn("owned: startup key validation failed: %v", err)
+				logger.Warn("owned: startup sign-in check failed: %v", err)
 				return
 			}
 			s.onOwnedReady(owned)
@@ -429,6 +448,15 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	case newOwned := <-s.ownedUpdateCh:
 		s.ownedURLs = newOwned
 		s.rebuildView()
+	default:
+	}
+	select {
+	case <-s.tokenRejectedCh:
+		// Here, on the UI goroutine that reads cfg, the write is safe.
+		s.cfg.SignOut()
+		if err := s.cfg.Save(s.cfgPath); err != nil {
+			logger.Warn("owned: save after sign-out failed: %v", err)
+		}
 	default:
 	}
 	select {

@@ -28,7 +28,7 @@ type UpdateServicer interface {
 type settingsItem int
 
 const (
-	sItemAPIKey settingsItem = iota
+	sItemAccount settingsItem = iota
 	sItemROMLocation
 	sItemPico8Core // ← new
 	sItemMusicDownload
@@ -68,9 +68,6 @@ type SettingsScreen struct {
 	heldSince  time.Time
 	lastRepeat time.Time
 
-	// pendingKeyTest is set by the keyboard callback to trigger a KeyTestScreen
-	// transition on the next event cycle (after the keyboard closes).
-	pendingKeyTest bool
 }
 
 func NewSettingsScreen(
@@ -106,16 +103,6 @@ func NewSettingsScreen(
 		paletteName:    paletteName,
 		onThemeToggle:  onThemeToggle,
 		onOwnedReady:   onOwnedReady,
-	}
-	// Start a one-shot background validation the first time Settings is opened
-	// this session. MarkAPIKeyCheckStarted is a CAS gate so subsequent opens
-	// are a no-op.
-	if cfg.APIKey != "" && client.MarkAPIKeyCheckStarted() {
-		go func() {
-			status := client.CheckAPIKey(cfg.APIKey)
-			client.StoreAPIKeyStatus(status)
-			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
-		}()
 	}
 	return s
 }
@@ -221,7 +208,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		label string
 	}
 	var items []menuItem
-	items = append(items, menuItem{sItemAPIKey, "API Key: "})
+	items = append(items, menuItem{sItemAccount, "Account: "})
 	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
 	// Only offered where the firmware keeps a separate folder per Pico-8
 	// runtime. muOS has one Pico-8 folder and runs the official binary, so
@@ -300,32 +287,11 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		}
 		r.DrawText(item.label, 20, y, tr, tg, tb)
 
-		// API Key row: append live validation status as a small pill badge.
-		if item.id == sItemAPIKey {
+		// Account row: who is signed in, or a de-emphasised "not signed in".
+		if item.id == sItemAccount {
 			labelW, _ := r.TextSize(item.label)
-			if s.cfg.APIKey != "" {
-				var statusLabel string
-				var sR, sG, sB uint8
-				switch s.client.GetAPIKeyStatus() {
-				case itchio.APIKeyStatusWorking:
-					ok := r.Theme.Success()
-					statusLabel, sR, sG, sB = "WORKING", ok[0], ok[1], ok[2]
-				case itchio.APIKeyStatusRejected:
-					bad := r.Theme.Error()
-					statusLabel, sR, sG, sB = "REJECTED", bad[0], bad[1], bad[2]
-				default:
-					mu2 := r.Theme.Muted()
-					statusLabel, sR, sG, sB = "PRESENT", mu2[0], mu2[1], mu2[2]
-				}
-				sw, sh := r.SmallTextSize(statusLabel)
-				const sp = int32(8) // padding to match tag list
-				pillW := sw + sp*2
-				pillH := sh + 4
-				pillX := 20 + labelW + 12
-				pillY := y - 4 + (rowH-pillH)/2
-				r.DrawPill(pillX, pillY, pillW, pillH, sR, sG, sB)
-				stC := r.Theme.ContrastText([3]uint8{sR, sG, sB})
-				r.DrawSmallTextCenteredInRect(statusLabel, pillX, pillY, pillW, pillH, stC[0], stC[1], stC[2])
+			if s.cfg.SignedIn() {
+				r.DrawText(s.cfg.AuthUser, 20+labelW, y, tr, tg, tb)
 			} else {
 				// Muted is derived from the background, so on the selected row —
 				// which is filled with an Accent pill — it was unreadable: #867D8C
@@ -335,7 +301,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 				if isSelected {
 					notSet = theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
 				}
-				r.DrawText("(not set)", 20+labelW, y, notSet[0], notSet[1], notSet[2])
+				r.DrawText("not signed in", 20+labelW, y, notSet[0], notSet[1], notSet[2])
 			}
 		}
 
@@ -361,12 +327,13 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
-	if s.cursor == sItemAPIKey {
-		if s.cfg.APIKey != "" {
-			hints[0].Text = "Test"
-			hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "Y", Text: "Edit key"})
+	if s.cursor == sItemAccount {
+		if s.cfg.SignedIn() {
+			hints[0].Text = "Sign in again"
+			hints = []renderer.FooterHint{hints[0],
+				{Kind: renderer.BadgeCircle, Label: "Y", Text: "Sign out"}, hints[1]}
 		} else {
-			hints[0].Text = "Enter key"
+			hints[0].Text = "Sign in"
 		}
 	}
 	r.DrawFooterHints(hints, ftrY)
@@ -390,30 +357,21 @@ func (s *SettingsScreen) stopHold(dir int) {
 	}
 }
 
-// openKeyboardForAPIKey opens the virtual keyboard for entering or editing the
-// API key. seed is pre-filled (use s.cfg.APIKey to edit an existing key, or ""
-// to enter a new one). On confirm, the key is saved and a KeyTestScreen is
-// shown so the user sees the validation result immediately.
-func (s *SettingsScreen) openKeyboardForAPIKey() Screen {
-	seed := s.cfg.APIKey
-	return NewKeyboardScreen(s, seed, func(value string) {
-		if value == "" || value == seed {
-			return // no change
-		}
-		s.cfg.APIKey = value
-		go s.cfg.Save(s.cfgPath)
-		logger.Info("settings: API key updated via keyboard, len=%d", len(value))
-		s.pendingKeyTest = true
-	})
+// signOut forgets the itch.io sign-in. Installed games, their files and the
+// owned-games cache are left alone: only downloading needs to be signed in.
+func (s *SettingsScreen) signOut() Screen {
+	if !s.cfg.SignedIn() {
+		return s
+	}
+	s.cfg.SignOut()
+	if err := s.cfg.Save(s.cfgPath); err != nil {
+		logger.Warn("settings: save after sign-out failed: %v", err)
+	}
+	logger.Info("settings: signed out of itch.io")
+	return s
 }
 
 func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
-	// Keyboard confirmed a new API key — transition to KeyTestScreen now that
-	// the keyboard has closed and we are back on the event loop.
-	if s.pendingKeyTest {
-		s.pendingKeyTest = false
-		return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
-	}
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
@@ -437,13 +395,10 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Keysym.Sym {
 		case sdl.K_RETURN:
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
-			}
 			return s.activate()
-		case sdl.K_y: // physical Y — edit API key when one is already set
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return s.openKeyboardForAPIKey()
+		case sdl.K_y: // physical Y — sign out
+			if s.cursor == sItemAccount {
+				return s.signOut()
 			}
 		case sdl.K_ESCAPE:
 			return s.prev
@@ -472,13 +427,10 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case btnA:
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
-			}
 			return s.activate()
-		case btnY: // physical Y — edit API key when one is already set
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return s.openKeyboardForAPIKey()
+		case btnY: // physical Y — sign out
+			if s.cursor == sItemAccount {
+				return s.signOut()
 			}
 		case btnB:
 			return s.prev
@@ -525,10 +477,9 @@ func musicDownloadLabel(v string) string {
 
 func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
-	case sItemAPIKey:
-		if s.cfg.APIKey == "" {
-			return s.openKeyboardForAPIKey()
-		}
+	case sItemAccount:
+		// Signed in or not, A starts a fresh QR sign-in.
+		return NewSignInScreen(s.client, s.cfg, s.cfgPath, s, s.onOwnedReady)
 	case sItemROMLocation:
 		if s.cfg.ROMLocation == "auto" {
 			s.cfg.ROMLocation = "ask"

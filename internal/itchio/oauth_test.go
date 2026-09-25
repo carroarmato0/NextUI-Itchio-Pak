@@ -307,3 +307,34 @@ func TestDeviceInfo(t *testing.T) {
 		t.Errorf("unknown system = %q", got)
 	}
 }
+
+// A revoked or invalid token must be told apart from a network failure: the
+// first signs the user out, the second must not.
+func TestValidateAPIKey_rejectedTokenIsErrTokenRejected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	c := NewClientWithBaseAndButler(srv.URL, srv.URL)
+	if _, _, err := c.ValidateAPIKey("revoked"); !errors.Is(err, ErrTokenRejected) {
+		t.Errorf("err = %v, want ErrTokenRejected", err)
+	}
+
+	down := NewClientWithBaseAndButler("http://127.0.0.1:1", "http://127.0.0.1:1")
+	if _, _, err := down.ValidateAPIKey("t"); err == nil || errors.Is(err, ErrTokenRejected) {
+		t.Errorf("unreachable server: err = %v, want a non-rejection error", err)
+	}
+}
+
+func TestCurrentDeviceInfo_followsShareSetting(t *testing.T) {
+	t.Cleanup(func() { ConfigureUserAgent(UAInfo{}, true) })
+	ConfigureUserAgent(UAInfo{AppVersion: "v1.1.0", System: "muOS", FirmwareVersion: "2601.0_JACARANDA",
+		Device: "tui-spoon", DeviceLabel: "TrimUI Smart Pro"}, true)
+	if got := CurrentDeviceInfo(); got != "TrimUI Smart Pro, muOS 2601.0_JACARANDA, NextUI-Itchio-Pak 1.1.0" {
+		t.Errorf("shared = %q", got)
+	}
+	SetShareDeviceInfo(false)
+	if got := CurrentDeviceInfo(); got != "NextUI-Itchio-Pak 1.1.0" {
+		t.Errorf("opted out = %q", got)
+	}
+}

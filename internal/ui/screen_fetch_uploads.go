@@ -78,10 +78,10 @@ func NewFetchUploadsScreen(
 
 		var err error
 
-		useAuthPath := !game.IsFree && cfg.APIKey != "" &&
+		useAuthPath := !game.IsFree && cfg.SignedIn() &&
 			detail != nil && detail.GameID != ""
 		logger.Debug("fetch: isFree=%v apiKey=%v detailNil=%v gameID=%q useAuthPath=%v",
-			game.IsFree, cfg.APIKey != "", detail == nil, func() string {
+			game.IsFree, cfg.SignedIn(), detail == nil, func() string {
 				if detail != nil {
 					return detail.GameID
 				}
@@ -90,7 +90,7 @@ func NewFetchUploadsScreen(
 
 		if useAuthPath {
 			// Paid game — find all purchase keys for this game.
-			ownedKeys, keysErr := client.FetchOwnedKeys(cfg.APIKey, detail.GameID)
+			ownedKeys, keysErr := client.FetchOwnedKeys(cfg.AuthToken, detail.GameID)
 			if keysErr != nil {
 				s.err = keysErr
 				s.isNotOwned = strings.Contains(keysErr.Error(), "not owned")
@@ -149,10 +149,10 @@ func NewFetchUploadsScreen(
 // download_url POST) entirely. It reports false — leaving the web flow to run
 // — when there is no key, no game ID, or the API gave nothing usable.
 func (s *FetchUploadsScreen) tryFreeViaAPI() bool {
-	if s.cfg.APIKey == "" || s.detail == nil || s.detail.GameID == "" {
+	if !s.cfg.SignedIn() || s.detail == nil || s.detail.GameID == "" {
 		return false
 	}
-	uploads, err := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, "")
+	uploads, err := s.client.FetchUploadsForKey(s.cfg.AuthToken, s.detail.GameID, "")
 	if err != nil {
 		logger.Warn("fetch: free game via API failed, falling back to web flow: %v", err)
 		return false
@@ -187,7 +187,7 @@ func apiUploads(in []itchio.Upload, session *roms.DownloadSession) []roms.Upload
 // picks a purchase from PurchasePickerScreen.
 func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 	downloadKeyID := fmt.Sprintf("%d", key.ID)
-	authUploads, authErr := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, downloadKeyID)
+	authUploads, authErr := s.client.FetchUploadsForKey(s.cfg.AuthToken, s.detail.GameID, downloadKeyID)
 	if authErr != nil {
 		s.err = authErr
 		s.isNotOwned = strings.Contains(authErr.Error(), "not owned")
