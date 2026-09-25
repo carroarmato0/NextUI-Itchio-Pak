@@ -53,7 +53,7 @@ Press **SELECT** again (or **A** from the keyboard) to apply. Press **B** to dis
 <img src="screenshots/filter-search.png" alt="Filter and search overlay" width="480"/>
 <img src="screenshots/keyboard.png" alt="Virtual keyboard" width="480"/>
 
-<sub>The Filter &amp; Search overlay, and the virtual keyboard used for search and API key entry</sub>
+<sub>The Filter &amp; Search overlay, and the virtual keyboard used for search</sub>
 
 The active platform and sort mode are shown as pills in the header and saved automatically for the next launch. In A-Z / Z-A mode, **L1/R1** jump directly to the next/previous letter boundary. In all other modes, **L1/R1** cycle through sort modes.
 
@@ -66,7 +66,7 @@ The active platform and sort mode are shown as pills in the header and saved aut
 - **Name-your-own-price games show the developer's suggested donation amount**, so you can decide whether to support them before downloading — see [Supporting developers](#supporting-developers) below
 - Scrollable description with basic HTML formatting preserved (paragraphs, headings, bullet and numbered lists)
 - QR code for every game — scan to open the itch.io page in a browser
-- Download button (A) — disabled for paid games when no API key is set
+- Download button (A) — paid games need you to be [signed in](sign-in.md)
 - Downloaded files are listed with their on-device paths; press **Y** to manage, delete, or toggle title-based filename for the game
 - Game titles and descriptions in non-Latin scripts render correctly — the bundled font set covers Arabic, Cyrillic, Devanagari, Hebrew, Japanese/CJK, and Thai automatically, with no configuration required
 
@@ -98,7 +98,7 @@ know whether you gave any. Genuinely free games and paid games show nothing new.
 ## Downloading
 
 - Download free games without an itch.io account
-- Download paid games you already own using your [itch.io API key](api-key.md)
+- Download paid games you already own after [signing in with a QR code](sign-in.md)
 - When a game has multiple ROM files, a file picker is shown
 - Progress bar with live percentage and downloaded/total size
 - Files saved directly to the correct ROM folder:
@@ -265,7 +265,7 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
 ## Settings
 
-- **API Key** — shows `WORKING` (green) when an itch.io API key is configured and validated. Press **A** on the row to enter a new key using the built-in virtual keyboard; when a key is already set, press **A** to re-run the validation test or press **Y** to edit the key. See [API key setup](api-key.md)
+- **Account** — shows who is signed in to itch.io, or `not signed in`. Press **A** to sign in with a QR code (or sign in again), **Y** to sign out. See [Signing in](sign-in.md)
 - **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
 - **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
 - **Pico-8 Core** — selects which Pico-8 emulator downloaded `.p8` / `.p8.png` files are destined for:
