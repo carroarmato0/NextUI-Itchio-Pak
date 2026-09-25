@@ -474,13 +474,12 @@ func TestFetchGamesFromURL_PublishedAt(t *testing.T) {
 	}
 }
 
-func TestFetchGamesFromURL_sendsBrowserHeaders(t *testing.T) {
-	var gotUA, gotAccept, gotLang, gotFetchMode string
+func TestFetchGamesFromURL_sendsDefaultHeaders(t *testing.T) {
+	var gotUA, gotAccept, gotLang string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
 		gotAccept = r.Header.Get("Accept")
 		gotLang = r.Header.Get("Accept-Language")
-		gotFetchMode = r.Header.Get("Sec-Fetch-Mode")
 		w.Header().Set("Content-Type", "application/rss+xml")
 		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
 	}))
@@ -498,7 +497,71 @@ func TestFetchGamesFromURL_sendsBrowserHeaders(t *testing.T) {
 	if gotLang == "" {
 		t.Error("Accept-Language header not sent")
 	}
-	if gotFetchMode == "" {
-		t.Error("Sec-Fetch-Mode header not sent")
+}
+
+func TestFetchGamesFromURL_404IsNotRetried(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	_, err := c.FetchGamesFromURL(srv.URL + "/games/tag-pico-8.xml?page=201")
+	if !errors.Is(err, itchio.ErrFeedPageNotFound) {
+		t.Fatalf("expected ErrFeedPageNotFound, got %v", err)
+	}
+	if hits != 1 {
+		t.Errorf("server hit %d times, want 1 (404 is permanent)", hits)
+	}
+}
+
+// Seen on a TrimUI Brick: tag-pico-8.xml?page=201 answered 404 instead of
+// repeating the last page, and the whole refresh failed after 4589 games.
+func TestFetchAllGames_404PastLastPageEndsSlug(t *testing.T) {
+	page1, err := os.ReadFile("../../testdata/rss_page1.xml")
+	if err != nil {
+		t.Fatalf("read rss_page1.xml: %v", err)
+	}
+	emptyFeed := `<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		switch {
+		case r.URL.Path != "/games/made-with-gb-studio.xml":
+			w.Write([]byte(emptyFeed))
+		case r.URL.Query().Get("page") == "1":
+			w.Write(page1)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	games, err := c.FetchAllGames(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("FetchAllGames: %v (a 404 past the last page is the end of the feed)", err)
+	}
+	if len(games) != 36 {
+		t.Errorf("got %d games, want the 36 from page 1", len(games))
+	}
+}
+
+// A 404 on page 1 means the feed itself is gone — that is still an error.
+func TestFetchAllGames_404OnFirstPageIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/games/made-with-gb-studio.xml" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
+	}))
+	defer srv.Close()
+
+	c := itchio.NewClientWithBase(srv.URL)
+	if _, err := c.FetchAllGames(context.Background(), nil); !errors.Is(err, itchio.ErrFeedPageNotFound) {
+		t.Errorf("err = %v, want ErrFeedPageNotFound", err)
 	}
 }

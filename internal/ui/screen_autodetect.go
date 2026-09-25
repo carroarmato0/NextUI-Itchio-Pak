@@ -72,8 +72,8 @@ func (s *AutoDetectScreen) run() {
 	// Step 1: resolve the CDN URL (same logic as ZIPInspectScreen).
 	var cdnURL string
 	var err error
-	if s.upload.DownloadKeyID != "" {
-		cdnURL, err = s.client.ResolveAuthURL(s.cfg.APIKey, s.upload.UploadID, s.upload.DownloadKeyID)
+	if s.upload.ViaAPI() {
+		cdnURL, err = s.client.ResolveAuthURL(s.cfg.APIKey, s.upload.UploadID, s.upload.Session)
 	} else {
 		itchUpload := itchio.Upload{Filename: s.upload.Filename, URL: s.upload.URL}
 		cdnURL, err = s.client.ResolveFreeURL(itchUpload)

@@ -11,27 +11,22 @@ import (
 	"sync"
 	"time"
 
-	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/http2"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
-const (
-	// userAgent is sent on every outbound request to avoid Cloudflare bot-protection
-	// responses (which would return HTML instead of the expected XML/JSON payloads).
-	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-
-	apiItchIO = "https://api.itch.io"
-)
+const apiItchIO = "https://api.itch.io"
 
 // errH1Negotiated is returned by dialTLS when the server selects http/1.1
 // via ALPN. h2FallbackTransport catches it to route the request (and all
 // future requests to that host) through the h1 transport instead.
 var errH1Negotiated = errors.New("server negotiated http/1.1")
 
-// uaTransport injects browser-compatible headers on every outbound request
-// that does not already have them, then delegates to the wrapped RoundTripper.
+// uaTransport identifies the app on every outbound request that does not set
+// its own headers, then delegates to the wrapped RoundTripper. The app says
+// what it is rather than posing as a browser: itch.io asked for a real
+// User-Agent so it can see and support this traffic (issue #4).
 type uaTransport struct {
 	wrapped http.RoundTripper
 }
@@ -44,87 +39,51 @@ func setDefaultHeader(req *http.Request, key, value string) {
 
 func (t *uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
-	setDefaultHeader(req, "User-Agent", userAgent)
+	setDefaultHeader(req, "User-Agent", UserAgent())
 	setDefaultHeader(req, "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	setDefaultHeader(req, "Accept-Language", "en-US,en;q=0.9")
-	setDefaultHeader(req, "sec-ch-ua", `"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"`)
-	setDefaultHeader(req, "sec-ch-ua-mobile", "?0")
-	setDefaultHeader(req, "sec-ch-ua-platform", `"Windows"`)
-	setDefaultHeader(req, "Sec-Fetch-Dest", "document")
-	setDefaultHeader(req, "Sec-Fetch-Mode", "navigate")
-	setDefaultHeader(req, "Sec-Fetch-Site", "none")
-	setDefaultHeader(req, "Sec-Fetch-User", "?1")
-	setDefaultHeader(req, "Cache-Control", "max-age=0")
 	return t.wrapped.RoundTrip(req)
 }
 
-// dialTLS dials a TLS connection using the Chrome ClientHello fingerprint via
-// utls, advertising ["h2", "http/1.1"] ALPN. If the server selects h2 the
+// dialTLSWithALPN dials a standard crypto/tls connection offering the given
+// ALPN protocols.
+func dialTLSWithALPN(ctx context.Context, network, addr string, protos []string) (*tls.Conn, error) {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	d := &tls.Dialer{Config: &tls.Config{ServerName: host, NextProtos: protos}}
+	conn, err := d.DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	return conn.(*tls.Conn), nil
+}
+
+// dialTLS advertises ["h2", "http/1.1"] ALPN. If the server selects h2 the
 // conn is returned to http2.Transport. If it selects http/1.1, the conn is
 // closed and errH1Negotiated is returned so h2FallbackTransport can retry
 // over the h1 transport. The cfg parameter satisfies http2.Transport's
-// DialTLSContext signature but is ignored — we build our own utls config.
+// DialTLSContext signature but is ignored — ALPN is chosen here.
 func dialTLS(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-	host, _, err := net.SplitHostPort(addr)
+	conn, err := dialTLSWithALPN(ctx, network, addr, []string{"h2", "http/1.1"})
 	if err != nil {
 		return nil, err
 	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
-	if err != nil {
-		return nil, err
-	}
-	uconn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
-	if err := uconn.BuildHandshakeState(); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	for _, ext := range uconn.Extensions {
-		if alpn, ok := ext.(*utls.ALPNExtension); ok {
-			alpn.AlpnProtocols = []string{"h2", "http/1.1"}
-			break
-		}
-	}
-	if err := uconn.HandshakeContext(ctx); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	proto := uconn.ConnectionState().NegotiatedProtocol
+	proto := conn.ConnectionState().NegotiatedProtocol
 	logger.Debug("client: TLS addr=%s proto=%s", addr, proto)
 	if proto != "h2" {
-		uconn.Close()
+		conn.Close()
 		return nil, errH1Negotiated
 	}
-	return uconn, nil
+	return conn, nil
 }
 
 // dialTLSH1 is the http.Transport-compatible dialer (no *tls.Config param)
-// using the Chrome utls fingerprint with http/1.1-only ALPN, for servers
-// that do not support h2 (signed download CDNs, custom game hosting).
+// with http/1.1-only ALPN, for servers that do not support h2 (signed
+// download CDNs, custom game hosting).
 func dialTLSH1(ctx context.Context, network, addr string) (net.Conn, error) {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, err
-	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, network, addr)
-	if err != nil {
-		return nil, err
-	}
-	uconn := utls.UClient(conn, &utls.Config{ServerName: host}, utls.HelloChrome_Auto)
-	if err := uconn.BuildHandshakeState(); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	for _, ext := range uconn.Extensions {
-		if alpn, ok := ext.(*utls.ALPNExtension); ok {
-			alpn.AlpnProtocols = []string{"http/1.1"}
-			break
-		}
-	}
-	if err := uconn.HandshakeContext(ctx); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	return uconn, nil
+	return dialTLSWithALPN(ctx, network, addr, []string{"http/1.1"})
 }
 
 // h2FallbackTransport routes HTTPS requests through http2.Transport for h2
@@ -182,11 +141,11 @@ func newHTTPClient() *http.Client {
 		Jar:     jar,
 		Timeout: 30 * time.Second,
 		Transport: &uaTransport{
-			wrapped: &h2FallbackTransport{
+			wrapped: newRateLimitTransport(&h2FallbackTransport{
 				h2:      h2t,
 				h1:      h1t,
 				h1hosts: make(map[string]struct{}),
-			},
+			}),
 		},
 	}
 }
@@ -199,6 +158,12 @@ type Client struct {
 	// Background API key validation state (atomic, written once per session).
 	apiKeyStatus   int32 // stores APIKeyStatus constants
 	apiKeyChecking int32 // 0 = not started, 1 = started (CAS gate)
+
+	// purchaseCounts maps purchase_id to the number of distinct games it
+	// covers, from the last full owned-keys scan. Lets a game_id-filtered
+	// owned-keys answer still tell bundles from individual purchases.
+	ownedMu        sync.Mutex
+	purchaseCounts map[int64]int
 }
 
 func NewClient() *Client {

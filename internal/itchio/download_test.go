@@ -1,16 +1,23 @@
 package itchio_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 )
 
 func TestDownloadFreeStreamsFile(t *testing.T) {
@@ -305,7 +312,11 @@ func TestFetchOwnedKeys_Pagination(t *testing.T) {
 // non-ROMs are skipped, and unknown extensions are returned with NeedsFormat=true.
 func TestFetchUploadsForKey_ROM(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/1/mykey/game/123/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/123/uploads", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer mykey" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		if r.URL.Query().Get("download_key_id") != "456" {
 			http.Error(w, "bad download_key_id", http.StatusForbidden)
 			return
@@ -314,16 +325,16 @@ func TestFetchUploadsForKey_ROM(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"uploads": []map[string]interface{}{
 				{"id": 1, "filename": "game.gbc"},
-				{"id": 2, "filename": "manual.pdf"},  // skipped
+				{"id": 2, "filename": "manual.pdf"}, // skipped
 				{"id": 3, "filename": "game.gb"},
-				{"id": 4, "filename": "patch.ips"},   // NeedsFormat=true
+				{"id": 4, "filename": "patch.ips"}, // NeedsFormat=true
 			},
 		})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := itchio.NewClientWithBase(srv.URL)
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
 	uploads, err := c.FetchUploadsForKey("mykey", "123", "456")
 	if err != nil {
 		t.Fatalf("FetchUploadsForKey: %v", err)
@@ -353,7 +364,7 @@ func TestFetchUploadsForKey_ROM(t *testing.T) {
 // without error (empty slice returned, no panic).
 func TestFetchUploadsForKey_Empty(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/1/k/game/1/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/1/uploads", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// itch.io returns an object instead of array when uploads list is empty.
 		fmt.Fprint(w, `{"uploads":{}}`)
@@ -361,7 +372,7 @@ func TestFetchUploadsForKey_Empty(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := itchio.NewClientWithBase(srv.URL)
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
 	uploads, err := c.FetchUploadsForKey("k", "1", "99")
 	if err != nil {
 		t.Fatalf("FetchUploadsForKey: %v", err)
@@ -376,7 +387,7 @@ func TestFetchUploadsForKey_Empty(t *testing.T) {
 // DownloadAuthUpload).
 func TestFetchUploadsForKey_UploadIDPassedThrough(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/1/k/game/5/uploads", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/games/5/uploads", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"uploads": []map[string]interface{}{
@@ -387,7 +398,7 @@ func TestFetchUploadsForKey_UploadIDPassedThrough(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := itchio.NewClientWithBase(srv.URL)
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
 	uploads, err := c.FetchUploadsForKey("k", "5", "1")
 	if err != nil {
 		t.Fatalf("FetchUploadsForKey: %v", err)
@@ -442,32 +453,216 @@ func TestResolveFreeURL(t *testing.T) {
 	}
 }
 
-func TestResolveAuthURL(t *testing.T) {
-	const uploadID = "555"
-	const downloadKeyID = "777"
+// The v2 download endpoint answers with a redirect to the CDN. It must not be
+// followed: the caller needs the URL first, and the key must not reach the CDN.
+func TestResolveAuthURL_readsRedirectWithoutFollowing(t *testing.T) {
+	var cdnHit, sessions int32
+	var gotQuery url.Values
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&cdnHit, 1)
+	}))
+	defer cdn.Close()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Errorf("expected GET, got %s", r.Method)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/games/42/download-sessions", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&sessions, 1)
+		r.ParseForm()
+		if r.Method != http.MethodPost || r.FormValue("download_key_id") != "777" || r.Header.Get("Authorization") != "Bearer apikey" {
+			t.Errorf("bad session request: %s key=%q auth=%q", r.Method, r.FormValue("download_key_id"), r.Header.Get("Authorization"))
 		}
-		if !strings.Contains(r.URL.Path, uploadID) {
-			t.Errorf("URL path %q does not contain upload ID %q", r.URL.Path, uploadID)
+		fmt.Fprint(w, `{"uuid":"sess-1"}`)
+	})
+	mux.HandleFunc("/uploads/555/download", func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		if r.Header.Get("Authorization") != "Bearer apikey" {
+			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
 		}
-		if !strings.Contains(r.URL.RawQuery, downloadKeyID) {
-			t.Errorf("URL query %q does not contain download key ID %q", r.URL.RawQuery, downloadKeyID)
+		http.Redirect(w, r, cdn.URL+"/signed/file.zip?token=abc", http.StatusFound)
+	})
+	api := httptest.NewServer(mux)
+	defer api.Close()
+
+	client := itchio.NewClientWithBaseAndButler(api.URL, api.URL)
+	session := roms.NewDownloadSession("42", "777")
+	for i := 0; i < 2; i++ { // two resolves of one install share one session
+		got, err := client.ResolveAuthURL("apikey", "555", session)
+		if err != nil {
+			t.Fatalf("ResolveAuthURL: %v", err)
+		}
+		if got != cdn.URL+"/signed/file.zip?token=abc" {
+			t.Errorf("cdnURL = %q", got)
+		}
+	}
+	if gotQuery.Get("download_key_id") != "777" || gotQuery.Get("uuid") != "sess-1" {
+		t.Errorf("download query = %v, want download_key_id=777 uuid=sess-1", gotQuery)
+	}
+	if strings.Contains(gotQuery.Encode(), "apikey") {
+		t.Error("API key leaked into the URL")
+	}
+	if sessions != 1 {
+		t.Errorf("created %d download sessions, want 1 per install", sessions)
+	}
+	if cdnHit != 0 {
+		t.Error("the redirect to the CDN was followed")
+	}
+}
+
+// A session that cannot be created must not block the download.
+func TestResolveAuthURL_worksWithoutSession(t *testing.T) {
+	var gotQuery url.Values
+	mux := http.NewServeMux()
+	mux.HandleFunc("/games/9/download-sessions", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"errors":["nope"]}`, http.StatusBadRequest)
+	})
+	mux.HandleFunc("/uploads/1/download", func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		http.Redirect(w, r, "https://cdn.example.com/f.gb", http.StatusFound)
+	})
+	api := httptest.NewServer(mux)
+	defer api.Close()
+
+	client := itchio.NewClientWithBaseAndButler(api.URL, api.URL)
+	got, err := client.ResolveAuthURL("k", "1", roms.NewDownloadSession("9", ""))
+	if err != nil || got != "https://cdn.example.com/f.gb" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if gotQuery.Has("uuid") || gotQuery.Has("download_key_id") {
+		t.Errorf("query = %v, want neither uuid nor download_key_id for a free game without a session", gotQuery)
+	}
+}
+
+func TestResolveAuthURL_jsonAnswerStillWorks(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/download-sessions") {
+			fmt.Fprint(w, `{"uuid":"u"}`)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"url":"https://cdn.example.com/auth-file.zip"}`)
+		fmt.Fprint(w, `{"url":"https://cdn.example.com/auth-file.zip"}`)
+	}))
+	defer api.Close()
+
+	client := itchio.NewClientWithBaseAndButler(api.URL, api.URL)
+	got, err := client.ResolveAuthURL("k", "555", roms.NewDownloadSession("1", "2"))
+	if err != nil || got != "https://cdn.example.com/auth-file.zip" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+func TestResolveAuthURL_forbidden(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/download-sessions") {
+			fmt.Fprint(w, `{"uuid":"u"}`)
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"errors":["invalid download key"]}`)
+	}))
+	defer api.Close()
+
+	client := itchio.NewClientWithBaseAndButler(api.URL, api.URL)
+	if _, err := client.ResolveAuthURL("k", "555", roms.NewDownloadSession("1", "2")); err == nil || !strings.Contains(err.Error(), "not owned") {
+		t.Errorf("err = %v, want a not-owned error", err)
+	}
+}
+
+// Free games are listed through the API without a download key.
+func TestFetchUploadsForKey_freeGameNoKey(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/games/5033642/uploads" || r.URL.RawQuery != "" {
+			t.Errorf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		// traits is {} when empty and an array otherwise — must not break decoding.
+		fmt.Fprint(w, `{"uploads":[
+			{"id":19334859,"filename":"CrissCrossCove.gb","size":524288,"md5_hash":"abc","updated_at":"2026-09-01T10:00:00Z","traits":{}},
+			{"id":19334853,"filename":"CrissCrossCove.pocket","traits":["demo"]},
+			{"id":7,"filename":"build.gbc","build_id":1234,"traits":{}}]}`)
+	}))
+	defer api.Close()
+
+	c := itchio.NewClientWithBaseAndButler(api.URL, api.URL)
+	uploads, err := c.FetchUploadsForKey("k", "5033642", "")
+	if err != nil {
+		t.Fatalf("FetchUploadsForKey: %v", err)
+	}
+	if len(uploads) != 2 {
+		t.Fatalf("got %d uploads, want the .gb and .gbc (.pocket skipped): %+v", len(uploads), uploads)
+	}
+	gb := uploads[0]
+	want := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
+	if gb.Size != 524288 || gb.MD5 != "abc" || !gb.UpdatedAt.Equal(want) {
+		t.Errorf("update fields not decoded: %+v", gb)
+	}
+	if uploads[1].BuildID != 1234 {
+		t.Errorf("BuildID = %d, want 1234", uploads[1].BuildID)
+	}
+}
+
+// When itch.io applies the game_id filter, bundle sizes come from the last
+// full library scan instead of the filtered answer.
+func TestFetchOwnedKeys_serverFilteredUsesFullScanForBundleSize(t *testing.T) {
+	library := []map[string]interface{}{
+		{"id": 10, "game_id": 42, "purchase_id": 100, "created_at": "2026-01-01T00:00:00Z"},
+		{"id": 20, "game_id": 42, "purchase_id": 200, "created_at": "2026-03-01T00:00:00Z"},
+		{"id": 30, "game_id": 99, "purchase_id": 200, "created_at": "2026-03-01T00:00:00Z"},
+	}
+	var fullScans int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/profile/owned-keys", func(w http.ResponseWriter, r *http.Request) {
+		if ids := r.URL.Query().Get("game_ids"); ids != "" {
+			want := map[string]bool{}
+			for _, id := range strings.Split(ids, ",") {
+				want[id] = true
+			}
+			var out []map[string]interface{}
+			for _, k := range library {
+				if want[fmt.Sprint(k["game_id"])] {
+					out = append(out, k)
+				}
+			}
+			w.Write(ownedKeysPage(50, out))
+			return
+		}
+		atomic.AddInt32(&fullScans, 1)
+		w.Write(ownedKeysPage(50, library))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	for i := 0; i < 2; i++ {
+		keys, err := c.FetchOwnedKeys("k", "42")
+		if err != nil {
+			t.Fatalf("FetchOwnedKeys: %v", err)
+		}
+		if len(keys) != 2 || keys[0].BundleSize != 1 || keys[1].BundleSize != 2 {
+			t.Errorf("keys = %+v, want an individual and a 2-game bundle purchase", keys)
+		}
+	}
+	if fullScans != 1 {
+		t.Errorf("full library scans = %d, want 1 (second call uses the cached counts)", fullScans)
+	}
+}
+
+// itch.io's parameter is game_ids (comma-separated), not game_id.
+func TestFetchOwnedKeys_sendsGameIDs(t *testing.T) {
+	var got url.Values // the first request; a full scan for bundle sizes may follow
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got == nil {
+			got = r.URL.Query()
+		}
+		w.Write(ownedKeysPage(50, []map[string]interface{}{
+			{"id": 1, "game_id": 42, "purchase_id": 7, "created_at": "2026-01-01T00:00:00Z"},
+		}))
 	}))
 	defer srv.Close()
 
-	client := itchio.NewClientWithBase(srv.URL)
-	cdnURL, err := client.ResolveAuthURL("apikey", uploadID, downloadKeyID)
-	if err != nil {
-		t.Fatalf("ResolveAuthURL: %v", err)
+	c := itchio.NewClientWithBaseAndButler(srv.URL, srv.URL)
+	if _, err := c.FetchOwnedKeys("k", "42"); err != nil {
+		t.Fatal(err)
 	}
-	if cdnURL != "https://cdn.example.com/auth-file.zip" {
-		t.Errorf("cdnURL = %q, want %q", cdnURL, "https://cdn.example.com/auth-file.zip")
+	if got.Get("game_ids") != "42" || got.Has("game_id") {
+		t.Errorf("query = %v, want game_ids=42 and no game_id", got)
 	}
 }
 
@@ -544,5 +739,33 @@ func TestFetchSuggestedPrice_MalformedInput(t *testing.T) {
 	}
 	if price != "" {
 		t.Errorf("price = %q, want empty string when no price input is present", price)
+	}
+}
+
+// Signed CDN URLs carry credentials in the query string; they must never
+// reach the log, including through the text of a failed request's error.
+func TestFetchFileHeader_doesNotLogSignedURL(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	logger.SetLevel(logger.LevelDebug)
+	t.Cleanup(func() { logger.SetLevel(logger.LevelInfo) })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write([]byte("PK\x03\x04"))
+	}))
+	defer srv.Close()
+	c := itchio.NewClientWithBase(srv.URL)
+	if _, err := c.FetchFileHeader(srv.URL+"/upload2/game/1/2?X-Amz-Credential=SECRET&X-Amz-Signature=SIG", 4); err != nil {
+		t.Fatal(err)
+	}
+	// A failed request: its error text must not quote the URL either.
+	_, err := c.FetchFileHeader("http://127.0.0.1:1/f?X-Amz-Credential=SECRET", 4)
+	if err == nil || strings.Contains(err.Error(), "SECRET") {
+		t.Errorf("error leaks the signed URL: %v", err)
+	}
+	if strings.Contains(buf.String(), "SECRET") || strings.Contains(buf.String(), "SIG") {
+		t.Errorf("signed URL logged:\n%s", buf.String())
 	}
 }

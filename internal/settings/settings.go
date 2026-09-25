@@ -59,16 +59,20 @@ type Config struct {
 	MusicDownload  string            `json:"music_download,omitempty"` // "auto" | "ask" | "off"
 	MusicLocation  string            `json:"music_location,omitempty"` // "auto" | "ask"
 	Pico8Core      string            `json:"pico8_core,omitempty"`     // "fakeo8" | "pico8"
+	// ShareDeviceInfo adds firmware, device and platform to the User-Agent.
+	// Default true — no omitempty so an opt-out survives save/load.
+	ShareDeviceInfo bool `json:"share_device_info"`
 }
 
 func defaults() *Config {
 	return &Config{
-		APIKey:        "",
-		ROMLocation:   "auto",
-		UnifiedNaming: true,
-		MusicDownload: "off",
-		MusicLocation: "auto",
-		Pico8Core:     "fakeo8",
+		APIKey:          "",
+		ROMLocation:     "auto",
+		UnifiedNaming:   true,
+		MusicDownload:   "off",
+		MusicLocation:   "auto",
+		Pico8Core:       "fakeo8",
+		ShareDeviceInfo: true,
 		Filter: ContentFilter{
 			AdultContent: CategoryFilter{Enabled: true},
 			HeavyThemes:  CategoryFilter{Enabled: true},

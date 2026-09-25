@@ -141,6 +141,7 @@ func (c *Client) ValidateAPIKey(apiKey string) (username string, owned []OwnedGa
 	// Step 2: page through all owned-game keys.
 	// Each entry carries a download key ID (never logged) and a public game object.
 	seen := make(map[int64]bool)
+	var raw []rawOwnedKey               // every key, for bundle sizes
 	for page := 1; page <= 20; page++ { // cap: 20 pages × 10 = 200 games
 		req, err := http.NewRequest("GET",
 			fmt.Sprintf("%s/profile/owned-keys?page=%d", c.butler, page), nil)
@@ -173,7 +174,9 @@ func (c *Client) ValidateAPIKey(apiKey string) (username string, owned []OwnedGa
 		}
 
 		var keyItems []struct {
-			Game struct {
+			GameID     int64 `json:"game_id"`
+			PurchaseID int64 `json:"purchase_id"`
+			Game       struct {
 				ID    int64  `json:"id"`
 				Title string `json:"title"`
 				URL   string `json:"url"`
@@ -188,6 +191,7 @@ func (c *Client) ValidateAPIKey(apiKey string) (username string, owned []OwnedGa
 			break
 		}
 		for _, k := range keyItems {
+			raw = append(raw, rawOwnedKey{GameID: k.GameID, PurchaseID: k.PurchaseID})
 			if seen[k.Game.ID] {
 				continue
 			}
@@ -198,6 +202,7 @@ func (c *Client) ValidateAPIKey(apiKey string) (username string, owned []OwnedGa
 		}
 	}
 
+	c.setPurchaseCounts(purchaseGameCounts(raw))
 	logger.Info("validate: %d owned game(s) found", len(owned))
 	return username, owned, nil
 }

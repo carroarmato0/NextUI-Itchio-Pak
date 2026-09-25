@@ -98,8 +98,8 @@ func (s *ZIPDownloadScreen) run() {
 	// Re-resolve CDN URL immediately before the download so a stale URL from
 	// the inspect step (which may have run minutes ago) does not cause a 403.
 	cdnURL := s.plan.CDNURL
-	if s.plan.Upload.DownloadKeyID != "" {
-		fresh, rerr := s.client.ResolveAuthURL(s.cfg.APIKey, s.plan.Upload.UploadID, s.plan.Upload.DownloadKeyID)
+	if s.plan.Upload.ViaAPI() {
+		fresh, rerr := s.client.ResolveAuthURL(s.cfg.APIKey, s.plan.Upload.UploadID, s.plan.Upload.Session)
 		if rerr != nil {
 			logger.Warn("zip-download: re-resolve auth URL failed (%v), using cached URL", rerr)
 		} else {

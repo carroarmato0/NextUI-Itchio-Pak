@@ -8,3 +8,7 @@ var ErrCloudflareBlocked = errors.New("Cloudflare blocked the request (HTTP 403)
 
 // ErrGameRemoved is returned when the game page responds with HTTP 404 or 410.
 var ErrGameRemoved = errors.New("game removed (HTTP 404/410)")
+
+// ErrFeedPageNotFound is returned when a feed page responds with HTTP 404 or
+// 410. Past page 1 it means the feed has ended, not that anything failed.
+var ErrFeedPageNotFound = errors.New("feed page not found (HTTP 404/410)")

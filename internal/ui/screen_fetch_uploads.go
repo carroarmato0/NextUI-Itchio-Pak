@@ -112,8 +112,11 @@ func NewFetchUploadsScreen(
 				s.ownedKeys = ownedKeys
 				s.storeState(fetchNeedsPurchasePick)
 			}
+		} else if s.tryFreeViaAPI() {
+			// Free game listed through the API — no web download handshake.
 		} else {
-			// Free game — use the CSRF scraping path.
+			// Free game, signed out (or the API path failed) — use the CSRF
+			// scraping path.
 			itchUploads, freeErr := client.FetchUploads(game.URL)
 			err = freeErr
 			if err != nil {
@@ -141,6 +144,44 @@ func NewFetchUploadsScreen(
 	return s
 }
 
+// tryFreeViaAPI lists a free game's uploads through the itch.io API when the
+// user has a key, which skips the web download handshake (and its
+// download_url POST) entirely. It reports false — leaving the web flow to run
+// — when there is no key, no game ID, or the API gave nothing usable.
+func (s *FetchUploadsScreen) tryFreeViaAPI() bool {
+	if s.cfg.APIKey == "" || s.detail == nil || s.detail.GameID == "" {
+		return false
+	}
+	uploads, err := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, "")
+	if err != nil {
+		logger.Warn("fetch: free game via API failed, falling back to web flow: %v", err)
+		return false
+	}
+	if len(uploads) == 0 {
+		logger.Info("fetch: API lists no ROM uploads for free game_id=%s, falling back to web flow", s.detail.GameID)
+		return false
+	}
+	logger.Info("fetch: free game_id=%s listed via API (%d upload(s))", s.detail.GameID, len(uploads))
+	s.uploads = apiUploads(uploads, roms.NewDownloadSession(s.detail.GameID, ""))
+	s.storeState(fetchDone)
+	return true
+}
+
+// apiUploads converts uploads listed through the API, giving them all the
+// same download session so one install counts as one download.
+func apiUploads(in []itchio.Upload, session *roms.DownloadSession) []roms.Upload {
+	out := make([]roms.Upload, 0, len(in))
+	for _, u := range in {
+		out = append(out, roms.Upload{
+			Filename:    u.Filename,
+			UploadID:    u.UploadID,
+			NeedsFormat: u.NeedsFormat,
+			Session:     session,
+		})
+	}
+	return out
+}
+
 // applyUploadsForKey fetches the upload list for a specific owned key and
 // populates s.uploads. Called either directly (single key) or after the user
 // picks a purchase from PurchasePickerScreen.
@@ -153,14 +194,7 @@ func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 		s.storeState(fetchError)
 		return
 	}
-	for _, u := range authUploads {
-		s.uploads = append(s.uploads, roms.Upload{
-			Filename:      u.Filename,
-			UploadID:      u.UploadID,
-			DownloadKeyID: downloadKeyID,
-			NeedsFormat:   u.NeedsFormat,
-		})
-	}
+	s.uploads = apiUploads(authUploads, roms.NewDownloadSession(s.detail.GameID, downloadKeyID))
 	if len(s.uploads) == 0 {
 		logger.Warn("fetch: no downloadable uploads found for game (auth path)")
 		s.err = fmt.Errorf("no downloadable files found for this game")

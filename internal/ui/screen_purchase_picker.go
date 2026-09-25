@@ -169,15 +169,7 @@ func (s *PurchasePickerScreen) choosePurchase(key itchio.OwnedKey) Screen {
 		return s.prev
 	}
 
-	var uploads []roms.Upload
-	for _, u := range authUploads {
-		uploads = append(uploads, roms.Upload{
-			Filename:      u.Filename,
-			UploadID:      u.UploadID,
-			DownloadKeyID: downloadKeyID,
-			NeedsFormat:   u.NeedsFormat,
-		})
-	}
+	uploads := apiUploads(authUploads, roms.NewDownloadSession(s.detail.GameID, downloadKeyID))
 
 	if len(uploads) == 0 {
 		logger.Warn("purchase-picker: no downloadable uploads for key id=%d", key.ID)

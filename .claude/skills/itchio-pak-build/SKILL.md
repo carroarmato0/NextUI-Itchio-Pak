@@ -106,7 +106,7 @@ ghcr.io/loveretro/my355-toolchain:latest
 
 These contain SDL2 compiled for the target device (no X11/PulseAudio/Wayland —
 only libm/libdl/libpthread/libc). `docker/Dockerfile.toolchain` takes
-`--build-arg TOOLCHAIN=<code>` and layers Go 1.22 (from Alpine) on top, tagging
+`--build-arg TOOLCHAIN=<code>` and layers Go 1.27 (from Alpine) on top, tagging
 the result `itchio-toolchain-<toolchain>`. The tg5040 toolchain ships
 `libSDL2_ttf` but no `SDL2_ttf.pc`; the Dockerfile writes a minimal one so
 pkg-config can find it.
@@ -143,7 +143,7 @@ manage their own containers.
 
 ### Images
 
-- `itchio-dev` — `docker/Dockerfile.dev`, Go 1.22 + SDL2 dev libs (x86_64 Debian Bullseye). Used by `test.sh` and `build.sh native`.
+- `itchio-dev` — `docker/Dockerfile.dev`, Go 1.27 + SDL2 dev libs (x86_64 Debian Bookworm; host-only, so its glibc never reaches a device). Used by `test.sh` and `build.sh native`.
 - `itchio-toolchain-{tg5040,tg5050,my355}` — `docker/Dockerfile.toolchain`.
 
 Both are built and cached automatically on first use. `make clean` removes them,
