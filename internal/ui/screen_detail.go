@@ -391,7 +391,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		dlPillY := (headerH - badgePillH) / 2
 		dlBG := r.Theme.SuccessBG()
 		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
-		dlTx := r.Theme.Success()
+		dlTx := r.Theme.SuccessPillText()
 		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
 		badgeRightEdge = dlPillX - 6
 	}
@@ -555,7 +555,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			pillY := y + (fontH+4-pillH)/2
 			prBG := r.Theme.PriceBG()
 			r.DrawPill(pillX, pillY, pillW, pillH, prBG[0], prBG[1], prBG[2])
-			prTx := r.Theme.Price()
+			prTx := r.Theme.PricePillText()
 			r.DrawSmallTextCenteredInRect(priceStr, pillX, pillY, pillW, pillH, prTx[0], prTx[1], prTx[2])
 		}
 		y += fontH + 14
@@ -766,7 +766,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		dlPillY := (headerH - badgePillH) / 2
 		dlBG := r.Theme.SuccessBG()
 		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
-		dlTx := r.Theme.Success()
+		dlTx := r.Theme.SuccessPillText()
 		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
 	}
 	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
