@@ -234,11 +234,10 @@ const PerPage = 36 // itch.io XML feeds return 36 items per page
 // FetchGames fetches one page of the GB Studio feed. It is used as a quick
 // live-feed preview when no local cache exists yet; the full multi-platform
 // catalogue is built by FetchAllGames.
-func (c *Client) FetchGames(page int, query string) ([]Game, error) {
+// FetchGames reads one page of the GB Studio feed. (itch.io's browse pages
+// take no search parameter; searching happens on the cached game list.)
+func (c *Client) FetchGames(page int) ([]Game, error) {
 	url := fmt.Sprintf("%s/games/made-with-gb-studio.xml?page=%d", c.base, page)
-	if query != "" {
-		url += "&q=" + query
-	}
 	return c.FetchGamesFromURL(url)
 }
 
