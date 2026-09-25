@@ -102,6 +102,7 @@ func (s *SignInScreen) start() {
 			return
 		}
 		s.cfg.SetSignedIn(token, username, time.Now())
+		s.client.SetAuthToken(token)
 		s.cfg.OnboardingSeen = true
 		if err := s.cfg.Save(s.cfgPath); err != nil {
 			logger.Error("signin: could not save the sign-in: %v", err)

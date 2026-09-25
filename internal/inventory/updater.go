@@ -3,6 +3,7 @@ package inventory
 import (
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -107,20 +108,56 @@ func (s *UpdateService) runCheck() {
 	}
 	s.inv.mu.Unlock()
 
-	logger.Info("update-svc: checking %d inventory entries", len(urls))
+	token := s.client.AuthToken()
+	logger.Info("update-svc: checking %d inventory entries (signed in: %v)", len(urls), token != "")
 
-	// Collect upstream file lists during the check loop but do NOT write them
-	// to the inventory yet. Applying them all at once at the end means the UI
-	// never sees a state where badges have changed but sort order has not.
-	pendingFiles := make(map[string][]UpstreamFile)
+	// Pass 1: data.json for every game — public, and it triggers nothing on
+	// itch.io's side. It says whether the game still exists, its ID, and
+	// whether it is paid.
+	games := make(map[string]*itchio.GameData, len(urls))
+	var paidIDs []string
 	for _, gameURL := range urls {
-		if files := s.checkEntry(gameURL); files != nil {
-			pendingFiles[gameURL] = files
+		s.repairCoverArt(gameURL)
+		d, err := s.client.FetchGameData(gameURL)
+		switch {
+		case isGameRemoved(err):
+			s.inv.MarkRemoved(gameURL)
+			logger.Warn("update-svc: game removed (404) %s", gameURL)
+			continue
+		case err != nil:
+			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
+			continue
+		}
+		games[gameURL] = d
+		if token != "" && d.Pricing() == itchio.PricingPaid && d.ID != 0 {
+			paidIDs = append(paidIDs, strconv.FormatInt(d.ID, 10))
 		}
 	}
 
-	for gameURL, files := range pendingFiles {
-		s.inv.SetUpstreamFiles(gameURL, files)
+	// Pass 2: one owned-keys request for every installed paid game.
+	var keys map[string]string
+	if len(paidIDs) > 0 {
+		var err error
+		if keys, err = s.client.OwnedKeysForGames(token, paidIDs); err != nil {
+			logger.Warn("update-svc: owned keys unavailable, paid games use the page: %v", err)
+		}
+	}
+
+	// Pass 3: the file list of each game. Collected here and applied all at
+	// once, so the UI never sees badges change before the sort order does.
+	type result struct {
+		source string
+		files  []UpstreamFile
+	}
+	pending := make(map[string]result)
+	for gameURL, d := range games {
+		if source, files := s.checkGame(gameURL, d, token, keys); files != nil {
+			pending[gameURL] = result{source, files}
+		}
+	}
+
+	for gameURL, r := range pending {
+		s.inv.SetUpstreamFilesFrom(gameURL, r.source, r.files)
 	}
 	if err := s.inv.Save(s.inventoryPath); err != nil {
 		logger.Error("update-svc: save: %v", err)
@@ -129,23 +166,18 @@ func (s *UpdateService) runCheck() {
 	logger.Info("update-svc: check complete")
 }
 
-// checkEntry runs cover-art repair and the upstream check for one game.
-// For free games it returns the upstream file list to apply later (batched);
-// for paid games it returns nil.
-func (s *UpdateService) checkEntry(gameURL string) []UpstreamFile {
+// repairCoverArt downloads cover art that has gone missing from disk.
+func (s *UpdateService) repairCoverArt(gameURL string) {
 	s.inv.mu.Lock()
 	entry, ok := s.inv.Entries[gameURL]
 	if !ok {
 		s.inv.mu.Unlock()
-		return nil
+		return
 	}
-	// Snapshot without holding the lock during I/O.
 	coverURL := entry.CoverURL
-	isFree := entry.IsFree
 	files := append([]DownloadedFile(nil), entry.Files...)
 	s.inv.mu.Unlock()
 
-	// 1. Cover art repair.
 	for _, f := range files {
 		artPath := CoverArtPath(coverURL, f.DestPath)
 		if artPath == "" {
@@ -160,13 +192,6 @@ func (s *UpdateService) checkEntry(gameURL string) []UpstreamFile {
 			logger.Error("update-svc: cover art repair failed for %s: %v", f.Filename, err)
 		}
 	}
-
-	// 2. Upstream check.
-	if isFree {
-		return s.checkFreeGame(gameURL, files)
-	}
-	s.checkPaidGame(gameURL)
-	return nil
 }
 
 // isGameRemoved reports whether err indicates a 404 or 410 HTTP response.
@@ -174,10 +199,29 @@ func isGameRemoved(err error) bool {
 	return errors.Is(err, itchio.ErrGameRemoved)
 }
 
-// checkFreeGame fetches the current upload list and returns it for the caller
-// to apply via SetUpstreamFiles (batched at end-of-check). Returns nil on error.
-func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []DownloadedFile) []UpstreamFile {
-	uploads, err := s.client.FetchUploads(gameURL)
+// checkGame reads one game's upstream files and returns them with their
+// source, or nil when nothing should be recorded.
+//
+// Signed in, the API lists them — for a paid game with the owned download
+// key. That is what itch.io asked for: no browser-style requests, and the
+// API says when a file's content changes even if its name does not. Signed
+// out, or for a paid game not owned, the public page's list is read. Neither
+// path ever starts the web download flow.
+func (s *UpdateService) checkGame(gameURL string, d *itchio.GameData, token string, keys map[string]string) (string, []UpstreamFile) {
+	if token != "" && d.ID != 0 {
+		id := strconv.FormatInt(d.ID, 10)
+		key, owned := keys[id]
+		if d.Pricing() != itchio.PricingPaid || owned {
+			files, err := s.apiFiles(gameURL, id, token, key)
+			if err == nil {
+				return s.recordFiles(gameURL, SourceAPI, files)
+			}
+			logger.Warn("update-svc: API listing failed for %s, using the page: %v", gameURL, err)
+		} else {
+			logger.Debug("update-svc: %s is paid and not owned; using the page", gameURL)
+		}
+	}
+	names, err := s.client.FetchPageUploadNames(gameURL)
 	if err != nil {
 		if isGameRemoved(err) {
 			s.inv.MarkRemoved(gameURL)
@@ -185,77 +229,104 @@ func (s *UpdateService) checkFreeGame(gameURL string, downloadedFiles []Download
 		} else {
 			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
 		}
-		return nil
+		return "", nil
 	}
-
-	// A reachable game page that offers zero downloads is effectively gone —
-	// the only non-404 case that counts as a removal.
-	if len(uploads) == 0 {
-		s.inv.MarkRemoved(gameURL)
-		logger.Warn("update-svc: game page offers no downloads %s", gameURL)
-		return nil
+	files := make([]UpstreamFile, 0, len(names))
+	for _, n := range names {
+		files = append(files, UpstreamFile{Filename: n, SeenAt: time.Now()})
 	}
+	return s.recordFiles(gameURL, SourcePage, files)
+}
 
-	upstreamFiles := make([]UpstreamFile, 0, len(uploads))
-	upstreamNames := make(map[string]bool, len(uploads)*2)
+// apiFiles lists a game's files through the API. The name recorded is the
+// one itch.io shows (the display name when set), the same the page shows, so
+// both sources describe a file the same way. Browser-played builds are not
+// something a handheld downloads, so they are left out.
+func (s *UpdateService) apiFiles(gameURL, gameID, token, keyID string) ([]UpstreamFile, error) {
+	uploads, err := s.client.FetchUploadsForKey(token, gameID, keyID)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]UpstreamFile, 0, len(uploads))
 	for _, u := range uploads {
-		upstreamFiles = append(upstreamFiles, UpstreamFile{
-			Filename: u.Filename,
-			UploadID: u.UploadID,
-			SeenAt:   time.Now(), // preserved for known files by SetUpstreamFiles
+		if u.Type == "html" {
+			continue
+		}
+		name := u.DisplayName
+		if name == "" {
+			name = u.Filename
+		}
+		files = append(files, UpstreamFile{
+			Filename: name, UploadID: u.UploadID, SeenAt: time.Now(), Fingerprint: fingerprint(u),
 		})
-		upstreamNames[u.Filename] = true
+	}
+	logger.Debug("update-svc: %s — %d file(s) via the API", gameURL, len(files))
+	return files, nil
+}
+
+// fingerprint identifies an upload's content: its butler build when it has
+// one, else its checksum, else its modification time and size.
+func fingerprint(u itchio.Upload) string {
+	switch {
+	case u.BuildID != 0:
+		return "build:" + strconv.FormatInt(u.BuildID, 10)
+	case u.MD5 != "":
+		return "md5:" + u.MD5
+	case !u.UpdatedAt.IsZero():
+		return "upd:" + u.UpdatedAt.UTC().Format(time.RFC3339) + "/" + strconv.FormatInt(u.Size, 10)
+	}
+	return ""
+}
+
+// recordFiles applies the removal rules to a file list and returns it for
+// the batched write.
+func (s *UpdateService) recordFiles(gameURL, source string, files []UpstreamFile) (string, []UpstreamFile) {
+	// A reachable game that offers zero downloads is effectively gone — the
+	// only non-404 case that counts as a removal.
+	if len(files) == 0 {
+		s.inv.MarkRemoved(gameURL)
+		logger.Warn("update-svc: game offers no downloads %s", gameURL)
+		return "", nil
+	}
+	s.logSuperseded(gameURL, files)
+	// Reachable and offering downloads — clear any stale removal state.
+	s.inv.MarkReachable(gameURL)
+	logger.Debug("update-svc: %s — %d upstream file(s) recorded from %s", gameURL, len(files), source)
+	return source, files
+}
+
+// logSuperseded notes (informationally) downloaded files no longer offered.
+// This is NOT a removal: a version bump replaces the old upload with a new one
+// (e.g. "Moss Moss 1.3.zip" → "Moss Moss 1.4.zip"), which surfaces to the user
+// as a pending update via HasPendingUpdates. Music tracks extracted from ZIPs
+// are never listed as upload filenames, so they are skipped.
+func (s *UpdateService) logSuperseded(gameURL string, upstream []UpstreamFile) {
+	names := make(map[string]bool, len(upstream)*2)
+	for _, u := range upstream {
+		names[u.Filename] = true
 		if stem := strings.TrimSuffix(u.Filename, romFileExt(u.Filename)); stem != u.Filename {
-			upstreamNames[stem] = true
+			names[stem] = true
 		}
 	}
-
-	// Log (informationally) any downloaded file that is no longer offered upstream.
-	// This is NOT a removal: a version bump replaces the old upload with a new one
-	// (e.g. "Moss Moss 1.3.zip" → "Moss Moss 1.4.zip"), which surfaces to the user
-	// as a pending update via HasPendingUpdates. The game page still returns files,
-	// so it is reachable. Music tracks extracted from ZIPs are never listed as
-	// upload filenames, so skip them.
-	for _, f := range downloadedFiles {
+	s.inv.mu.Lock()
+	var downloaded []DownloadedFile
+	if e, ok := s.inv.Entries[gameURL]; ok {
+		downloaded = append(downloaded, e.Files...)
+	}
+	s.inv.mu.Unlock()
+	for _, f := range downloaded {
 		if f.FileType == FileTypeMusic {
 			continue
 		}
 		// For files extracted from archives (ZIP/7z), check the source archive
-		// name against upstream rather than the extracted ROM's renamed filename
-		// (which may be entirely different due to unified naming).
+		// name rather than the extracted ROM's (possibly renamed) filename.
 		checkName := f.Filename
 		if f.SourceArchive != "" {
 			checkName = f.SourceArchive
 		}
 		stem := strings.TrimSuffix(checkName, romFileExt(checkName))
-		if !upstreamNames[checkName] && !upstreamNames[stem] {
+		if !names[checkName] && !names[stem] {
 			logger.Info("update-svc: downloaded file %q superseded upstream for %s (update available)", checkName, gameURL)
 		}
 	}
-
-	// Game page is reachable and offers downloads — clear any stale removal state.
-	s.inv.MarkReachable(gameURL)
-	logger.Debug("update-svc: %s — %d upstream file(s) recorded", gameURL, len(upstreamFiles))
-	return upstreamFiles
-}
-
-func (s *UpdateService) checkPaidGame(gameURL string) {
-	_, err := s.client.FetchGameDetail(gameURL)
-	if err != nil {
-		if isGameRemoved(err) {
-			s.inv.MarkRemoved(gameURL)
-			logger.Warn("update-svc: paid game removed (404) %s", gameURL)
-		} else {
-			logger.Warn("update-svc: transient error for paid game %s: %v", gameURL, err)
-		}
-		return
-	}
-	s.inv.MarkReachable(gameURL)
-
-	s.inv.mu.Lock()
-	if e, ok := s.inv.Entries[gameURL]; ok {
-		e.UpdateCheckedAt = time.Now()
-	}
-	s.inv.mu.Unlock()
-	logger.Debug("update-svc: paid game %s reachable, no file diff", gameURL)
 }

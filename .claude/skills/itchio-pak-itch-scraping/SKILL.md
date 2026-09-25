@@ -30,6 +30,25 @@ still needed for the description, bundle names, browser-only detection and
 the CSRF token of the web download flow. If data.json fails, the page's own
 scraped values are kept, so a data.json outage degrades nothing.
 
+## Update checks (internal/inventory/updater.go, 1.1.0+)
+
+Never start the web download flow — no `download_url` POST (itch.io, issue #4).
+1. `data.json` for every installed game: 404 → removed; gives the ID and pricing.
+2. Signed in: one `owned-keys?game_ids=…` for all installed paid games, then
+   `GET /games/{id}/uploads` (with the key for paid). Each upload is recorded by
+   its **display name** when set (the same name the public page shows) plus a
+   fingerprint (build ID, else md5, else updated_at+size), so a same-name
+   re-upload is detected. `type: html` uploads are skipped.
+3. Signed out, paid-not-owned, or the API refused: the public page's upload
+   list (`FetchPageUploadNames`, a plain GET) — display names, no fingerprints.
+4. The first check from a different source (page ↔ API) only records a
+   baseline (`Entry.UpstreamSource`): the API lists uploads the page hides, so
+   comparing across sources would invent updates. Files match by upload ID
+   when both sides have one, else by name. A re-download clears `Changed`.
+
+The background checker reads the token from `Client.AuthToken()`, set at
+startup and on every sign-in/out — never from cfg, which the UI goroutine owns.
+
 ## Free Game Download Flow (5 steps)
 
 ```

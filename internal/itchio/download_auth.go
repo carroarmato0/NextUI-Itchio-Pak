@@ -313,12 +313,14 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	// "traits" is deliberately not decoded: it is {} when empty and an array
 	// otherwise, the same object-vs-array quirk as owned-keys.
 	var items []struct {
-		ID        int64     `json:"id"`
-		Filename  string    `json:"filename"`
-		Size      int64     `json:"size"`
-		MD5       string    `json:"md5_hash"`
-		BuildID   int64     `json:"build_id"`
-		UpdatedAt time.Time `json:"updated_at"`
+		ID          int64     `json:"id"`
+		Filename    string    `json:"filename"`
+		DisplayName string    `json:"display_name"`
+		Type        string    `json:"type"`
+		Size        int64     `json:"size"`
+		MD5         string    `json:"md5_hash"`
+		BuildID     int64     `json:"build_id"`
+		UpdatedAt   time.Time `json:"updated_at"`
 	}
 	if len(envelope.Uploads) > 0 && envelope.Uploads[0] == '[' {
 		if err := json.Unmarshal(envelope.Uploads, &items); err != nil {
@@ -331,12 +333,14 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	var uploads []Upload
 	for _, u := range items {
 		up := Upload{
-			Filename:  u.Filename,
-			UploadID:  strconv.FormatInt(u.ID, 10),
-			Size:      u.Size,
-			MD5:       u.MD5,
-			BuildID:   u.BuildID,
-			UpdatedAt: u.UpdatedAt,
+			DisplayName: u.DisplayName,
+			Type:        u.Type,
+			Filename:    u.Filename,
+			UploadID:    strconv.FormatInt(u.ID, 10),
+			Size:        u.Size,
+			MD5:         u.MD5,
+			BuildID:     u.BuildID,
+			UpdatedAt:   u.UpdatedAt,
 		}
 		ext := strings.ToLower(filepath.Ext(u.Filename))
 		if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".nes" || ext == ".md" || ext == ".gen" || ext == ".smd" || ext == ".zip" {
