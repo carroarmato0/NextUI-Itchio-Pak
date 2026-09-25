@@ -15,6 +15,21 @@ GET https://itch.io/games/made-with-gb-studio.xml?page=N
 - Cover image URL is embedded in the `<description>` HTML — parse with regex or XML
 - Author derived from subdomain: `https://{author}.itch.io/{game}`
 
+## Game details: data.json first, the page for the rest (1.1.0+)
+
+`GET https://{author}.itch.io/{game}/data.json` — public, no sign-in, added to
+by itch.io for this app. `FetchGameData` / `applyGameData` take from it:
+`id` (GameID), `tags`, `screenshots` (347x500, as the page), and pricing —
+`price` absent = free, `"$0.00"` = name-your-own-price, else paid (plus
+`original_price` and `sale` during a sale) — and `suggested_price`, which
+replaced the old `/purchase` page scrape. 404 = removed; a renamed game
+redirects and `links.self` is its new address.
+
+`FetchGameDetail` fetches data.json and the page in parallel. The page is
+still needed for the description, bundle names, browser-only detection and
+the CSRF token of the web download flow. If data.json fails, the page's own
+scraped values are kept, so a data.json outage degrades nothing.
+
 ## Free Game Download Flow (5 steps)
 
 ```

@@ -1,0 +1,36 @@
+{
+    "price": "$0.00",
+    "authors": [
+        {
+            "name": "BenJelter",
+            "url": "https://benjelter.itch.io"
+        }
+    ],
+    "screenshots": [
+        "https://img.itch.zone/aW1hZ2UvODUwODkyLzQ3OTQyMTIucG5n/347x500/YvsHdj.png",
+        "https://img.itch.zone/aW1hZ2UvODUwODkyLzQ3OTQyMTcucG5n/347x500/XWowue.png",
+        "https://img.itch.zone/aW1hZ2UvODUwODkyLzQ3OTQyMTgucG5n/347x500/rZKzo8.png",
+        "https://img.itch.zone/aW1hZ2UvODUwODkyLzQ3OTQyMTkucG5n/347x500/8Ovx5o.png"
+    ],
+    "suggested_price": "$2.00",
+    "links": {
+        "self": "https://benjelter.itch.io/opossum-country",
+        "comments": "https://benjelter.itch.io/opossum-country/comments"
+    },
+    "cover_image": "https://img.itch.zone/aW1nLzQ3OTQxNzYuZ2lm/original/rsKsF9.gif",
+    "id": 850892,
+    "tags": [
+        "2d",
+        "adventure",
+        "controller",
+        "gameboy",
+        "gameboy-rom",
+        "gbstudio",
+        "homebrew",
+        "horror",
+        "psychological-horror",
+        "screamfmjam",
+        "singleplayer"
+    ],
+    "title": "Opossum Country"
+}

@@ -71,7 +71,58 @@ var (
 	dollarsRegex = regexp.MustCompile(`class="[^"]*\bdollars\b[^"]*"`)
 )
 
+// FetchGameDetail reads a game page and its data.json. data.json supplies the
+// game ID, tags, screenshots, pricing and suggested price; the page supplies
+// what only it has (description, bundle names, browser-only, the CSRF token
+// for the web download flow). If data.json cannot be read, the page's own
+// values are kept, so a data.json outage degrades nothing.
 func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
+	type dataResult struct {
+		d   *GameData
+		err error
+	}
+	dataCh := make(chan dataResult, 1)
+	go func() {
+		d, err := c.FetchGameData(gameURL)
+		dataCh <- dataResult{d, err}
+	}()
+	detail, err := c.fetchGamePage(gameURL)
+	if err != nil {
+		return nil, err
+	}
+	if r := <-dataCh; r.err != nil {
+		logger.Warn("game: data.json unavailable for %s, using the page scrape: %v", gameURL, r.err)
+	} else {
+		applyGameData(detail, r.d)
+	}
+	return detail, nil
+}
+
+// applyGameData overrides the page-scraped fields data.json covers.
+func applyGameData(detail *GameDetail, d *GameData) {
+	if d.ID != 0 {
+		detail.GameID = strconv.FormatInt(d.ID, 10)
+	}
+	if len(d.Tags) > 0 {
+		detail.PageTags = d.Tags
+	}
+	if len(d.Screenshots) > 0 {
+		detail.ScreenshotURLs = d.Screenshots
+	}
+	// A browser-only game has no buy section on the page; data.json cannot
+	// tell that apart, so the page's verdict stands for it.
+	if !detail.BrowserOnly {
+		detail.Pricing = d.Pricing()
+	}
+	if detail.Pricing == PricingNameYourOwnPrice {
+		detail.SuggestedPrice = d.SuggestedPrice
+	}
+	logger.Info("game: from data.json id=%s pricing=%d suggested=%q tags=%d screenshots=%d",
+		detail.GameID, detail.Pricing, detail.SuggestedPrice, len(detail.PageTags), len(detail.ScreenshotURLs))
+}
+
+// fetchGamePage scrapes the game page itself.
+func (c *Client) fetchGamePage(gameURL string) (*GameDetail, error) {
 	logger.Debug("game: fetching detail %s", gameURL)
 	resp, err := c.http.Get(gameURL)
 	if err != nil {
