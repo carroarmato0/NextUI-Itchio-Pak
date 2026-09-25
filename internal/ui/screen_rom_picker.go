@@ -65,6 +65,10 @@ func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 	contentTop += smallFH + 10
 
 	rowH := fontH + 14
+	var pending []inventory.UpstreamFile
+	if s.inv != nil {
+		pending = s.inv.PendingUpdateFiles(s.game.URL)
+	}
 	for i, u := range s.uploads {
 		y := contentTop + int32(i)*rowH
 		if i == s.cursor {
@@ -79,6 +83,19 @@ func (s *ROMPickerScreen) Draw(r *renderer.Renderer) {
 			tr, tg, tb = c[0], c[1], c[2]
 		}
 		r.DrawText(u.Filename, 20, y, tr, tg, tb)
+		// Mark the file(s) an update consists of, so the user can tell which
+		// one to take.
+		if badge := updateBadge(u, pending); badge != "" {
+			nw, _ := r.TextSize(u.Filename)
+			bw, bh := r.SmallTextSize(badge)
+			const bp = int32(8)
+			px, ph := 20+nw+12, bh+4
+			py := y + (fontH-ph)/2
+			wn := r.Theme.Warning()
+			r.DrawPill(px, py, bw+bp*2, ph, wn[0], wn[1], wn[2])
+			wt := r.Theme.ContrastText(wn)
+			r.DrawSmallTextCenteredInRect(badge, px, py, bw+bp*2, ph, wt[0], wt[1], wt[2])
+		}
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

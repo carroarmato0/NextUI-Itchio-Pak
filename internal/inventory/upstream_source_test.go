@@ -156,3 +156,36 @@ func TestUpstream_checkedButEmptyIsABaseline(t *testing.T) {
 		t.Error("the first file list of a previously checked paid game was reported as updates")
 	}
 }
+
+// The update emblem says an update exists; PendingUpdateFiles says which
+// files it is, so the game page can name them.
+func TestPendingUpdateFiles_namesTheFiles(t *testing.T) {
+	inv, url := installed(t, inventory.SourceAPI, []inventory.UpstreamFile{
+		{Filename: "game.gb", UploadID: "1", Fingerprint: "md5:aaa"},
+		{Filename: "manual.txt", UploadID: "2", Fingerprint: "md5:mmm"}})
+	if got := inv.PendingUpdateFiles(url); len(got) != 0 {
+		t.Fatalf("pending right after the baseline: %v", got)
+	}
+	inv.SetUpstreamFilesFrom(url, inventory.SourceAPI, []inventory.UpstreamFile{
+		{Filename: "game.gb", UploadID: "1", Fingerprint: "md5:bbb"},     // changed
+		{Filename: "manual.txt", UploadID: "2", Fingerprint: "md5:mmm"},  // unchanged
+		{Filename: "game-dx.gbc", UploadID: "3", Fingerprint: "md5:ccc"}, // new
+	})
+	got := inv.PendingUpdateFiles(url)
+	want := map[string]bool{"game.gb": true, "game-dx.gbc": true}
+	if len(got) != 2 || !want[got[0].Filename] || !want[got[1].Filename] {
+		t.Fatalf("got %+v, want game.gb (changed) and game-dx.gbc (new)", got)
+	}
+	for _, f := range got {
+		if f.Changed != (f.Filename == "game.gb") {
+			t.Errorf("%s: Changed = %v", f.Filename, f.Changed)
+		}
+	}
+	if inv.HasPendingUpdates(url) != (len(got) > 0) {
+		t.Error("HasPendingUpdates disagrees with PendingUpdateFiles")
+	}
+	inv.DismissUpdate(url)
+	if got := inv.PendingUpdateFiles(url); len(got) != 0 {
+		t.Errorf("still listed after dismissing: %v", got)
+	}
+}

@@ -662,6 +662,14 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 			// Unified naming toggle (below the combined row, if applicable)
 			y = rowY + rowH + 4
+			// Name the update, so the emblem is not the only hint: which file
+			// is new, or which one changed since it was downloaded.
+			if label := updateLabel(s.inv.PendingUpdateFiles(s.game.URL)); label != "" {
+				wn := r.Theme.Warning()
+				label = truncateSmallToWidth(r, label, usableW)
+				r.DrawSmallText(label, margin, y, wn[0], wn[1], wn[2])
+				y += smallFH + 10
+			}
 			if s.cfg.UnifiedNaming {
 				toggleLabel := "Disable title filename"
 				if entry.UnifiedNamingDisabled {

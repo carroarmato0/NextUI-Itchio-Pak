@@ -337,16 +337,16 @@ func NewListScreen(
 		} else {
 			logger.Debug("cache: file exists but contains no games, using live feed")
 		}
-		go s.loadPage(1, "")
+		go s.loadPage(1)
 		go s.buildCache()
 	}
 	return s
 }
 
-func (s *ListScreen) loadPage(page int, query string) {
+func (s *ListScreen) loadPage(page int) {
 	s.loading.Store(true)
-	logger.Debug("feed: loading page %d query=%q", page, query)
-	games, err := s.client.FetchGames(page, query)
+	logger.Debug("feed: loading page %d", page)
+	games, err := s.client.FetchGames(page)
 	if err != nil {
 		logger.Error("feed: page %d error: %v", page, err)
 	} else {
@@ -1280,7 +1280,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		// CONTROLLER_BUTTON_A (physical B = back/exit) is intentionally left unhandled
 		// here so it falls through to the exit case below.
 		if s.err != nil && ev.Button == btnA {
-			go s.loadPage(1, "")
+			go s.loadPage(1)
 			return s
 		}
 		switch ev.Button {
@@ -1540,7 +1540,7 @@ func (s *ListScreen) rebuildView() {
 	}
 	s.cursor = 0
 	if !s.cacheReady {
-		go s.loadPage(1, "")
+		go s.loadPage(1)
 	}
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }

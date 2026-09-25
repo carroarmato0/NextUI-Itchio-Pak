@@ -565,3 +565,30 @@ func TestFetchAllGames_404OnFirstPageIsAnError(t *testing.T) {
 		t.Errorf("err = %v, want ErrFeedPageNotFound", err)
 	}
 }
+
+// itch.io: tag-gba is an alias that redirects; ask for the real feed.
+func TestAllPlatforms_useCanonicalGBATag(t *testing.T) {
+	for _, p := range itchio.AllPlatforms {
+		for _, slug := range p.FeedSlugs {
+			if slug == "tag-gba" {
+				t.Error("tag-gba redirects to tag-gameboy-advance; use the canonical slug")
+			}
+		}
+	}
+}
+
+// Browse pages do not support q=, so the first page is asked for without it.
+func TestFetchGames_sendsNoQuery(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RawQuery
+		w.Write([]byte(`<?xml version="1.0"?><rss version="2.0"><channel></channel></rss>`))
+	}))
+	defer srv.Close()
+	if _, err := itchio.NewClientWithBase(srv.URL).FetchGames(1); err != nil {
+		t.Fatal(err)
+	}
+	if got != "page=1" {
+		t.Errorf("query = %q, want page=1", got)
+	}
+}
