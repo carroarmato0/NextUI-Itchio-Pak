@@ -203,6 +203,9 @@ func runSDL() {
 	}
 
 	client := itchio.NewClient()
+	// The update checker runs in the background and reads the token from the
+	// client, not from cfg, which the UI goroutine owns.
+	client.SetAuthToken(cfg.AuthToken)
 
 	cache := renderer.NewImageCache(50, client.HTTPClient())
 	defer cache.Clear()

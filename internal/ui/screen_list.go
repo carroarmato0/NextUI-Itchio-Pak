@@ -497,6 +497,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	case <-s.tokenRejectedCh:
 		// Here, on the UI goroutine that reads cfg, the write is safe.
 		s.cfg.SignOut()
+		s.client.SetAuthToken("")
 		if err := s.cfg.Save(s.cfgPath); err != nil {
 			logger.Warn("owned: save after sign-out failed: %v", err)
 		}

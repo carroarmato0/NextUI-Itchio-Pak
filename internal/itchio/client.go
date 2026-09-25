@@ -160,6 +160,8 @@ type Client struct {
 	// owned-keys answer still tell bundles from individual purchases.
 	ownedMu        sync.Mutex
 	purchaseCounts map[int64]int
+
+	authTokenField
 }
 
 func NewClient() *Client {

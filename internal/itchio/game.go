@@ -48,7 +48,9 @@ type Upload struct {
 	NeedsFormat bool   // true if extension unknown; user must choose GB, GBC, or ZIP
 
 	// Set only for uploads listed through the API; update checks use them.
-	Size      int64
+	DisplayName string // the name itch.io shows, when the uploader set one
+	Type        string // "default", "html" (played in a browser), "soundtrack"...
+	Size        int64
 	MD5       string
 	BuildID   int64 // 0 when the upload is not a butler build
 	UpdatedAt time.Time

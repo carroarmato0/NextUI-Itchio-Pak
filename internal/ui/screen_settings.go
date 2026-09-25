@@ -364,6 +364,7 @@ func (s *SettingsScreen) signOut() Screen {
 		return s
 	}
 	s.cfg.SignOut()
+	s.client.SetAuthToken("")
 	if err := s.cfg.Save(s.cfgPath); err != nil {
 		logger.Warn("settings: save after sign-out failed: %v", err)
 	}
