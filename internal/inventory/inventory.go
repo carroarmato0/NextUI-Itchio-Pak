@@ -88,8 +88,8 @@ type Entry struct {
 	RemovalDismissedAt    time.Time        `json:"removal_dismissed_at,omitempty"`
 	UnifiedNamingDisabled bool             `json:"unified_naming_disabled,omitempty"`
 	// UpstreamSource is where KnownUpstreamFiles came from (SourcePage or
-	// SourceAPI); empty in inventories written before 1.1.0, which used the
-	// page.
+	// SourceAPI); empty in inventories written before 1.1.0, which listed
+	// files from the signed download page.
 	UpstreamSource string `json:"upstream_source,omitempty"`
 }
 
@@ -427,8 +427,8 @@ func (inv *Inventory) SetUpstreamFiles(gameURL string, files []UpstreamFile) {
 // Its content changing (a new fingerprint where one was known) marks it
 // Changed.
 //
-// The first check, and the first check from a different source, only
-// record a baseline: the page and the API do not list quite the same files
+// The first check, a first check from a different source, and a check of
+// an entry with no file list yet only record a baseline: the page and the API do not list quite the same files
 // (the API includes uploads the page hides), so comparing across them would
 // report updates that are not there.
 func (inv *Inventory) SetUpstreamFilesFrom(gameURL, source string, files []UpstreamFile) {
@@ -438,11 +438,16 @@ func (inv *Inventory) SetUpstreamFilesFrom(gameURL, source string, files []Upstr
 	if !ok {
 		return
 	}
+	// "" is a 1.0.x entry, listed from the signed download page — a source
+	// of its own, since it does not show quite what the public page does.
 	prevSource := e.UpstreamSource
 	if prevSource == "" {
-		prevSource = SourcePage
+		prevSource = "download-page"
 	}
-	baseline := e.UpdateCheckedAt.IsZero() || prevSource != source
+	// A baseline when there is nothing to compare against: the first check,
+	// a check from a different source, or an entry checked before without
+	// any file list (1.0.x checked paid games that way).
+	baseline := e.UpdateCheckedAt.IsZero() || prevSource != source || len(e.KnownUpstreamFiles) == 0
 	if baseline && !e.UpdateCheckedAt.IsZero() {
 		logger.Info("inventory: %s upstream now read from %s (was %s) — recording a baseline", gameURL, source, prevSource)
 	}
