@@ -134,8 +134,11 @@ type ListScreen struct {
 	// tokenRejectedCh tells the UI goroutine that itch.io refused the saved
 	// sign-in, so it signs out where cfg is safe to write.
 	tokenRejectedCh chan struct{}
-	ownedURLs       map[string]bool
-	ownedCachePath  string
+	// newlyOwnedCh carries a game URL a detail page found owned (bought since
+	// the startup owned-list refresh) to the UI goroutine.
+	newlyOwnedCh   chan string
+	ownedURLs      map[string]bool
+	ownedCachePath string
 
 	// onOwnedReady is called after a successful sign-in or startup token check.
 	// It saves the owned cache to disk and sends the new map to ownedUpdateCh.
@@ -181,6 +184,40 @@ type ListScreen struct {
 	badgePriceCache map[string]string
 }
 
+// openDetail opens a game page that knows whether the game is owned.
+func (s *ListScreen) openDetail(g itchio.Game) Screen {
+	d := NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, g, s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
+	return d.WithOwnership(s.ownedURLs[g.URL], func(url string) {
+		select {
+		case s.newlyOwnedCh <- url:
+		default:
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	})
+}
+
+// addOwned records one more owned game, on the UI goroutine, and saves the
+// owned cache so the badge survives a restart.
+func (s *ListScreen) addOwned(url string) {
+	if s.ownedURLs[url] {
+		return
+	}
+	next := make(map[string]bool, len(s.ownedURLs)+1)
+	urls := make([]string, 0, len(s.ownedURLs)+1)
+	for u := range s.ownedURLs {
+		next[u] = true
+		urls = append(urls, u)
+	}
+	next[url] = true
+	urls = append(urls, url)
+	s.ownedURLs = next
+	if err := itchio.SaveOwnedCache(s.ownedCachePath, urls); err != nil {
+		logger.Warn("owned: failed to save owned cache: %v", err)
+	}
+	logger.Info("owned: %s added (bought since the last refresh)", url)
+	s.rebuildView()
+}
+
 // OwnedReady is the callback that takes a fresh owned-games list after a
 // sign-in, for screens opened before the list (the account prompt).
 func (s *ListScreen) OwnedReady() func([]itchio.OwnedGame) { return s.onOwnedReady }
@@ -223,6 +260,7 @@ func NewListScreen(
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
 	s.tokenRejectedCh = make(chan struct{}, 1)
+	s.newlyOwnedCh = make(chan string, 4)
 	s.ownedURLs = make(map[string]bool)
 
 	if urls, err := itchio.LoadOwnedCache(ownedCachePath); err == nil && len(urls) > 0 {
@@ -448,6 +486,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	case newOwned := <-s.ownedUpdateCh:
 		s.ownedURLs = newOwned
 		s.rebuildView()
+	default:
+	}
+	select {
+	case u := <-s.newlyOwnedCh:
+		s.addOwned(u)
 	default:
 	}
 	select {
@@ -1152,7 +1195,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.K_RETURN:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
+				return s.openDetail(s.viewGames[s.cursor])
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
@@ -1242,7 +1285,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case btnA:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
+				return s.openDetail(s.viewGames[s.cursor])
 			}
 		case btnB:
 			return nil

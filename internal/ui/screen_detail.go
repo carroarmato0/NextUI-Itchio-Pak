@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
@@ -57,6 +58,13 @@ type DetailScreen struct {
 	modal             detailModal
 	qrTex             *sdl.Texture // cached QR texture; generated once, destroyed on back
 
+	// Ownership of a paid game. owned starts from the list's cached owned
+	// games; for a paid game it does not include, a background owned-keys
+	// lookup (checkingOwnership) catches a purchase made since startup.
+	owned             atomic.Bool
+	checkingOwnership atomic.Bool
+	onOwned           func(gameURL string) // tells the list; may be nil
+
 	// Held-button auto-repeat state for scrolling
 	heldDir    int // -1 = up, +1 = down, 0 = none
 	heldSince  time.Time
@@ -83,8 +91,8 @@ type DetailScreen struct {
 }
 
 // ShowModal displays a dismissable overlay message on the detail screen.
-// Called by FetchUploadsScreen when it detects a "not owned" condition so the
-// error appears as a popup on top of the game page rather than a separate screen.
+// Used for the browser-only notice and by the purchase picker, so the
+// message appears on top of the game page rather than on a separate screen.
 func (s *DetailScreen) ShowModal(title, body string) {
 	s.modal = detailModal{active: true, kind: modalKindInfo, title: title, body: body}
 }
@@ -207,6 +215,9 @@ func NewDetailScreen(
 		// request runs after that first redraw rather than blocking it. A
 		// slow or failed purchase-page fetch costs only the amount, never
 		// the ask, and is skipped entirely for free and paid games.
+		if d != nil && err == nil {
+			s.checkOwnership(d)
+		}
 		if d != nil && err == nil && d.Pricing == itchio.PricingNameYourOwnPrice {
 			price, perr := client.FetchSuggestedPrice(game.URL)
 			if perr != nil {
@@ -218,6 +229,66 @@ func NewDetailScreen(
 		}
 	}()
 	return s
+}
+
+// WithOwnership tells the page whether the list already knows the game is
+// owned, and how to tell the list when a purchase is found. Returns s.
+func (s *DetailScreen) WithOwnership(owned bool, onOwned func(gameURL string)) *DetailScreen {
+	s.owned.Store(owned)
+	s.onOwned = onOwned
+	return s
+}
+
+// checkOwnership asks itch.io whether a paid game the owned cache does not
+// list is owned — a purchase made since startup. Runs on the load goroutine.
+func (s *DetailScreen) checkOwnership(d *itchio.GameDetail) {
+	if s.game.IsFree || s.owned.Load() || !s.cfg.SignedIn() || d.GameID == "" || d.BrowserOnly {
+		return
+	}
+	s.checkingOwnership.Store(true)
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+	defer func() {
+		s.checkingOwnership.Store(false)
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
+	}()
+	keys, err := s.client.FetchOwnedKeys(s.cfg.AuthToken, d.GameID)
+	if err != nil || len(keys) == 0 {
+		logger.Debug("detail: game_id=%s not owned (%v)", d.GameID, err)
+		return
+	}
+	logger.Info("detail: game_id=%s is owned (%d key(s)), bought since the last owned-list refresh", d.GameID, len(keys))
+	s.owned.Store(true)
+	if s.onOwned != nil {
+		s.onOwned(s.game.URL)
+	}
+}
+
+// action is what A does right now.
+func (s *DetailScreen) action() detailAction {
+	return chooseDetailAction(detailActionInput{
+		Free:              s.game.IsFree,
+		BrowserOnly:       s.detail != nil && s.detail.BrowserOnly,
+		Installed:         s.inv.IsPresent(s.game.URL),
+		UpdatePending:     s.inv.HasPendingUpdates(s.game.URL),
+		SignedIn:          s.cfg.SignedIn(),
+		Owned:             s.owned.Load(),
+		CheckingOwnership: s.checkingOwnership.Load(),
+	})
+}
+
+// actionColor is the label colour for a: calls to act stand out, the
+// sign-in asks in the warning hue, and the rest stays neutral.
+func (s *DetailScreen) actionColor(r *renderer.Renderer, a detailAction) [3]uint8 {
+	switch a {
+	case actionDownload, actionDownloadAgain:
+		return r.Theme.SuccessAction()
+	case actionSignIn, actionSignInAgain, actionReauthUpdate:
+		return r.Theme.Warning()
+	case actionBuy:
+		return r.Theme.MainText
+	default:
+		return r.Theme.Muted()
+	}
 }
 
 func (s *DetailScreen) processAutoScroll() {
@@ -465,11 +536,15 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	// Captures y, fontH, smallFH, margin, ac, r by reference/closure.
 	drawActionRow := func(btn, label string, labelR, labelG, labelB, badgeR, badgeG, badgeB uint8, price float64) {
 		d := fontH + 4
-		cx, cy := margin+d/2, y+d/2
-		aT := r.Theme.AccentText
-		r.DrawCircleBadge(cx, cy, d, badgeR, badgeG, badgeB)
-		r.DrawSmallTextCenteredInRect(btn, margin, y, d, d, aT[0], aT[1], aT[2])
-		r.DrawText(label, margin+d+8, y, labelR, labelG, labelB)
+		textX := margin
+		if btn != "" { // no badge for a row A does not act on
+			cx, cy := margin+d/2, y+d/2
+			bt := r.Theme.ContrastText([3]uint8{badgeR, badgeG, badgeB})
+			r.DrawCircleBadge(cx, cy, d, badgeR, badgeG, badgeB)
+			r.DrawSmallTextCenteredInRect(btn, margin, y, d, d, bt[0], bt[1], bt[2])
+			textX = margin + d + 8
+		}
+		r.DrawText(label, textX, y, labelR, labelG, labelB)
 		if price > 0 {
 			priceStr := s.formattedPrice
 			pw, _ := r.SmallTextSize(priceStr)
@@ -492,28 +567,28 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		rowH := fontH + 14
 		aT := r.Theme.AccentText
 
-		// Determine action label.
-		var actionLabel string
-		var actionR, actionG, actionB uint8
 		// Action labels take the unblended hues: they are calls to action, so
 		// they should stand out from the theme rather than settle into it.
-		act := r.Theme.SuccessAction()
-		warn := r.Theme.Warning()
-		if s.game.IsFree {
-			actionLabel, actionR, actionG, actionB = "Download again", act[0], act[1], act[2]
-		} else if !s.cfg.SignedIn() {
-			actionLabel, actionR, actionG, actionB = "Purchase required", warn[0], warn[1], warn[2]
-		} else {
-			actionLabel, actionR, actionG, actionB = "Download again", act[0], act[1], act[2]
-		}
+		act := s.action()
+		actionLabel := act.Label()
+		lc := s.actionColor(r, act)
 
-		// Draw action badge + label.
+		// Draw action badge + label. An action A cannot start gets no badge.
 		d := fontH + 4
-		r.DrawCircleBadge(margin+d/2, rowY+d/2, d, ac[0], ac[1], ac[2])
-		r.DrawSmallTextCenteredInRect("A", margin, rowY, d, d, aT[0], aT[1], aT[2])
-		r.DrawText(actionLabel, margin+d+8, rowY, actionR, actionG, actionB)
+		textX := margin
+		if act.onA() != "" {
+			badge := ac
+			if act.onA() == "sign-in" {
+				badge = r.Theme.WarningBG()
+			}
+			r.DrawCircleBadge(margin+d/2, rowY+d/2, d, badge[0], badge[1], badge[2])
+			bt := r.Theme.ContrastText(badge)
+			r.DrawSmallTextCenteredInRect("A", margin, rowY, d, d, bt[0], bt[1], bt[2])
+			textX = margin + d + 8
+		}
+		r.DrawText(actionLabel, textX, rowY, lc[0], lc[1], lc[2])
 		alW, _ := r.TextSize(actionLabel)
-		actionEndX := margin + d + 8 + alW
+		actionEndX := textX + alW
 
 		// Status card occupies the remaining width on the same row.
 		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
@@ -610,18 +685,21 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			y = rowY + rowH + 4
 		}
 	} else {
-		act := r.Theme.SuccessAction()
-		warn := r.Theme.Warning()
-		mut := r.Theme.Muted()
-		warnBG := r.Theme.WarningBG()
-		if s.detail != nil && s.detail.BrowserOnly {
-			drawActionRow("A", "Browser-only", mut[0], mut[1], mut[2], ac[0], ac[1], ac[2], 0)
-		} else if s.game.IsFree {
-			drawActionRow("A", "Download", act[0], act[1], act[2], ac[0], ac[1], ac[2], 0)
-		} else if !s.cfg.SignedIn() {
-			drawActionRow("A", "Purchase required", warn[0], warn[1], warn[2], warnBG[0], warnBG[1], warnBG[2], s.game.Price)
-		} else {
-			drawActionRow("A", "Download", act[0], act[1], act[2], ac[0], ac[1], ac[2], s.game.Price)
+		act := s.action()
+		lc := s.actionColor(r, act)
+		price := 0.0
+		if !s.game.IsFree {
+			price = s.game.Price
+		}
+		switch act.onA() {
+		case "":
+			// No badge is drawn for an empty button; the colour is not used.
+			drawActionRow("", act.Label(), lc[0], lc[1], lc[2], ac[0], ac[1], ac[2], price)
+		case "sign-in":
+			wb := r.Theme.WarningBG()
+			drawActionRow("A", act.Label(), lc[0], lc[1], lc[2], wb[0], wb[1], wb[2], price)
+		default:
+			drawActionRow("A", act.Label(), lc[0], lc[1], lc[2], ac[0], ac[1], ac[2], price)
 		}
 		y += 4
 	}
@@ -843,8 +921,12 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
 	mu := r.Theme.Muted()
-	r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])
-	r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, mu[0], mu[1], mu[2])
+	if s.action() == actionBuy {
+		r.DrawSmallTextCentered("Scan to buy", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])
+	} else {
+		r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])
+		r.DrawSmallTextCentered("in browser", x, qrY+qrS+4+smallFH+2, w, mu[0], mu[1], mu[2])
+	}
 }
 
 // drawDonationBand renders the developer's request for support as a
@@ -1069,10 +1151,28 @@ func (s *DetailScreen) startDownload() Screen {
 				"Press any button to dismiss, then scan the QR code to open the game page.")
 		return s
 	}
-	if !s.game.IsFree && !s.cfg.SignedIn() {
-		return s
+	switch s.action().onA() {
+	case "download":
+		return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.inv, s.inventoryPath, s)
+	case "sign-in":
+		logger.Info("detail: signing in to download %s", s.game.URL)
+		return NewSignInScreen(s.client, s.cfg, s.cfgPath, s, s.afterSignIn)
 	}
-	return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.inv, s.inventoryPath, s)
+	return s // buying happens on the phone, through the QR code
+}
+
+// afterSignIn takes the owned list a sign-in fetched, so this page switches
+// straight to Download for a game the user owns, and passes it on to the list.
+func (s *DetailScreen) afterSignIn(owned []itchio.OwnedGame) {
+	for _, g := range owned {
+		if g.URL == s.game.URL {
+			s.owned.Store(true)
+			break
+		}
+	}
+	if l := s.findList(); l != nil && l.onOwnedReady != nil {
+		l.onOwnedReady(owned)
+	}
 }
 
 func (s *DetailScreen) startUnifiedNamingToggle() Screen {
@@ -1085,6 +1185,21 @@ func (s *DetailScreen) startUnifiedNamingToggle() Screen {
 	formats := inventory.ReadMigrateFormats(inventory.SettingsPath())
 	return NewMigrateFlowScreen(s.inv, s.inventoryPath, s.game.URL, s.game.Title,
 		entry.Files[0], !newDisabled, formats, s)
+}
+
+// findList walks the prev chain to the game list.
+func (s *DetailScreen) findList() *ListScreen {
+	for p := s.prev; p != nil; {
+		switch v := p.(type) {
+		case *ListScreen:
+			return v
+		case *DetailScreen:
+			p = v.prev
+		default:
+			return nil
+		}
+	}
+	return nil
 }
 
 // ScheduleRebuild implements Rebuildable by propagating up the prev chain so

@@ -200,9 +200,12 @@ func devList(d SceneDeps) *ListScreen {
 
 // devDetail builds a detail screen with its data already loaded, skipping the
 // network fetch a real navigation would perform.
-func devDetail(d SceneDeps) *DetailScreen {
+func devDetail(d SceneDeps) *DetailScreen { return devDetailFor(d, d.Games[0]) }
+
+// devDetailFor is devDetail for a particular game.
+func devDetailFor(d SceneDeps, game itchio.Game) *DetailScreen {
 	list := devList(d)
-	s := NewDetailScreen(d.Client, d.Cfg, d.CfgPath, d.Cache, d.Games[0],
+	s := NewDetailScreen(d.Client, d.Cfg, d.CfgPath, d.Cache, game,
 		d.Inv, d.InvPath, list, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {})
 	s.detail = d.Detail
 	s.loading = false
