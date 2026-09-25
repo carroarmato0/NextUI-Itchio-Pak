@@ -307,15 +307,21 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 	return removed
 }
 
-// HasPendingUpdates returns true when any UpstreamFile for gameURL is marked
-// as a new upload (appeared after the first check), has a filename not in the
-// downloaded set, and was seen after UpdateDismissedAt.
+// HasPendingUpdates returns true when PendingUpdateFiles lists anything.
 func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
+	return len(inv.PendingUpdateFiles(gameURL)) > 0
+}
+
+// PendingUpdateFiles returns the upstream files that make up an update: new
+// uploads (appeared after the first check) not in the downloaded set, and
+// files whose content changed since they were downloaded — each seen after
+// UpdateDismissedAt. Changed tells the two apart.
+func (inv *Inventory) PendingUpdateFiles(gameURL string) []UpstreamFile {
 	inv.mu.Lock()
 	defer inv.mu.Unlock()
 	e, ok := inv.Entries[gameURL]
 	if !ok {
-		return false
+		return nil
 	}
 	downloaded := make(map[string]bool, len(e.Files)*3)
 	for _, f := range e.Files {
@@ -336,18 +342,19 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 			}
 		}
 	}
+	var out []UpstreamFile
 	for _, u := range e.KnownUpstreamFiles {
-		// Only flag genuinely new uploads (IsNew = true means appeared after first check).
-		// Files discovered on first check were present when the user downloaded the game.
-		if u.IsNew && !downloaded[u.Filename] && u.SeenAt.After(e.UpdateDismissedAt) {
-			return true
+		if !u.SeenAt.After(e.UpdateDismissedAt) {
+			continue
 		}
-		// Same name, new content: the downloaded copy is the old version.
-		if u.Changed && u.SeenAt.After(e.UpdateDismissedAt) {
-			return true
+		// Only genuinely new uploads (IsNew: appeared after the first check);
+		// files found on the first check were there when the game was downloaded.
+		// Same name with new content means the downloaded copy is the old one.
+		if (u.IsNew && !downloaded[u.Filename]) || u.Changed {
+			out = append(out, u)
 		}
 	}
-	return false
+	return out
 }
 
 // IsRemoved returns true when the game was detected as 404 upstream and the

@@ -61,3 +61,18 @@ func devInstallPaid(d SceneDeps, game itchio.Game, updatePending bool) {
 		})
 	}
 }
+
+func init() {
+	devScenes = append(devScenes, Scene{Name: "rom-picker-update", Desc: "File picker marking the file an update added",
+		Build: func(d SceneDeps) Screen {
+			game := d.Games[0]
+			file := inventory.DownloadedFile{Filename: "tobu-tobu-girl-deluxe.gbc",
+				DestPath: filepath.Join(firmware.Active().ROMDirForSystem(firmware.SysGBC), "tobu-tobu-girl-deluxe.gbc")}
+			d.Inv.Add(game.URL, inventory.Entry{GameURL: game.URL, Title: game.Title}, file)
+			d.Inv.SetUpstreamFiles(game.URL, []inventory.UpstreamFile{{Filename: "tobu-tobu-girl-deluxe.gbc"}})
+			d.Inv.SetUpstreamFiles(game.URL, []inventory.UpstreamFile{
+				{Filename: "tobu-tobu-girl-deluxe.gbc"}, {Filename: "tobu-tobu-girl-deluxe-alt.gb"}})
+			return NewROMPickerScreen(d.Client, d.Cfg, d.CfgPath, d.Cache, game, d.Detail,
+				devFixtureUploads(), d.Inv, d.InvPath, devList(d))
+		}})
+}
