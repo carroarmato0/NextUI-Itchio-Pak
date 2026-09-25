@@ -1,0 +1,44 @@
+{
+    "price": "$2.75",
+    "links": {
+        "devlog": "https://2think.itch.io/glory-hunters/devlog",
+        "self": "https://2think.itch.io/glory-hunters",
+        "community": "https://2think.itch.io/glory-hunters/community"
+    },
+    "tags": [
+        "8-bit",
+        "action-adventure",
+        "adventure",
+        "analogue-pocket",
+        "gameboy",
+        "gameboy-rom",
+        "homebrew",
+        "pixel-art",
+        "retro",
+        "rpg",
+        "top-down-adventure"
+    ],
+    "suggested_price": "$3.85",
+    "screenshots": [
+        "https://img.itch.zone/aW1hZ2UvMTIwNjExMS8xNTgzMTcxMS5wbmc=/347x500/U73rXW.png",
+        "https://img.itch.zone/aW1hZ2UvMTIwNjExMS8xNTgzMTcxMi5wbmc=/347x500/TrYMEk.png",
+        "https://img.itch.zone/aW1hZ2UvMTIwNjExMS8xNTgzMTcxMy5wbmc=/347x500/8Kr7wK.png",
+        "https://img.itch.zone/aW1hZ2UvMTIwNjExMS8xNTgzMTcxNC5wbmc=/347x500/UWBTfw.png"
+    ],
+    "cover_image": "https://img.itch.zone/aW1nLzE1ODMyNTkyLnBuZw==/315x250%23c/B2dHzw.png",
+    "id": 1206111,
+    "sale": {
+        "title": "Glory Hunters - Mexican Entertainment System 2026",
+        "end_date": "2026-09-29 04:59:00",
+        "rate": 45,
+        "id": 201678
+    },
+    "title": "Glory Hunters",
+    "original_price": "$5.00",
+    "authors": [
+        {
+            "url": "https://2think.itch.io",
+            "name": "2think design studio"
+        }
+    ]
+}
