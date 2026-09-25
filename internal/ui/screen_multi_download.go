@@ -103,7 +103,7 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 
 		var err error
 		if isAuth {
-			err = s.client.DownloadAuthUpload(s.cfg.APIKey, dl.Upload.UploadID, dl.Upload.Session, dl.DestPath, progress)
+			err = s.client.DownloadAuthUpload(s.cfg.AuthToken, dl.Upload.UploadID, dl.Upload.Session, dl.DestPath, progress)
 		} else {
 			itchUpload := itchio.Upload{Filename: dl.Upload.Filename, URL: dl.Upload.URL}
 			err = s.client.DownloadFree(itchUpload, dl.DestPath, progress)

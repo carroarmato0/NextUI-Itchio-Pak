@@ -155,10 +155,6 @@ type Client struct {
 	base   string // itch.io/api/1/... base URL
 	butler string // api.itch.io base URL (butler-style endpoints)
 
-	// Background API key validation state (atomic, written once per session).
-	apiKeyStatus   int32 // stores APIKeyStatus constants
-	apiKeyChecking int32 // 0 = not started, 1 = started (CAS gate)
-
 	// purchaseCounts maps purchase_id to the number of distinct games it
 	// covers, from the last full owned-keys scan. Lets a game_id-filtered
 	// owned-keys answer still tell bundles from individual purchases.

@@ -36,14 +36,14 @@ func runSDL() {
 	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
 	cfg, _ := settings.Load(cfgPath)
 
-	// Apply log level and register the API key for redaction before anything
+	// Apply log level and register the sign-in token for redaction before anything
 	// else is logged. LOG_LEVEL env var overrides the config value so the
 	// dev-screenshot script can force debug logging without editing config.
 	logger.SetLevel(logger.LevelFromString(cfg.LogLevel))
 	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
 		logger.SetLevel(logger.LevelFromString(envLevel))
 	}
-	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
+	logger.RegisterSecret(cfg.AuthToken, "[TOKEN]")
 
 	// Before the first request: every client shares this User-Agent.
 	itchio.ConfigureUserAgent(itchio.UAInfoFromEnv(version, env), cfg.ShareDeviceInfo)
@@ -230,6 +230,8 @@ func runSDL() {
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
 		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle)
+	} else if ui.NeedsAccountPrompt(cfg) {
+		current = ui.NewAccountPromptScreen(client, cfg, cfgPath, listScreen)
 	} else {
 		current = listScreen
 	}

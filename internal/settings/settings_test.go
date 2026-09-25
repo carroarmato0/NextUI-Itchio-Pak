@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 )
@@ -17,8 +19,8 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.APIKey != "" {
-		t.Errorf("default APIKey = %q, want %q", cfg.APIKey, "")
+	if cfg.SignedIn() {
+		t.Error("default config is signed in")
 	}
 	if cfg.ROMLocation != "auto" {
 		t.Errorf("default ROMLocation = %q, want %q", cfg.ROMLocation, "auto")
@@ -29,7 +31,7 @@ func TestRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	cfg := &settings.Config{APIKey: "abc123", ROMLocation: "ask"}
+	cfg := &settings.Config{AuthToken: "abc123", ROMLocation: "ask"}
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -38,8 +40,8 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if loaded.APIKey != "abc123" {
-		t.Errorf("APIKey = %q, want %q", loaded.APIKey, "abc123")
+	if loaded.AuthToken != "abc123" {
+		t.Errorf("AuthToken = %q, want %q", loaded.AuthToken, "abc123")
 	}
 	if loaded.ROMLocation != "ask" {
 		t.Errorf("ROMLocation = %q, want %q", loaded.ROMLocation, "ask")
@@ -86,7 +88,6 @@ func TestContentFilterRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "config.json")
 
 	cfg := &settings.Config{
-		APIKey:       "",
 		ROMLocation: "auto",
 		Filter: settings.ContentFilter{
 			AdultContent: settings.CategoryFilter{Enabled: true, Disabled: []string{"ecchi", "suggestive"}},
@@ -415,7 +416,7 @@ func TestSave_IsAtomic(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	cfg := &settings.Config{APIKey: "test-key", ROMLocation: "ask"}
+	cfg := &settings.Config{AuthToken: "test-key", ROMLocation: "ask"}
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -429,8 +430,8 @@ func TestSave_IsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load after Save: %v", err)
 	}
-	if loaded.APIKey != "test-key" {
-		t.Errorf("APIKey = %q, want %q", loaded.APIKey, "test-key")
+	if loaded.AuthToken != "test-key" {
+		t.Errorf("AuthToken = %q, want %q", loaded.AuthToken, "test-key")
 	}
 }
 
@@ -600,5 +601,129 @@ func TestShareDeviceInfo_OptOutSurvivesRoundTrip(t *testing.T) {
 	}
 	if reloaded.ShareDeviceInfo {
 		t.Error("ShareDeviceInfo=false should survive save/load round-trip")
+	}
+}
+
+// Upgrading from 1.0.x: the old API key is removed from config.json, the
+// removal is remembered for the one-time sign-in prompt, and every other
+// setting survives.
+func TestLoad_removesLegacyAPIKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	old := `{"api_key":"LEGACYSECRET","rom_location":"ask","unified_naming":false,"log_level":"debug"}`
+	if err := os.WriteFile(path, []byte(old), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.LegacyKeyRemoved {
+		t.Error("LegacyKeyRemoved not set after an api_key was found")
+	}
+	if cfg.ROMLocation != "ask" || cfg.UnifiedNaming || cfg.LogLevel != "debug" {
+		t.Errorf("other settings lost: %+v", cfg)
+	}
+	if cfg.SignedIn() {
+		t.Error("an old API key must not count as signed in")
+	}
+
+	onDisk, _ := os.ReadFile(path)
+	if strings.Contains(string(onDisk), "LEGACYSECRET") || strings.Contains(string(onDisk), "api_key") {
+		t.Errorf("the key is still on disk:\n%s", onDisk)
+	}
+	if !strings.Contains(string(onDisk), `"legacy_key_removed": true`) {
+		t.Errorf("the removal was not saved:\n%s", onDisk)
+	}
+
+	// Loading again finds nothing to remove and keeps the flag.
+	again, _ := settings.Load(path)
+	if !again.LegacyKeyRemoved {
+		t.Error("LegacyKeyRemoved lost on the next load")
+	}
+}
+
+func TestLoad_withoutLegacyKeyLeavesFileAlone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	orig := `{"rom_location":"auto"}`
+	os.WriteFile(path, []byte(orig), 0644)
+	cfg, _ := settings.Load(path)
+	if cfg.LegacyKeyRemoved {
+		t.Error("LegacyKeyRemoved set with no api_key present")
+	}
+	if onDisk, _ := os.ReadFile(path); string(onDisk) != orig {
+		t.Errorf("config rewritten without cause:\n%s", onDisk)
+	}
+}
+
+// An empty api_key ("") is what 1.0.x wrote by default; it is removed
+// silently, without the "sign in again" prompt.
+func TestLoad_emptyLegacyKeyNeedsNoPrompt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	os.WriteFile(path, []byte(`{"api_key":""}`), 0644)
+	cfg, _ := settings.Load(path)
+	if cfg.LegacyKeyRemoved {
+		t.Error("an empty api_key should not trigger the sign-in-again prompt")
+	}
+	if onDisk, _ := os.ReadFile(path); strings.Contains(string(onDisk), "api_key") {
+		t.Errorf("empty api_key left on disk:\n%s", onDisk)
+	}
+}
+
+func TestSignIn_roundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg, _ := settings.Load(path)
+	if cfg.SignedIn() {
+		t.Fatal("fresh config is signed in")
+	}
+	at := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	cfg.SetSignedIn("TOKEN", "carroarmato0", at)
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := settings.Load(path)
+	if !got.SignedIn() || got.AuthToken != "TOKEN" || got.AuthUser != "carroarmato0" || !got.AuthObtainedAt.Equal(at) {
+		t.Errorf("sign-in not persisted: %+v", got)
+	}
+
+	got.SignOut()
+	got.Save(path)
+	out, _ := settings.Load(path)
+	if out.SignedIn() || out.AuthToken != "" || out.AuthUser != "" {
+		t.Errorf("sign-out not persisted: %+v", out)
+	}
+	if onDisk, _ := os.ReadFile(path); strings.Contains(string(onDisk), "TOKEN") {
+		t.Errorf("token left on disk after sign-out:\n%s", onDisk)
+	}
+}
+
+// Signing in clears the legacy prompt: there is nothing left to ask.
+func TestSetSignedIn_clearsLegacyFlag(t *testing.T) {
+	cfg, _ := settings.Load(filepath.Join(t.TempDir(), "missing.json"))
+	cfg.LegacyKeyRemoved = true
+	cfg.SetSignedIn("T", "u", time.Now())
+	if cfg.LegacyKeyRemoved {
+		t.Error("LegacyKeyRemoved still set after signing in")
+	}
+}
+
+// The migration touches config.json only: installed games, paid ones
+// included, stay tracked exactly as they were.
+func TestLoad_legacyKeyMigrationLeavesInventoryAlone(t *testing.T) {
+	dir := t.TempDir()
+	inv := []byte(`{"entries":[{"url":"https://2think.itch.io/glory-hunters","is_free":false,"files":[{"filename":"Glory Hunters.gb"}]}]}`)
+	invPath := filepath.Join(dir, "inventory.json")
+	os.WriteFile(invPath, inv, 0644)
+	cfgPath := filepath.Join(dir, "config.json")
+	os.WriteFile(cfgPath, []byte(`{"api_key":"LEGACYSECRET"}`), 0644)
+
+	settings.Load(cfgPath)
+
+	if got, _ := os.ReadFile(invPath); !bytes.Equal(got, inv) {
+		t.Errorf("inventory.json changed:\n%s", got)
 	}
 }

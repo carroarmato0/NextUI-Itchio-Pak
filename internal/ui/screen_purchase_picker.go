@@ -159,7 +159,7 @@ func (s *PurchasePickerScreen) choosePurchase(key itchio.OwnedKey) Screen {
 	downloadKeyID := fmt.Sprintf("%d", key.ID)
 	logger.Debug("purchase-picker: selected key id=%d purchase_id=%d", key.ID, key.PurchaseID)
 
-	authUploads, err := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, downloadKeyID)
+	authUploads, err := s.client.FetchUploadsForKey(s.cfg.AuthToken, s.detail.GameID, downloadKeyID)
 	if err != nil {
 		logger.Error("purchase-picker: fetch uploads for key id=%d: %v", key.ID, err)
 		// Show error on the detail screen rather than a dead-end screen.

@@ -501,7 +501,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		warn := r.Theme.Warning()
 		if s.game.IsFree {
 			actionLabel, actionR, actionG, actionB = "Download again", act[0], act[1], act[2]
-		} else if s.cfg.APIKey == "" {
+		} else if !s.cfg.SignedIn() {
 			actionLabel, actionR, actionG, actionB = "Purchase required", warn[0], warn[1], warn[2]
 		} else {
 			actionLabel, actionR, actionG, actionB = "Download again", act[0], act[1], act[2]
@@ -618,7 +618,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			drawActionRow("A", "Browser-only", mut[0], mut[1], mut[2], ac[0], ac[1], ac[2], 0)
 		} else if s.game.IsFree {
 			drawActionRow("A", "Download", act[0], act[1], act[2], ac[0], ac[1], ac[2], 0)
-		} else if s.cfg.APIKey == "" {
+		} else if !s.cfg.SignedIn() {
 			drawActionRow("A", "Purchase required", warn[0], warn[1], warn[2], warnBG[0], warnBG[1], warnBG[2], s.game.Price)
 		} else {
 			drawActionRow("A", "Download", act[0], act[1], act[2], ac[0], ac[1], ac[2], s.game.Price)
@@ -1069,7 +1069,7 @@ func (s *DetailScreen) startDownload() Screen {
 				"Press any button to dismiss, then scan the QR code to open the game page.")
 		return s
 	}
-	if !s.game.IsFree && s.cfg.APIKey == "" {
+	if !s.game.IsFree && !s.cfg.SignedIn() {
 		return s
 	}
 	return NewFetchUploadsScreen(s.client, s.cfg, s.cfgPath, s.cache, s.game, s.detail, s.inv, s.inventoryPath, s)

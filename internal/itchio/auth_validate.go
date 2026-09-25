@@ -4,68 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
-
-// APIKeyStatus is the result of the background API key validation.
-type APIKeyStatus int32
-
-const (
-	APIKeyStatusUnknown  APIKeyStatus = 0 // not yet tested, or network unavailable
-	APIKeyStatusWorking  APIKeyStatus = 1 // accepted by itch.io
-	APIKeyStatusRejected APIKeyStatus = 2 // explicitly rejected by itch.io
-)
-
-// GetAPIKeyStatus returns the cached result of the most recent key check.
-func (c *Client) GetAPIKeyStatus() APIKeyStatus {
-	return APIKeyStatus(atomic.LoadInt32(&c.apiKeyStatus))
-}
-
-// StoreAPIKeyStatus saves the result of a completed key check.
-func (c *Client) StoreAPIKeyStatus(s APIKeyStatus) {
-	atomic.StoreInt32(&c.apiKeyStatus, int32(s))
-}
-
-// MarkAPIKeyCheckStarted atomically marks the background check as started.
-// Returns true only on the first call — the caller should then launch the check.
-func (c *Client) MarkAPIKeyCheckStarted() bool {
-	return atomic.CompareAndSwapInt32(&c.apiKeyChecking, 0, 1)
-}
-
-// CheckAPIKey does a lightweight /profile fetch to determine whether apiKey is
-// accepted. Returns APIKeyStatusWorking on success, APIKeyStatusRejected when
-// the server explicitly rejects the key, and APIKeyStatusUnknown on network or
-// other transient errors (so the UI can show "PRESENT" rather than "REJECTED").
-func (c *Client) CheckAPIKey(apiKey string) APIKeyStatus {
-	logger.Debug("validate: background API key check starting")
-	req, err := http.NewRequest("GET", c.butler+"/profile", nil)
-	if err != nil {
-		logger.Error("validate: build profile request: %v", err)
-		return APIKeyStatusUnknown
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		logger.Debug("validate: background key check network error (device may be offline): %v", err)
-		return APIKeyStatusUnknown
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		logger.Info("validate: API key valid")
-		return APIKeyStatusWorking
-	case http.StatusUnauthorized, http.StatusForbidden:
-		logger.Warn("validate: API key rejected by itch.io (HTTP %d)", resp.StatusCode)
-		return APIKeyStatusRejected
-	default:
-		logger.Warn("validate: background key check unexpected HTTP %d", resp.StatusCode)
-		return APIKeyStatusUnknown
-	}
-}
 
 // OwnedGame is a public summary of a game the user owns.
 // Download key IDs are never included here — they grant download access and
@@ -117,7 +58,8 @@ func (c *Client) ValidateAPIKey(apiKey string) (username string, owned []OwnedGa
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return "", nil, fmt.Errorf("API key invalid or expired (HTTP %d)", resp.StatusCode)
+		logger.Warn("validate: itch.io rejected the sign-in (HTTP %d)", resp.StatusCode)
+		return "", nil, fmt.Errorf("%w (HTTP %d)", ErrTokenRejected, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", nil, fmt.Errorf("fetch profile: HTTP %d", resp.StatusCode)

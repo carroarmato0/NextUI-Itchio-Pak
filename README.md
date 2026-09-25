@@ -39,7 +39,7 @@ Connect to WiFi before launching.
   ready to play without touching a PC
 - **Search, sort and filter** by platform, name, date, or whether you own or
   have already downloaded a game
-- **Paid games you own** download too, using your [itch.io API key](docs/api-key.md)
+- **Paid games you own** download too: [sign in with your phone](docs/sign-in.md) by scanning a QR code
 - **Name-your-own-price games show the developer's suggested amount**, so you
   can decide whether to support them
 - **Tracks what you have downloaded** and flags games with updates (`[UP]`) or
@@ -68,7 +68,7 @@ the caveats.
 | A | Select / confirm / download |
 | B | Back / cancel |
 | X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
-| Y | Manage / delete downloaded ROMs, or edit API key in Settings |
+| Y | Manage / delete downloaded ROMs, or sign out in Settings |
 | SELECT | Open Filter &amp; Search overlay (game list) |
 | Start | Open Settings from any screen |
 | Power (short press) | Sleep — resumes at the same screen on wake |
@@ -82,7 +82,7 @@ the caveats.
 |---|---|
 | [Installation](docs/install.md) | Every install method, supported devices, NextUI vs muOS differences |
 | [Feature reference](docs/features.md) | Everything the app does, and the limits of each feature |
-| [API key setup](docs/api-key.md) | Four ways to add your itch.io key for paid games |
+| [Signing in](docs/sign-in.md) | Sign in with a QR code to download paid games you own |
 | [Development](docs/development.md) | Building, testing, releasing, project layout, contributing |
 
 ---
@@ -113,7 +113,7 @@ the caveats.
   <tr>
     <td align="center">
       <img src="docs/screenshots/settings.png" alt="Settings" width="480"/><br/>
-      <sub>Settings — API key, ROM selection mode, cache management</sub>
+      <sub>Settings — account, ROM selection mode, cache management</sub>
     </td>
     <td align="center">
       <img src="docs/screenshots/theme-macchiato.png" alt="NextUI theme applied" width="480"/><br/>

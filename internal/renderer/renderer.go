@@ -58,6 +58,7 @@ type Renderer struct {
 	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
 	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
 	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
+	displayFonts  map[int]*ttf.Font        // primary font at custom sizes, see display_text.go
 
 	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
 	drawLog   []DrawLogEntry
@@ -168,6 +169,9 @@ func (r *Renderer) Close() {
 		if fb.main != nil {
 			fb.main.Close()
 		}
+	}
+	for _, f := range r.displayFonts {
+		f.Close()
 	}
 	if r.SmallFont != nil {
 		r.SmallFont.Close()
@@ -1017,13 +1021,41 @@ func (r *Renderer) DrawTagPills(tags []string, x, y, maxW, lineH int32,
 // Circle badges are used for face buttons (A, B); pill badges for function keys.
 // y is the vertical center returned by DrawFooterBar.
 func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
+	r.drawFooterHintsAt(hints, 10, y)
+}
+
+// FooterHintsWidth is the width DrawFooterHints takes for hints, so they can
+// be centred.
+func (r *Renderer) FooterHintsWidth(hints []FooterHint) int32 {
+	_, smallH := r.SmallTextSize("Ag")
+	badgeDiam := smallH + 4
+	var w int32
+	for _, h := range hints {
+		labelW, _ := r.SmallTextSize(h.Label)
+		textW, _ := r.SmallTextSize(h.Text)
+		switch h.Kind {
+		case BadgeCircle:
+			w += badgeDiam + 6
+		case BadgePill:
+			w += labelW + 16 + 6
+		}
+		if h.Text != "" {
+			w += textW + 14
+		} else {
+			w += 8
+		}
+	}
+	return w - 14 // no gap after the last hint
+}
+
+func (r *Renderer) drawFooterHintsAt(hints []FooterHint, x, y int32) {
 	ac := r.Theme.Accent
 	acTxt := r.Theme.AccentText
 	hint := r.Theme.HintText
 
 	_, smallH := r.SmallTextSize("Ag")
 	badgeDiam := smallH + 4
-	cx := int32(10)
+	cx := x
 
 	for _, h := range hints {
 		labelW, _ := r.SmallTextSize(h.Label)
@@ -1095,6 +1127,7 @@ func (r *Renderer) DrawModal(title, body string, hints []FooterHint) {
 	ht := r.Theme.HintText
 	r.DrawWrappedText(body, panelX+pad, panelY+pad+fontH+pad/2, bodyMaxW, lineH, ht[0], ht[1], ht[2])
 
-	// Hints
-	r.DrawFooterHints(hints, panelY+panelH-hintsH)
+	// Hints, centred in the panel: DrawFooterHints starts at the screen edge.
+	hx := panelX + (panelW-r.FooterHintsWidth(hints))/2
+	r.drawFooterHintsAt(hints, hx, panelY+panelH-hintsH+(hintsH-fontH)/2)
 }

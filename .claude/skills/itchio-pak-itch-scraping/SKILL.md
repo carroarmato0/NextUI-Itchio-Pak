@@ -43,6 +43,18 @@ GET https://itch.io/games/made-with-gb-studio.xml?page=N
 
 HTTP client needs: cookie jar (session persists across requests), redirect following.
 
+## Signing in: QR device grant (internal/itchio/oauth.go)
+
+The token used below comes from QR sign-in, not a typed API key (1.1.0+).
+`POST /oauth/device` (client_id, scope, PKCE S256) → show a QR of
+`verification_uri_complete` + `user_code` → `POST /oauth/device/poll` every
+`interval`s, after each answer (429 = slow down, double it) → on `approved`,
+`POST /oauth/token` (code, code_verifier, redirect_uri=urn:itchio:poll,
+device_info). 404 at the start = client not approved for QR login. Scope is
+`profile:me profile:owned game:view:uploads` — never `itch`. Tokens do not
+expire; a 401/403 from /profile means revoked (ErrTokenRejected). Never log
+the device code, verifier, approval code or token.
+
 ## Authenticated Download Flow (API v2, key in the header)
 
 Every call goes to `api.itch.io` with `Authorization: Bearer {api_key}`. The key

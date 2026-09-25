@@ -73,7 +73,7 @@ func (s *AutoDetectScreen) run() {
 	var cdnURL string
 	var err error
 	if s.upload.ViaAPI() {
-		cdnURL, err = s.client.ResolveAuthURL(s.cfg.APIKey, s.upload.UploadID, s.upload.Session)
+		cdnURL, err = s.client.ResolveAuthURL(s.cfg.AuthToken, s.upload.UploadID, s.upload.Session)
 	} else {
 		itchUpload := itchio.Upload{Filename: s.upload.Filename, URL: s.upload.URL}
 		cdnURL, err = s.client.ResolveFreeURL(itchUpload)

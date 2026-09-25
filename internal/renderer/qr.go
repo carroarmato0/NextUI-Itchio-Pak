@@ -45,3 +45,14 @@ func (r *Renderer) QRTexture(url string, size int) (*sdl.Texture, error) {
 	}
 	return tex, nil
 }
+
+// QRModules returns how many modules wide the QR code for url is, including
+// the four-module quiet zone QRTexture draws. A texture of exactly
+// QRModules(url)*n pixels gives n-pixel modules with no blurred edges.
+func QRModules(url string) (int, error) {
+	qr, err := qrcode.New(url, qrcode.Medium)
+	if err != nil {
+		return 0, fmt.Errorf("qr encode: %w", err)
+	}
+	return len(qr.Bitmap()), nil
+}
