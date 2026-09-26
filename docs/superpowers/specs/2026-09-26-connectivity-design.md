@@ -25,8 +25,10 @@ installed game because a connection dropped.
   removed), but with the client's 30 s timeout a dropped link can keep it busy
   for minutes, and Settings shows `checking…`, then an old time, with no hint
   why.
-- **Cover art:** a failure goes into `ImageCache.failed` and is not retried for
-  the rest of the session, so a short outage blanks every cover until relaunch.
+- **Cover art:** only decoding failures go into `ImageCache.failed`; a network
+  failure is forgotten, so `Get` queues the same fetch again on every redraw.
+  Offline, scrolling the list fires a doomed request per visible cover per
+  frame (two at a time, 20 s timeout each).
 - **Downloads (`itchio.streamToFile`):**
   - write with `os.Create(dest)` straight to the final ROM path. When updating
     a game, the working ROM is truncated at the first byte; if the stream then
@@ -83,8 +85,10 @@ cache (which already uses `client.HTTPClient()`), and the app-update checker
 response starts — reading a download body — are reported explicitly with
 `netstate.Report(err)`.
 
-**No extra traffic.** There is no separate "ping". itch.io asked the app to be
-a considerate client, and the requests the app makes anyway are enough to tell.
+**No extra traffic while online.** There is no periodic "ping". itch.io asked
+the app to be a considerate client, and the requests the app makes anyway are
+enough to tell. The only extra request is the reconnect probe in §2, and it
+only runs while offline, with back-off.
 
 ### 2. Getting back online
 
@@ -94,8 +98,8 @@ network traffic.
 
 - No route: stay `Offline(NoNetwork)`. This is also what makes a Wi-Fi switched
   off in the system menu read as "No Wi-Fi" instead of a DNS error.
-- A route (again): make **one** real request — the page-1 feed request the
-  list screen needs anyway — with back-off 15 s, 30 s, 60 s … capped at 5 min,
+- A route (again): make **one** `HEAD https://itch.io/` request (no body, the
+  cheapest request that proves itch.io answers) with back-off 15 s, 30 s, 60 s … capped at 5 min,
   reset whenever the route changes. Success flips the state to `Online`.
 - Stopped while `Online`; nothing polls on a healthy connection.
 
@@ -112,9 +116,10 @@ requested again.
   instead of `checking…`.
 - **Game-list refresh:** a failed `buildCache` is remembered and retried on
   reconnect instead of waiting for the next launch.
-- **Image cache:** offline-class failures are not added to `failed`; they go to
-  a separate `retry` set that is cleared on reconnect. Real failures (404, bad
-  image) stay in `failed` as now.
+- **Image cache:** while offline, `Get` queues no fetches (it returns nil, the
+  placeholder shows). On reconnect the cache's notify callback fires once, the
+  screen redraws, and visible covers are fetched. Decoding failures stay in
+  `failed` as now.
 - **App-update check:** skipped while offline, run on reconnect.
 
 ### 4. Downloads that cannot break an installed game
@@ -190,9 +195,10 @@ HTTP error.
 **Offline chip.** While `Offline`, the list screen's header shows a small
 `Offline` pill in the theme's Warning colour. The cached list stays fully
 usable — browsing, search, filters, and installed games (play, delete,
-rename). Actions that need the network (open a game page that is not cached,
-download, sign in) show the message component immediately instead of
-waiting for a 30 s timeout.
+rename). Actions the user starts (open a game page, download, sign in, Retry)
+always try the network, even while the state says Offline: the attempt is
+the quickest way to find out the connection is back, and a successful one
+flips the state to Online for everything else.
 
 All text follows `abbreviate(w)` where it has to fit a narrow screen; no
 colour literals.
@@ -201,7 +207,7 @@ colour literals.
 
 Transitions (with reason and the underlying error), partial-file cleanup (see §4), each local route check
 result at debug, each reconnect attempt and its outcome, deferred work being
-queued and run, the image cache's retry set size on reconnect, and download
+queued and run, the image cache fetch resuming on reconnect, and download
 partial-file creation, idle abort, length mismatch, rename and cleanup.
 
 ## Testing
@@ -218,7 +224,7 @@ partial-file creation, idle abort, length mismatch, rename and cleanup.
 - Reconnect loop with an injected clock: back-off sequence, reset on route
   change, deferred work run once in order.
 - Inventory service aborts on the first offline failure and leaves `checked_at`
-  alone; image cache retries only offline failures.
+  alone; the image cache queues no fetch while offline.
 - Downloads: failure mid-stream leaves the original ROM byte-identical and no
   `.itchio-part`; idle timeout fires; short body rejected; success replaces the file.
 - `partfile`: journal entries survive a simulated crash and are deleted at
