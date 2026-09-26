@@ -21,4 +21,19 @@ func TestProblemText(t *testing.T) {
 	if problemText(own) != own.Error() {
 		t.Fatal("a non-network error lost its own text")
 	}
+
+	// An unclassified *url.Error (redirect loop, unusual TLS failure — not
+	// something netstate.Describe recognizes) must still lose its URL: a
+	// signed CDN URL carries credentials in the query string.
+	unclassified := &url.Error{Op: "Get", URL: "https://cdn.itch.io/upload?token=secret", Err: errors.New("stopped after 10 redirects")}
+	got = problemText(unclassified)
+	if strings.Contains(got, "https://") {
+		t.Fatal("URL on screen for an unclassified *url.Error")
+	}
+	if strings.Contains(got, "token=secret") {
+		t.Fatal("credential leaked onto screen")
+	}
+	if !strings.Contains(got, "stopped after 10 redirects") {
+		t.Fatalf("problemText(unclassified) = %q, lost its own text", got)
+	}
 }
