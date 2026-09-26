@@ -2,6 +2,7 @@ package netstate
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -48,7 +49,15 @@ type tracker struct {
 
 func newTracker() *tracker { return &tracker{hasRoute: func() bool { return true }} }
 
-var std = newTracker()
+// std is the app-wide tracker, held behind an atomic pointer so ResetForTest
+// (tests only) can swap it out without racing a concurrent Report: a request
+// started by one test can still be in flight — and call Report — after that
+// test has returned, while a later test calls ResetForTest.
+var std atomic.Pointer[tracker]
+
+func init() { std.Store(newTracker()) }
+
+func getStd() *tracker { return std.Load() }
 
 func (t *tracker) current() State {
 	t.mu.Lock()
@@ -123,33 +132,35 @@ func (t *tracker) onReconnect(fn func()) {
 
 // Report records the outcome of a request: nil when a response arrived,
 // whatever its status, or the error when none did.
-func Report(err error) { std.report(err) }
+func Report(err error) { getStd().report(err) }
 
 // Current returns the connection state as last observed.
-func Current() State { return std.current() }
+func Current() State { return getStd().current() }
 
 // Offline reports whether the last observation was a network failure.
-func Offline() bool { return std.current().Status == StatusOffline }
+func Offline() bool { return getStd().current().Status == StatusOffline }
 
 // SetNotify registers a callback run after every transition; the UI uses it to
 // push an SDL wake-up event. Set it once at startup.
 func SetNotify(fn func()) {
-	std.mu.Lock()
-	std.notify = fn
-	std.mu.Unlock()
+	t := getStd()
+	t.mu.Lock()
+	t.notify = fn
+	t.mu.Unlock()
 }
 
 // OnReconnect registers work to run once each time the app comes back online.
 // Callbacks run on the reporting goroutine, in registration order, and must
 // not block: start a goroutine or set a flag.
-func OnReconnect(fn func()) { std.onReconnect(fn) }
+func OnReconnect(fn func()) { getStd().onReconnect(fn) }
 
 // SetForTest forces a state, for tests and offscreen scenes. No callbacks run.
 func SetForTest(s State) {
-	std.mu.Lock()
-	std.st = s
-	std.mu.Unlock()
+	t := getStd()
+	t.mu.Lock()
+	t.st = s
+	t.mu.Unlock()
 }
 
 // ResetForTest restores a fresh tracker.
-func ResetForTest() { std = newTracker() }
+func ResetForTest() { std.Store(newTracker()) }

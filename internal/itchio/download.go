@@ -1,6 +1,7 @@
 package itchio
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -11,8 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 )
 
 // knownNonROMExts lists extensions that are definitely not GB/GBC ROM files.
@@ -248,17 +253,53 @@ func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, i
 	return c.streamToFile(cdnURL, dest, progress)
 }
 
+// streamIdleTimeout aborts a download that receives nothing for this long.
+// There is deliberately no overall timeout: a large file on slow Wi-Fi is fine
+// as long as bytes keep arriving.
+var streamIdleTimeout = 30 * time.Second
+
+// idleReader cancels the request when no bytes arrive for d.
+type idleReader struct {
+	r     io.Reader
+	d     time.Duration
+	timer *time.Timer
+	fired atomic.Bool
+}
+
+func newIdleReader(r io.Reader, d time.Duration, cancel func()) *idleReader {
+	ir := &idleReader{r: r, d: d}
+	ir.timer = time.AfterFunc(d, func() {
+		ir.fired.Store(true)
+		cancel()
+	})
+	return ir
+}
+
+func (ir *idleReader) Read(p []byte) (int, error) {
+	n, err := ir.r.Read(p)
+	if n > 0 {
+		ir.timer.Reset(ir.d)
+	}
+	return n, err
+}
+
 func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) error {
 	// c.http has a 30-second Timeout that covers the entire response body read —
 	// fine for API calls but fatal for large file downloads. Create a per-call
-	// client with no overall timeout (Timeout: 0) that shares the same
-	// transport so UA injection, h2/h1 fallback and dial timeouts still apply.
+	// client with no overall timeout that shares the same transport, so UA
+	// injection, h2/h1 fallback, dial timeouts and netstate reporting apply.
 	dlClient := &http.Client{
 		Transport:     c.http.Transport,
 		Jar:           c.http.Jar,
 		CheckRedirect: c.http.CheckRedirect,
 	}
-	resp, err := dlClient.Get(srcURL)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
+	if err != nil {
+		return fmt.Errorf("fetch file: %w", withoutURL(err))
+	}
+	resp, err := dlClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("fetch file: %w", withoutURL(err))
 	}
@@ -266,7 +307,7 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("stream: HTTP %d fetching file", resp.StatusCode)
-		return fmt.Errorf("file download status %d", resp.StatusCode)
+		return &netstate.StatusError{What: "file download", Code: resp.StatusCode}
 	}
 
 	// Log the destination and size but not the CDN source URL (may contain tokens).
@@ -276,22 +317,25 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 		logger.Info("stream: → %s (unknown size)", dest)
 	}
 
-	dir := filepath.Dir(dest)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
 
-	f, err := os.Create(dest)
+	// The installed file, if any, is not touched until the new one is complete.
+	f, err := partfile.Create(dest)
 	if err != nil {
 		return fmt.Errorf("create dest: %w", err)
 	}
-	defer f.Close()
+	defer f.Abort() // no-op after Commit
+
+	body := newIdleReader(resp.Body, streamIdleTimeout, cancel)
+	defer body.timer.Stop()
 
 	total := resp.ContentLength
 	var downloaded int64
 	buf := make([]byte, 32*1024)
 	for {
-		n, err := resp.Body.Read(buf)
+		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				logger.Error("stream: write error after %d bytes: %v", downloaded, werr)
@@ -302,13 +346,26 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 				progress(downloaded, total)
 			}
 		}
-		if err == io.EOF {
+		if rerr == io.EOF {
 			break
 		}
-		if err != nil {
-			logger.Error("stream: read error after %d bytes: %v", downloaded, err)
-			return fmt.Errorf("read stream: %w", err)
+		if rerr != nil {
+			if body.fired.Load() {
+				rerr = fmt.Errorf("no data for %v: %w", streamIdleTimeout, os.ErrDeadlineExceeded)
+			}
+			logger.Error("stream: read error after %d bytes: %v", downloaded, withoutURL(rerr))
+			netstate.Report(rerr)
+			return fmt.Errorf("read stream: %w", withoutURL(rerr))
 		}
+	}
+	if total >= 0 && downloaded != total {
+		err := fmt.Errorf("short download: got %d of %d bytes: %w", downloaded, total, io.ErrUnexpectedEOF)
+		logger.Error("stream: %v", err)
+		netstate.Report(err)
+		return err
+	}
+	if err := f.Commit(); err != nil {
+		return fmt.Errorf("finish download: %w", err)
 	}
 	logger.Info("stream: done, wrote %d bytes", downloaded)
 	return nil

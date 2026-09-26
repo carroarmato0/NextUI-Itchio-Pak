@@ -25,7 +25,7 @@ type monitor struct {
 // online; each transition to Offline starts one reconnect loop. probe must
 // make one cheap request through a client whose transport feeds this package.
 func StartMonitor(root string, probe func() error) {
-	startMonitor(std, root, probe, time.Sleep)
+	startMonitor(getStd(), root, probe, time.Sleep)
 }
 
 // startMonitor is StartMonitor with the tracker and the poll sleep injectable,
