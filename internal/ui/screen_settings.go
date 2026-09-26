@@ -313,10 +313,26 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			annotation := updateInventoryAnnotation(s.updateSvc)
 			aw, _ := r.SmallTextSize(annotation)
 			ax := r.W - aw - 20
+			warn := s.updateSvc.IsRunning() || netstate.Offline()
 			var aR, aG, aB uint8
-			if s.updateSvc.IsRunning() || netstate.Offline() {
+			switch {
+			case isSelected && warn:
+				// Warning is toned against Background, so on the selected row —
+				// filled with an Accent pill — it can be unreadable (orange on
+				// orange). ToneOn adapts the same hue until it clears contrast
+				// against the pill, so "offline"/"checking…" keep reading as a
+				// warning instead of turning into the idle colour.
+				c := r.Theme.ToneOn(r.Theme.Warning(), r.Theme.Accent)
+				aR, aG, aB = c[0], c[1], c[2]
+			case isSelected:
+				// Muted is derived from the background too; de-emphasise
+				// relative to the Accent pill the same way the Account row's
+				// "not signed in" does.
+				c := theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
+				aR, aG, aB = c[0], c[1], c[2]
+			case warn:
 				aR, aG, aB = rgb(r.Theme.Warning())
-			} else {
+			default:
 				aR, aG, aB = rgb(r.Theme.Muted())
 			}
 			_, fh := r.TextSize("Ag")
