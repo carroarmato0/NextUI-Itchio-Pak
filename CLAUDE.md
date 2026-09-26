@@ -115,6 +115,13 @@ it directly. Branch features from `dev` and merge them back there. Pre-releases
 for testers are tagged `vX.Y.Z-rcN` and cut from `dev` with
 `release-github.sh --prerelease`; full releases come off `main`.
 
+**Larger releases get a release branch.** A release made of several features
+(1.1.0: QR sign-in, paid gating, data.json, API update checks) is built on
+`release/X.Y.0`, branched from `dev`: each feature is a `feature/X.Y-<name>`
+branch merged back into it, and its release candidates are cut from it. When
+it ships it merges into `dev`, `dev` into `main`, and `main` back into `dev`.
+Fixes that land on `dev` meanwhile are merged forward into the release branch.
+
 **Not every merge to `main` is a release.** Changes that ship nothing to a
 device — documentation, skills, build and debug tooling — can merge to `main`
 without a version bump or a GitHub release, so the files are correct wherever
