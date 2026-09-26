@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/veandco/go-sdl2/sdl"
 	"golang.org/x/image/draw"
 )
@@ -71,6 +72,16 @@ type ImageCache struct {
 // Safe to call before any fetches start; not safe to change while fetches run.
 func (c *ImageCache) SetNotify(fn func()) { c.notify = fn }
 
+// Resume asks for a redraw once the connection is back, so the screen calls
+// Get again and fetches the covers it skipped. Registered with
+// netstate.OnReconnect.
+func (c *ImageCache) Resume() {
+	logger.Info("image cache: connection back, resuming cover fetches")
+	if c.notify != nil {
+		c.notify()
+	}
+}
+
 const maxConcurrentFetches = 2
 
 func NewImageCache(maxEntries int, httpClient *http.Client) *ImageCache {
@@ -121,6 +132,12 @@ func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
 		return tex
 	}
 	if _, bad := c.failed[url]; bad {
+		c.mu.Unlock()
+		return nil
+	}
+	if netstate.Offline() {
+		// Every request would fail and be forgotten, and Get runs on every
+		// redraw: offline, that was a doomed request per cover per frame.
 		c.mu.Unlock()
 		return nil
 	}

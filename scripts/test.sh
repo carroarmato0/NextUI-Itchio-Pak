@@ -117,6 +117,9 @@ set -e
 echo "==> go test ./internal/ui (non-headless)"
 go test ./internal/ui/ || exit 1
 
+echo "==> go test ./internal/renderer (non-headless)"
+go test ./internal/renderer/ || exit 1
+
 if [ -n "$COVER" ] && [ $EXIT_CODE -eq 0 ]; then
     go tool cover -html=coverage.out -o coverage.html
     echo "Coverage report: coverage.html"
