@@ -11,6 +11,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -311,7 +312,7 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			aw, _ := r.SmallTextSize(annotation)
 			ax := r.W - aw - 20
 			var aR, aG, aB uint8
-			if s.updateSvc.IsRunning() {
+			if s.updateSvc.IsRunning() || netstate.Offline() {
 				aR, aG, aB = rgb(r.Theme.Warning())
 			} else {
 				aR, aG, aB = rgb(r.Theme.Muted())
@@ -445,6 +446,9 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 // updateInventoryAnnotation returns a short right-aligned label for the
 // "Update Inventory" settings row.
 func updateInventoryAnnotation(svc UpdateServicer) string {
+	if netstate.Offline() {
+		return "offline"
+	}
 	if svc.IsRunning() {
 		return "checking…"
 	}

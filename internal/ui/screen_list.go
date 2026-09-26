@@ -14,6 +14,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -182,6 +183,11 @@ type ListScreen struct {
 	// badgePriceCache holds pre-formatted "$X.XX" strings keyed by game URL.
 	// Populated lazily on first Draw access; cleared on rebuildView.
 	badgePriceCache map[string]string
+
+	// reconnected is set from the netstate goroutine and consumed in Draw, the
+	// only place that may touch cacheReady, err and the fetch goroutines' flags.
+	reconnected      atomic.Bool
+	cacheFetchFailed atomic.Bool
 }
 
 // openDetail opens a game page that knows whether the game is owned.
@@ -521,6 +527,17 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		s.needsRebuild = false
 		s.rebuildView()
 	}
+	if s.reconnected.Swap(false) {
+		if s.err != nil && !s.loading.Load() {
+			logger.Info("feed: connection back, retrying page 1")
+			s.err = nil
+			go s.loadPage(1)
+		}
+		if s.cacheFetchFailed.Load() && !s.cacheBuilding.Load() {
+			logger.Info("cache: connection back, retrying the game-list refresh")
+			go s.buildCache()
+		}
+	}
 	s.processAutoRepeat()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
@@ -621,6 +638,19 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 		r.DrawPill(platPillX, pillY, platPillW, pillH, platBgR, platBgG, platBgB)
 		r.DrawTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
+
+		// Offline chip, left of the platform pill. The cached list stays usable;
+		// this only says why nothing new is arriving.
+		if netstate.Offline() {
+			offLabel := "Offline"
+			ow, _ := r.TextSize(offLabel)
+			offW := ow + 24
+			offX := platPillX - offW - 6
+			wr, wg, wb := rgb(r.Theme.WarningBG())
+			r.DrawPill(offX, pillY, offW, pillH, wr, wg, wb)
+			tc := r.Theme.ToneOn(r.Theme.Warning(), r.Theme.WarningBG())
+			r.DrawTextCenteredInRect(offLabel, offX, pillY, offW, pillH, tc[0], tc[1], tc[2])
+		}
 	}
 
 	contentTop := headerH + 4
@@ -1566,8 +1596,10 @@ func (s *ListScreen) buildCache() {
 	})
 	if err != nil {
 		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
+		s.cacheFetchFailed.Store(true)
 		return
 	}
+	s.cacheFetchFailed.Store(false)
 	if err := itchio.SaveGamesCache(s.cachePath, games); err != nil {
 		logger.Error("cache: save failed: %v", err)
 		return
@@ -1583,6 +1615,13 @@ func (s *ListScreen) buildCache() {
 	if s.updateSvc != nil {
 		s.updateSvc.TriggerNow()
 	}
+}
+
+// RetryAfterReconnect is registered with netstate.OnReconnect. It runs on the
+// netstate goroutine, so it only raises a flag and wakes the UI.
+func (s *ListScreen) RetryAfterReconnect() {
+	s.reconnected.Store(true)
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 }
 
 // refreshCacheIfStale triggers a full re-fetch if the cache is older than cacheTTL.
