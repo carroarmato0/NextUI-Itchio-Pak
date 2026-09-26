@@ -161,3 +161,51 @@ func TestSweep_onlyOurStaleFiles(t *testing.T) {
 		t.Error("stale partial file survived")
 	}
 }
+
+// The journal is flushed to storage before it replaces the old one, as the
+// settings are: a power cut after the rename must not leave a journal that
+// points at clusters never written, which would lose the partial files it
+// is there to clean up.
+func TestJournal_syncedBeforeRename(t *testing.T) {
+	j := reset(t)
+	defer func(old func(*os.File) error) { syncFile = old }(syncFile)
+	var synced []string
+	syncFile = func(f *os.File) error {
+		// The first save creates the journal: it must not exist until the
+		// temp file has been flushed and renamed.
+		if _, err := os.Stat(j); err == nil && len(synced) == 0 {
+			t.Errorf("journal already renamed into place before its sync")
+		}
+		synced = append(synced, f.Name())
+		return f.Sync()
+	}
+	f, err := Create(filepath.Join(t.TempDir(), "g.gb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Abort()
+	if len(synced) != 1 || synced[0] != j+".tmp" {
+		t.Fatalf("synced %v, want the journal's temp file once", synced)
+	}
+}
+
+// A failed sync leaves the previous journal in place instead of renaming an
+// unflushed one over it.
+func TestJournal_syncFailureKeepsOldJournal(t *testing.T) {
+	j := reset(t)
+	os.WriteFile(j, []byte(`["/old/.x.gb.itchio-part"]`), 0644)
+	defer func(old func(*os.File) error) { syncFile = old }(syncFile)
+	syncFile = func(*os.File) error { return syscall.EIO }
+
+	mu.Lock()
+	active["/new/.y.gb.itchio-part"] = true
+	err := saveLocked()
+	delete(active, "/new/.y.gb.itchio-part")
+	mu.Unlock()
+	if err == nil {
+		t.Fatal("saveLocked returned nil despite a sync failure")
+	}
+	if b, _ := os.ReadFile(j); string(b) != `["/old/.x.gb.itchio-part"]` {
+		t.Fatalf("journal replaced despite sync failure: %s", b)
+	}
+}

@@ -25,6 +25,9 @@ var (
 	active  = map[string]bool{} // partial files being written by this process
 )
 
+// syncFile flushes f to storage; a variable so tests can fail it.
+var syncFile = func(f *os.File) error { return f.Sync() }
+
 // PathFor is the partial file for dest: hidden (dot-prefixed, so neither
 // launcher lists it) and in the same folder, so the final rename never
 // crosses filesystems.
@@ -52,10 +55,30 @@ func saveLocked() error {
 	sort.Strings(paths)
 	data, _ := json.Marshal(paths)
 	tmp := journal + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := writeSynced(tmp, data); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, journal)
+}
+
+// writeSynced writes data to path and flushes it to storage before returning,
+// so a rename over the old journal never exposes unwritten clusters after a
+// power cut on the FAT/exFAT cards these handhelds use.
+func writeSynced(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := syncFile(f); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func forget(part string) {
