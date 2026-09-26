@@ -415,7 +415,7 @@ func (c *Client) FetchTotalGames() (int, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
-		logger.Error("feed: total-games HTTP 403 (Cloudflare bot-protection)")
+		logger.Error("feed: total-games HTTP 403")
 		return 0, fmt.Errorf("fetch total games: %w", ErrCloudflareBlocked)
 	}
 	if resp.StatusCode != http.StatusOK {
