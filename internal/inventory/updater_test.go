@@ -36,9 +36,7 @@ func TestUpdateService_RepairsMissingCoverArt(t *testing.T) {
 			w.Header().Set("Content-Type", "image/png")
 			w.Write(pngData)
 		case "/game/data.json":
-			// data.json must succeed for cover art repair to run (it happens
-			// after a game's data is confirmed fetchable); the page's own
-			// upload listing still 404s, so the game is marked removed after.
+			// data.json succeeds; the page's own upload listing 404s.
 			w.Write([]byte(`{"id":1}`))
 		default:
 			http.NotFound(w, r)
@@ -55,7 +53,7 @@ func TestUpdateService_RepairsMissingCoverArt(t *testing.T) {
 	invPath := filepath.Join(dir, "inventory.json")
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
 	// Use srv.URL+"/game" as gameURL; FetchUploads (the page) will 404 but
-	// cover art repair runs once data.json confirms the game is reachable.
+	// cover art repair does not depend on it.
 	gameURL := srv.URL + "/game"
 	inv.Add(gameURL,
 		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
@@ -467,5 +465,65 @@ func TestIsGameRemoved_SentinelUnwraps(t *testing.T) {
 	}
 	if errors.Is(fmt.Errorf("HTTP 404 plain text"), itchio.ErrGameRemoved) {
 		t.Error("plain string error should NOT match ErrGameRemoved")
+	}
+}
+
+// A game whose data.json fails — removed (404) or a transient server error —
+// still has its missing cover healed: the cover lives on the CDN and outlives
+// the page. Only an offline failure skips the repair.
+func TestUpdateService_RepairsCoverArtWhenDataJSONFails(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+	}{
+		{"removed", http.StatusNotFound},
+		{"transient", http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pngData := minimalPNG()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/cover.png":
+					w.Header().Set("Content-Type", "image/png")
+					w.Write(pngData)
+				case "/game/data.json":
+					w.WriteHeader(tc.status)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+
+			dir := t.TempDir()
+			romPath := filepath.Join(dir, "game.gb")
+			if err := os.WriteFile(romPath, []byte("ROM"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			invPath := filepath.Join(dir, "inventory.json")
+			inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+			gameURL := srv.URL + "/game"
+			inv.Add(gameURL,
+				inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
+				inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
+			if err := inv.Save(invPath); err != nil {
+				t.Fatal(err)
+			}
+
+			svc := inventory.NewUpdateService(inv, invPath, itchio.NewClientWithBase(srv.URL), nil)
+			done := make(chan struct{})
+			svc.Start(func() { close(done) })
+			<-done
+			svc.Stop()
+
+			artPath := inventory.CoverArtPath(srv.URL+"/cover.png", romPath)
+			if _, err := os.Stat(artPath); err != nil {
+				t.Errorf("cover art not repaired at %s: %v", artPath, err)
+			}
+			if tc.status == http.StatusNotFound {
+				if !inv.IsRemoved(gameURL) {
+					t.Error("game not marked removed")
+				}
+			}
+		})
 	}
 }

@@ -137,20 +137,25 @@ func (s *UpdateService) runCheck() {
 	var paidIDs []string
 	for _, gameURL := range urls {
 		d, err := s.client.FetchGameData(gameURL)
+		if netstate.Classify(err).Offline() {
+			s.owed.Store(true)
+			logger.Warn("update-svc: network down (%v), abandoning this check", err)
+			return
+		}
+		// Covers are healed for every game the network could reach, removed
+		// and transiently failing ones included: the cover URL is on itch.io's
+		// CDN and outlives the game page. Only an offline failure skips it,
+		// since every repair request would be doomed too.
+		s.repairCoverArt(gameURL)
 		switch {
 		case isGameRemoved(err):
 			s.inv.MarkRemoved(gameURL)
 			logger.Warn("update-svc: game removed (404) %s", gameURL)
 			continue
-		case netstate.Classify(err).Offline():
-			s.owed.Store(true)
-			logger.Warn("update-svc: network down (%v), abandoning this check", err)
-			return
 		case err != nil:
 			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
 			continue
 		}
-		s.repairCoverArt(gameURL)
 		games[gameURL] = d
 		if token != "" && d.Pricing() == itchio.PricingPaid && d.ID != 0 {
 			paidIDs = append(paidIDs, strconv.FormatInt(d.ID, 10))
@@ -195,7 +200,12 @@ func (s *UpdateService) runCheck() {
 }
 
 // repairCoverArt downloads cover art that has gone missing from disk.
+// Offline it does nothing: every download would fail.
 func (s *UpdateService) repairCoverArt(gameURL string) {
+	if netstate.Offline() {
+		logger.Debug("update-svc: offline, cover art repair skipped for %s", gameURL)
+		return
+	}
 	s.inv.mu.Lock()
 	entry, ok := s.inv.Entries[gameURL]
 	if !ok {
