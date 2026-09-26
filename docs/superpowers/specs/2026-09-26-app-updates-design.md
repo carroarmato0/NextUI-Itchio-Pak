@@ -238,12 +238,12 @@ the release's `html_url`.
 
 - Destination: `ARCHIVE/` at the root of the card muOS calls SD1
   (`firmware.Env` gains `ArchiveDir()`; `""` on NextUI and host).
-- Download `Itch-io.muOS.<tag>.muxapp` to `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.part`
+- Download `Itch-io.muOS.<tag>.muxapp` to `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.itchio-part`
   with the same `.part`/idle-timeout/length rules as game downloads
-  (connectivity spec §4), checking free space first (asset size + 10 %). Progress bar and B to cancel,
+  (connectivity spec §4, including its journal and startup cleanup), checking free space first (asset size + 10 %). Progress bar and B to cancel,
   reusing the download screen's drawing.
 - Verify size and the SHA-256 against the asset `digest`. On mismatch, delete
-  the `.part`, log both hashes, show `Download failed the integrity check`.
+  the partial file, log both hashes, show `Download failed the integrity check`.
   A release without a digest is not downloadable.
 - Check the zip before accepting it: every entry under `Itch-io/`, and the
   `SAFE_ARCHIVE` rules (no absolute paths, `..`, `\`, links; entry count and

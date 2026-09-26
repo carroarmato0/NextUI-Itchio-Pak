@@ -121,7 +121,7 @@ requested again.
 
 `streamToFile`:
 
-- writes to `.<name>.part` in the destination folder (dot-prefixed so neither
+- writes to `.<name>.itchio-part` in the destination folder (dot-prefixed so neither
   launcher lists it; same folder, so the final rename stays on one filesystem);
 - aborts after 30 s with no bytes received (an idle timer reset on each read),
   reporting `Unreachable`;
@@ -133,6 +133,36 @@ requested again.
 
 The ZIP flow already downloads to a temp file first; it gets the idle timeout
 and the length check too.
+
+**Abandoned partial files.** A crash, a kill, a dead battery or a power-off
+mid-download skips the cleanup above. Partial files are handled by a journal
+plus a startup sweep, both owned by one small helper
+(`internal/partfile`) that every writer of partial files goes through: game
+downloads, music downloads, and the muOS Save to ARCHIVE.
+
+- **Naming.** `.<name>.itchio-part`. The distinctive suffix means the app only
+  ever deletes files it created, never another tool's `.part` or `.tmp`.
+- **Journal.** Before a partial file is created, its absolute path is added to
+  `partials.json` in the data directory (written atomically, like the
+  settings). It is removed from the journal after the final rename or the
+  delete. This covers folders the user picked by hand (ROM Location: ask), which
+  no scan of known folders would find.
+- **Startup.** Every journal entry that still exists, and still carries the
+  suffix, is deleted, then the journal is cleared. This runs synchronously
+  before the first screen: it is a handful of `unlink`s at most.
+- **Sweep.** A background pass then lists, non-recursively, the folders the app
+  writes to by default — every ROM folder from `firmware.Env`, the music
+  folder, `ARCHIVE/` on muOS — and deletes files with the suffix that are not
+  in the in-process set of downloads currently running. That catches leftovers
+  whose journal was lost (a corrupt `partials.json`, or files left by a build
+  from before the journal existed) without racing a download the user
+  starts in the first seconds.
+- **No resume.** Partial files are always deleted, never resumed: itch.io's
+  download URLs are signed and short-lived, so resuming would mean a fresh
+  request anyway, and a restarted download of a GB/GBC/GBA-sized file costs
+  seconds.
+- **Logged:** each file removed, with its size and whether the journal or the
+  sweep found it; a journal that failed to parse.
 
 ### 5. What the user sees
 
@@ -169,7 +199,7 @@ colour literals.
 
 ### 6. Logging
 
-Transitions (with reason and the underlying error), each local route check
+Transitions (with reason and the underlying error), partial-file cleanup (see §4), each local route check
 result at debug, each reconnect attempt and its outcome, deferred work being
 queued and run, the image cache's retry set size on reconnect, and download
 `.part` creation, idle abort, length mismatch, rename and cleanup.
@@ -190,7 +220,11 @@ queued and run, the image cache's retry set size on reconnect, and download
 - Inventory service aborts on the first offline failure and leaves `checked_at`
   alone; image cache retries only offline failures.
 - Downloads: failure mid-stream leaves the original ROM byte-identical and no
-  `.part`; idle timeout fires; short body rejected; success replaces the file.
+  `.itchio-part`; idle timeout fires; short body rejected; success replaces the file.
+- `partfile`: journal entries survive a simulated crash and are deleted at
+  startup; the sweep deletes only suffixed files, skips active downloads, and
+  leaves other `.part`/`.tmp` files alone; a corrupt journal falls back to the
+  sweep.
 - `devshot` scenes: the message component for each reason, list screen with the
   Offline chip, at all four geometries in the palette audit.
 - On hardware, both firmwares: Wi-Fi off mid-session (chip appears, inventory
