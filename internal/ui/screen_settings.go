@@ -167,6 +167,8 @@ func (s *SettingsScreen) rowHidden(item settingsItem) bool {
 		return !s.themeAvailable
 	case sItemMusicLocation:
 		return s.cfg.MusicDownload == "off"
+	case sItemRefreshCache:
+		return s.onRefreshGames == nil
 	default:
 		return false
 	}
