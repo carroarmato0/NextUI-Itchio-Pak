@@ -28,3 +28,16 @@ func withoutURL(err error) string {
 	}
 	return err.Error()
 }
+
+// signInFailureText is the title and hint of the sign-in screen's failure
+// state. Connection problems get netstate's words — a captive portal or an
+// itch.io outage is not a Wi-Fi problem. Anything else keeps the screen's
+// general "can't reach" text.
+func signInFailureText(err error) (title, hint string) {
+	if err != nil {
+		if m, ok := netstate.Describe(err, "itch.io"); ok {
+			return m.Title, m.Hint
+		}
+	}
+	return "Can't reach itch.io", "Check that Wi-Fi is on and connected, then try again."
+}
