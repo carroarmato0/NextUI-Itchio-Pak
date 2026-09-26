@@ -183,10 +183,11 @@ title and a hint:
 | `Clock` | The date and time are wrong | Secure connections fail until the clock is set. |
 | `Intercepted` | This network is blocking the connection | Public Wi-Fi may need you to sign in on a phone or computer first. |
 | HTTP 5xx | itch.io is having problems | Try again in a few minutes. |
-| other | Something went wrong | the error's first line, shortened |
+| not a connection problem | — | the screen's own message, unchanged ("no downloadable files found for this game", "not a valid ZIP") |
 
-The raw error always goes to the log, never the screen. Footer: A Retry,
-B Back. On screens that retry by themselves on reconnect (the list screen),
+Each screen keeps its own layout, heading ("Download failed:") and footer;
+only the message text changes. A raw network error goes to the log, never
+the screen. On screens that retry by themselves on reconnect (the list screen),
 the message changes on its own as soon as the state flips.
 
 The Cloudflare branch on the list screen is removed; a 403 becomes an ordinary
