@@ -117,6 +117,14 @@ func Classify(err error) Reason {
 	if errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH) {
 		return ReasonNoNetwork
 	}
+	// io.EOF directly inside a *url.Error means the connection closed before
+	// any response arrived: the network. Anywhere else (decoding a body that
+	// came back empty, reading a local file) it is a short read, not the
+	// network, so it falls through to Other.
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err == io.EOF {
+		return ReasonUnreachable
+	}
 	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
 		errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {

@@ -15,7 +15,8 @@ import (
 
 // resetListener accepts connections and resets them at once, counting them:
 // every request through it fails with ECONNRESET. (A plain Close would send a
-// FIN, which the client sees as io.EOF: not a network failure by itself.)
+// FIN, which the client sees as io.EOF with no response — also offline — but
+// a reset is the unambiguous case.)
 func resetListener(t *testing.T) (addr string, accepts *int32) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

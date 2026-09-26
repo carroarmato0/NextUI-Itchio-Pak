@@ -2,11 +2,21 @@ package ui
 
 import (
 	"errors"
+	"io"
 	"net"
 	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestProblemText_eofWithNoResponse(t *testing.T) {
+	// The connection closed before any response: Go's client returns io.EOF
+	// directly inside the *url.Error.
+	err := &url.Error{Op: "Get", URL: "https://itch.io/games", Err: io.EOF}
+	if got := problemText(err); got != "Can't reach itch.io. Check your Wi-Fi connection, then try again." {
+		t.Fatalf("problemText(no-response EOF) = %q", got)
+	}
+}
 
 func TestProblemText(t *testing.T) {
 	dns := &url.Error{Op: "Get", URL: "https://itch.io/games", Err: &net.DNSError{Err: "no such host", Name: "itch.io", IsNotFound: true}}

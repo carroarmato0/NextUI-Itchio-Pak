@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"net"
 	"os"
 	"path/filepath"
@@ -124,5 +126,29 @@ func TestUpdateService_abandonLogHasNoURL(t *testing.T) {
 
 	if line := abandonLine(t, logs.String()); strings.Contains(line, "http://") {
 		t.Errorf("abandon line logs the URL: %s", line)
+	}
+}
+
+// A data.json that answers 200 with an empty body decodes to io.EOF. The
+// network worked: the check must not be abandoned, and the app must not go
+// offline, or the same game would end every future run.
+func TestUpdateService_emptyDataJSONDoesNotAbandon(t *testing.T) {
+	netstate.ResetForTest()
+	defer netstate.ResetForTest()
+	logs := captureLog(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // empty body for every request
+	}))
+	defer srv.Close()
+	runOneCheck(t, strings.TrimPrefix(srv.URL, "http://"))
+
+	if netstate.Offline() {
+		t.Fatal("netstate offline after an empty 200")
+	}
+	if strings.Contains(logs.String(), "abandoning this check") {
+		t.Fatalf("check abandoned on an empty 200:\n%s", logs.String())
+	}
+	if !strings.Contains(logs.String(), "transient error") {
+		t.Fatalf("empty data.json not treated as a per-game transient error:\n%s", logs.String())
 	}
 }
