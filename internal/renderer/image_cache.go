@@ -173,8 +173,12 @@ func (c *ImageCache) Peek(r *Renderer, url string) *sdl.Texture {
 
 // Warm schedules a background fetch for url if it is not already cached or
 // in-flight. Returns immediately with no texture. Use alongside Peek to control
-// exactly when fetches are initiated.
+// exactly when fetches are initiated. Offline it queues nothing, like Get;
+// Resume's redraw calls it again once the connection is back.
 func (c *ImageCache) Warm(url string) {
+	if netstate.Offline() {
+		return
+	}
 	c.mu.Lock()
 	_, cached := c.items[url]
 	_, fetching := c.fetching[url]

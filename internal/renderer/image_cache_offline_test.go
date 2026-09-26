@@ -52,3 +52,40 @@ func TestImageCache_noFetchWhileOffline(t *testing.T) {
 		t.Fatal("no fetch after coming back online")
 	}
 }
+
+func TestImageCache_warmQueuesNothingWhileOffline(t *testing.T) {
+	netstate.ResetForTest()
+	defer netstate.ResetForTest()
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := NewImageCache(10, srv.Client())
+	netstate.SetForTest(netstate.State{Status: netstate.StatusOffline, Reason: netstate.ReasonDNS})
+	for i := 0; i < 5; i++ {
+		c.Warm(srv.URL + "/cover.png")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := atomic.LoadInt32(&hits); n != 0 {
+		t.Fatalf("%d requests made by Warm while offline", n)
+	}
+	c.mu.Lock()
+	queued := len(c.fetching)
+	c.mu.Unlock()
+	if queued != 0 {
+		t.Fatalf("%d fetches queued while offline", queued)
+	}
+
+	netstate.SetForTest(netstate.State{Status: netstate.StatusOnline})
+	c.Warm(srv.URL + "/cover.png")
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&hits) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if atomic.LoadInt32(&hits) == 0 {
+		t.Fatal("Warm made no fetch after coming back online")
+	}
+}
