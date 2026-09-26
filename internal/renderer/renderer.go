@@ -59,6 +59,7 @@ type Renderer struct {
 	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
 	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
 	displayFonts  map[int]*ttf.Font        // primary font at custom sizes, see display_text.go
+	descCache     map[string][]descBlock   // parsed game descriptions, see description.go
 
 	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
 	drawLog   []DrawLogEntry
@@ -600,26 +601,6 @@ func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red
 	return int32(len(lines)) * lineH
 }
 
-// descStripInlineTags removes all HTML tags from s, returning plain text.
-// Used by DrawFormattedText to extract readable text from inline-tagged markup.
-func descStripInlineTags(s string) string {
-	var buf strings.Builder
-	i := 0
-	for i < len(s) {
-		if s[i] == '<' {
-			end := strings.IndexByte(s[i:], '>')
-			if end < 0 {
-				break
-			}
-			i += end + 1
-			continue
-		}
-		buf.WriteByte(s[i])
-		i++
-	}
-	return strings.Join(strings.Fields(buf.String()), " ")
-}
-
 // descClampU8 clamps an int value to [0, 255].
 func descClampU8(v int) uint8 {
 	if v > 255 {
@@ -636,6 +617,9 @@ func descClampU8(v int) uint8 {
 // <ul>, <ol>, <li>. Block-level structure (paragraphs, headings, list items)
 // is honoured; inline <b> content is rendered in a slightly brighter colour.
 // Returns the total pixel height consumed.
+//
+// The markup is parsed once and the blocks cached (see description.go); a
+// frame only draws them.
 func (r *Renderer) DrawFormattedText(markup string, x, y, maxW, lineH int32,
 	baseR, baseG, baseB uint8) int32 {
 	startY := y
@@ -646,118 +630,54 @@ func (r *Renderer) DrawFormattedText(markup string, x, y, maxW, lineH int32,
 	boldG := descClampU8(int(baseG) + 55)
 	boldB := descClampU8(int(baseB) + 55)
 
-	listType := "" // "ul" or "ol"
-	listCounter := 0
-
-	lower := strings.ToLower
-
-	i := 0
-	for i < len(markup) {
-		if markup[i] != '<' {
-			// Bare text — find next tag
-			end := strings.IndexByte(markup[i:], '<')
-			var text string
-			if end < 0 {
-				text = strings.TrimSpace(markup[i:])
-				i = len(markup)
-			} else {
-				text = strings.TrimSpace(markup[i : i+end])
-				i += end
-			}
-			if text != "" {
-				y += r.DrawWrappedText(text, x, y, maxW, lineH, baseR, baseG, baseB)
-			}
-			continue
-		}
-
-		// Parse tag
-		end := strings.IndexByte(markup[i:], '>')
-		if end < 0 {
-			break
-		}
-		tag := strings.TrimSpace(lower(markup[i+1 : i+end]))
-		i += end + 1
-
-		switch tag {
-		case "p":
-			closeIdx := strings.Index(lower(markup[i:]), "</p>")
-			if closeIdx < 0 {
-				closeIdx = len(markup) - i
-			}
-			pText := descStripInlineTags(markup[i : i+closeIdx])
-			if pText != "" {
-				if y > startY {
-					y += fontH / 3
-				}
-				y += r.DrawWrappedText(pText, x, y, maxW, lineH, baseR, baseG, baseB)
+	for _, b := range r.descriptionBlocks(markup) {
+		switch b.kind {
+		case descText:
+			y += r.DrawWrappedText(b.text, x, y, maxW, lineH, baseR, baseG, baseB)
+		case descPara:
+			if y > startY {
 				y += fontH / 3
 			}
-			if closeIdx < len(markup)-i {
-				i += closeIdx + 4
-			} else {
-				i = len(markup)
+			y += r.DrawWrappedText(b.text, x, y, maxW, lineH, baseR, baseG, baseB)
+			y += fontH / 3
+		case descHeading:
+			if y > startY {
+				y += fontH / 2
 			}
-
-		case "h2":
-			closeIdx := strings.Index(lower(markup[i:]), "</h2>")
-			if closeIdx < 0 {
-				closeIdx = len(markup) - i
-			}
-			hText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
-			if hText != "" {
-				if y > startY {
-					y += fontH / 2
-				}
-				r.DrawBoldText(hText, x, y, boldR, boldG, boldB)
-				y += lineH + fontH/4
-			}
-			if closeIdx < len(markup)-i {
-				i += closeIdx + 5
-			} else {
-				i = len(markup)
-			}
-
-		case "ul":
-			listType = "ul"
-		case "ol":
-			listType = "ol"
-			listCounter = 0
-		case "/ul", "/ol":
-			listType = ""
-			listCounter = 0
+			r.DrawBoldText(b.text, x, y, boldR, boldG, boldB)
+			y += lineH + fontH/4
+		case descListEnd:
 			y += fontH / 4
-
-		case "li":
-			closeIdx := strings.Index(lower(markup[i:]), "</li>")
-			if closeIdx < 0 {
-				closeIdx = len(markup) - i
-			}
-			liText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
-			if liText != "" {
-				var prefix string
-				if listType == "ol" {
-					listCounter++
-					prefix = fmt.Sprintf("%d.  ", listCounter)
-				} else {
-					prefix = "•  "
-				}
-				_, smallFH := r.SmallTextSize("Ag")
-				pw, _ := r.SmallTextSize(prefix)
-				r.DrawSmallText(prefix, x, y+(lineH-smallFH)/2, baseR, baseG, baseB)
-				y += r.DrawWrappedText(liText, x+pw, y, maxW-pw, lineH, baseR, baseG, baseB)
-				y += fontH / 6
-			}
-			if closeIdx < len(markup)-i {
-				i += closeIdx + 5
-			} else {
-				i = len(markup)
-			}
-
-		case "br":
+		case descItem:
+			_, smallFH := r.SmallTextSize("Ag")
+			pw, _ := r.SmallTextSize(b.prefix)
+			r.DrawSmallText(b.prefix, x, y+(lineH-smallFH)/2, baseR, baseG, baseB)
+			y += r.DrawWrappedText(b.text, x+pw, y, maxW-pw, lineH, baseR, baseG, baseB)
+			y += fontH / 6
+		case descBreak:
 			y += lineH / 2
 		}
 	}
 	return y - startY
+}
+
+// descriptionCacheSize bounds the parsed descriptions kept: the game page
+// shows one at a time, and a few cover moving back and forth between games.
+const descriptionCacheSize = 8
+
+// descriptionBlocks returns markup parsed into blocks, parsing it only the
+// first time it is drawn.
+func (r *Renderer) descriptionBlocks(markup string) []descBlock {
+	if b, ok := r.descCache[markup]; ok {
+		return b
+	}
+	if r.descCache == nil || len(r.descCache) >= descriptionCacheSize {
+		r.descCache = make(map[string][]descBlock, descriptionCacheSize)
+	}
+	b := parseDescription(markup)
+	r.descCache[markup] = b
+	logger.Debug("renderer: parsed a description once (%d bytes, %d blocks)", len(markup), len(b))
+	return b
 }
 
 // DrawPill draws a filled pill (capsule) shape.
