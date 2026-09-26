@@ -52,6 +52,9 @@ if [ -z "${IN_CONTAINER:-}" ]; then
     echo "==> launch_test.sh"
     "$SCRIPT_DIR/launch_test.sh" || exit 1
 
+    echo "==> build_date_test.sh"
+    "$SCRIPT_DIR/build_date_test.sh" || exit 1
+
     echo "==> shellcheck (device launchers)"
     if command -v shellcheck >/dev/null 2>&1; then
         # muOS runs mux_launch.sh with its own /bin/sh, so it is checked as

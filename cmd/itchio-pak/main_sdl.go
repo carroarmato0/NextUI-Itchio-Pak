@@ -11,6 +11,8 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/power"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -31,6 +33,14 @@ func runSDL() {
 	// All mutable app state lives in one directory chosen by the firmware, so a
 	// launcher can put it somewhere that survives a firmware update.
 	dataDir := env.DataDir()
+
+	// Before any download can start: delete partial files a crash or power cut
+	// left behind last time.
+	partfile.SetJournal(filepath.Join(dataDir, "partials.json"))
+	if n := partfile.Recover(); n > 0 {
+		logger.Info("partfile: removed %d leftover partial download(s)", n)
+	}
+
 	cfgPath := filepath.Join(dataDir, "config.json")
 	cachePath := filepath.Join(dataDir, "games_cache.json")
 	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
@@ -207,6 +217,11 @@ func runSDL() {
 	// client, not from cfg, which the UI goroutine owns.
 	client.SetAuthToken(cfg.AuthToken)
 
+	netstate.SetNotify(func() {
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	})
+	netstate.StartMonitor("/", client.Probe)
+
 	cache := renderer.NewImageCache(50, client.HTTPClient())
 	defer cache.Clear()
 	cache.SetNotify(func() {
@@ -229,6 +244,21 @@ func runSDL() {
 	powerMgr.Start()
 
 	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle, ownedCachePath)
+
+	netstate.OnReconnect(listScreen.RetryAfterReconnect)
+	netstate.OnReconnect(updateSvc.RetryIfOwed)
+	netstate.OnReconnect(cache.Resume)
+
+	go func() {
+		dirs := []string{env.MusicRoot()}
+		for _, d := range env.ROMDirs() {
+			if d != "" {
+				dirs = append(dirs, d)
+			}
+		}
+		partfile.Sweep(dirs)
+	}()
+
 	var current ui.Screen
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
