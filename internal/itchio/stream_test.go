@@ -2,6 +2,7 @@ package itchio_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 )
 
@@ -43,6 +45,7 @@ func truncatingServer(t *testing.T, promise int, send []byte) string {
 }
 
 func TestStreamToFile_failureKeepsExistingFile(t *testing.T) {
+	defer netstate.ResetForTest()
 	srvURL := truncatingServer(t, 1000, []byte("NEWDATA"))
 	dest := filepath.Join(t.TempDir(), "game.gb")
 	os.WriteFile(dest, []byte("WORKING ROM"), 0644)
@@ -60,6 +63,7 @@ func TestStreamToFile_failureKeepsExistingFile(t *testing.T) {
 }
 
 func TestStreamToFile_shortBodyRejected(t *testing.T) {
+	defer netstate.ResetForTest()
 	// Content-Length says 10, the handler writes 4 and returns cleanly: net/http
 	// reports this as unexpected EOF; either way it must not be committed.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +81,7 @@ func TestStreamToFile_shortBodyRejected(t *testing.T) {
 }
 
 func TestStreamToFile_idleTimeout(t *testing.T) {
+	defer netstate.ResetForTest()
 	defer itchio.SetStreamIdleTimeoutForTest(100 * time.Millisecond)()
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,9 +104,55 @@ func TestStreamToFile_idleTimeout(t *testing.T) {
 	if time.Since(start) > 5*time.Second {
 		t.Fatalf("idle timeout did not fire (took %v)", time.Since(start))
 	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatal("dest left behind after idle timeout")
+	}
+	if _, err := os.Stat(partfile.PathFor(dest)); !os.IsNotExist(err) {
+		t.Fatal("partial file left behind after idle timeout")
+	}
+}
+
+// TestStreamToFile_idleTimeoutBeforeHeaders covers a stall that happens
+// before the server ever writes a response: the handler blocks first, so
+// nothing but the idle timer arming before dlClient.Do can end this. It must
+// still fail well within the test timeout, must classify as an idle/network
+// timeout rather than a plain cancellation, and must leave neither dest nor
+// the partial file behind (the partfile.Create call never even happens).
+func TestStreamToFile_idleTimeoutBeforeHeaders(t *testing.T) {
+	defer netstate.ResetForTest()
+	defer itchio.SetStreamIdleTimeoutForTest(100 * time.Millisecond)()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+	dest := filepath.Join(t.TempDir(), "g.gb")
+	start := time.Now()
+	err := itchio.NewClient().DownloadURL(srv.URL, dest, nil)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("stall before headers succeeded")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("idle timeout did not fire before headers (took %v)", elapsed)
+	}
+	if !errors.Is(err, os.ErrDeadlineExceeded) && netstate.Classify(err) != netstate.ReasonUnreachable {
+		t.Fatalf("err = %v, want it to wrap os.ErrDeadlineExceeded or classify Unreachable", err)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatal("dest left behind after a stall before headers")
+	}
+	if _, err := os.Stat(partfile.PathFor(dest)); !os.IsNotExist(err) {
+		t.Fatal("partial file left behind after a stall before headers")
+	}
 }
 
 func TestStreamToFile_successReplacesFile(t *testing.T) {
+	defer netstate.ResetForTest()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("NEW ROM"))
 	}))

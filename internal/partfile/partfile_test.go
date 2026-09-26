@@ -3,6 +3,7 @@ package partfile
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -46,6 +47,46 @@ func TestCommit_replacesDestAtomically(t *testing.T) {
 	if _, err := os.Stat(PathFor(dest)); !os.IsNotExist(err) {
 		t.Fatal("partial file left after Commit")
 	}
+}
+
+// A Sync failure must not let Commit rename an unflushed partial over dest,
+// even when the subsequent Close would have succeeded on its own — i.e. the
+// fsync check has to run and be checked, not just piggyback on Close's
+// existing error handling. Simulated by dup2'ing the file's fd onto a pipe's
+// write end: fsync(2) on a pipe fails with EINVAL, but close(2) on it is
+// perfectly fine, so this isolates a Sync-specific failure from a Close one.
+func TestCommit_syncFailureLeavesDestUntouched(t *testing.T) {
+	reset(t)
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "g.gb")
+	os.WriteFile(dest, []byte("OLD"), 0644)
+	f, err := Create(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Write([]byte("NEW"))
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer r.Close()
+	fd := int(f.File.Fd())
+	if err := syscall.Dup2(int(w.Fd()), fd); err != nil {
+		t.Fatalf("dup2: %v", err)
+	}
+	w.Close() // fd now solely refers to the pipe's write end
+
+	if err := f.Commit(); err == nil {
+		t.Fatal("Commit returned nil despite Sync failure")
+	}
+	if b, _ := os.ReadFile(dest); string(b) != "OLD" {
+		t.Fatalf("dest changed despite Sync failure: %q", b)
+	}
+	if _, err := os.Stat(PathFor(dest)); !os.IsNotExist(err) {
+		t.Fatal("partial file left after failed Commit")
+	}
+	f.Abort() // no-op: done is already set, but confirms it doesn't panic
 }
 
 func TestAbort_keepsDestAndRemovesPart(t *testing.T) {

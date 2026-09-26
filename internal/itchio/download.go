@@ -255,30 +255,57 @@ func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, i
 
 // streamIdleTimeout aborts a download that receives nothing for this long.
 // There is deliberately no overall timeout: a large file on slow Wi-Fi is fine
-// as long as bytes keep arriving.
+// as long as bytes keep arriving. The same clock covers the wait for the
+// response headers, so a server that accepts the connection and goes silent
+// is caught too, not just a stall partway through the body.
 var streamIdleTimeout = 30 * time.Second
 
-// idleReader cancels the request when no bytes arrive for d.
-type idleReader struct {
-	r     io.Reader
-	d     time.Duration
+// idleGuard cancels a request's context when nothing has happened for d.
+// It is armed before the request is even sent, so it also bounds the wait
+// for response headers; reset extends it whenever data arrives.
+type idleGuard struct {
 	timer *time.Timer
 	fired atomic.Bool
 }
 
-func newIdleReader(r io.Reader, d time.Duration, cancel func()) *idleReader {
-	ir := &idleReader{r: r, d: d}
-	ir.timer = time.AfterFunc(d, func() {
-		ir.fired.Store(true)
+func newIdleGuard(d time.Duration, cancel func()) *idleGuard {
+	g := &idleGuard{}
+	g.timer = time.AfterFunc(d, func() {
+		g.fired.Store(true)
 		cancel()
 	})
-	return ir
+	return g
+}
+
+func (g *idleGuard) reset(d time.Duration) { g.timer.Reset(d) }
+func (g *idleGuard) stop()                 { g.timer.Stop() }
+
+// idleErr wraps err as an idle-timeout error (classified Unreachable, not
+// Canceled) when the guard is what caused ctx to be cancelled; otherwise err
+// is returned unchanged.
+func (g *idleGuard) idleErr(err error, d time.Duration) error {
+	if g.fired.Load() {
+		return fmt.Errorf("no data for %v: %w", d, os.ErrDeadlineExceeded)
+	}
+	return err
+}
+
+// idleReader resets guard's timer whenever bytes arrive, so the same clock
+// that bounded the wait for headers goes on to bound the gaps between reads.
+type idleReader struct {
+	r     io.Reader
+	d     time.Duration
+	guard *idleGuard
+}
+
+func newIdleReader(r io.Reader, d time.Duration, guard *idleGuard) *idleReader {
+	return &idleReader{r: r, d: d, guard: guard}
 }
 
 func (ir *idleReader) Read(p []byte) (int, error) {
 	n, err := ir.r.Read(p)
 	if n > 0 {
-		ir.timer.Reset(ir.d)
+		ir.guard.reset(ir.d)
 	}
 	return n, err
 }
@@ -295,12 +322,25 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Armed now, before the request is sent: a dropped connection or a
+	// silent server must not hang for the kernel's TCP timeout while we wait
+	// for headers that are never coming.
+	idle := newIdleGuard(streamIdleTimeout, cancel)
+	defer idle.stop()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {
 		return fmt.Errorf("fetch file: %w", withoutURL(err))
 	}
 	resp, err := dlClient.Do(req)
 	if err != nil {
+		if idle.fired.Load() {
+			err = idle.idleErr(err, streamIdleTimeout)
+			logger.Error("stream: %v", err)
+			netstate.Report(err)
+			return fmt.Errorf("fetch file: %w", err)
+		}
 		return fmt.Errorf("fetch file: %w", withoutURL(err))
 	}
 	defer resp.Body.Close()
@@ -328,8 +368,7 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 	}
 	defer f.Abort() // no-op after Commit
 
-	body := newIdleReader(resp.Body, streamIdleTimeout, cancel)
-	defer body.timer.Stop()
+	body := newIdleReader(resp.Body, streamIdleTimeout, idle)
 
 	total := resp.ContentLength
 	var downloaded int64
@@ -350,9 +389,7 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 			break
 		}
 		if rerr != nil {
-			if body.fired.Load() {
-				rerr = fmt.Errorf("no data for %v: %w", streamIdleTimeout, os.ErrDeadlineExceeded)
-			}
+			rerr = idle.idleErr(rerr, streamIdleTimeout)
 			logger.Error("stream: read error after %d bytes: %v", downloaded, withoutURL(rerr))
 			netstate.Report(rerr)
 			return fmt.Errorf("read stream: %w", withoutURL(rerr))

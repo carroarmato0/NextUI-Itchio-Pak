@@ -96,12 +96,23 @@ func Create(dest string) (*File, error) {
 	return &File{File: f, dest: dest, part: part}, nil
 }
 
-// Commit closes the partial file and renames it over dest in one step.
+// Commit flushes the partial file to storage, closes it, and renames it over
+// dest in one step. The fsync matters on the exFAT/FAT SD cards these
+// handhelds use: without it, a power cut shortly after the rename can leave
+// dest pointing at clusters the OS never actually wrote, destroying the file
+// that was already installed.
 func (f *File) Commit() error {
 	if f.done {
 		return nil
 	}
 	f.done = true
+	if err := f.File.Sync(); err != nil {
+		f.File.Close()
+		os.Remove(f.part)
+		forget(f.part)
+		logger.Error("partfile: sync %s: %v", f.part, err)
+		return err
+	}
 	if err := f.File.Close(); err != nil {
 		os.Remove(f.part)
 		forget(f.part)
