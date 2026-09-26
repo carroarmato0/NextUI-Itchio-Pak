@@ -174,12 +174,13 @@ func (s *AutoDetectScreen) Draw(r *renderer.Renderer) {
 		r.DrawTextCentered("Detecting file type", 0, mid-fontH-10, r.W, mt[0], mt[1], mt[2])
 		drawLoadingDots(r, mid+8)
 	case autoDetectError:
-		errLines := r.WrapText(s.err.Error(), r.W-40)
+		msg := problemText(s.err)
+		errLines := r.WrapText(msg, r.W-40)
 		errH := int32(len(errLines)) * (fontH + 4)
 		totalH := fontH + 10 + errH
 		startY := mid - totalH/2
 		r.DrawText("Detection failed:", 20, startY, bad[0], bad[1], bad[2])
-		r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
+		r.DrawWrappedText(msg, 20, startY+fontH+10, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

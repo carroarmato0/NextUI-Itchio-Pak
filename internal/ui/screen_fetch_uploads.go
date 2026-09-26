@@ -252,7 +252,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 			r.DrawTextCentered("No downloads available", 0, startY, r.W, warn[0], warn[1], warn[2])
 			r.DrawWrappedText(noDownloadMsg, 20, startY+mainFH+10, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
 		} else {
-			msg := s.err.Error()
+			msg := problemText(s.err)
 			errLines := r.WrapText(msg, r.W-40)
 			errH := int32(len(errLines)) * (smallFH + 4)
 			startY := mid - (mainFH+10+errH)/2

@@ -439,8 +439,9 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 	if s.err != nil {
+		_, fontH := r.TextSize("Ag")
 		er := r.Theme.Error()
-		r.DrawText("Error: "+s.err.Error(), margin, contentTop+20, er[0], er[1], er[2])
+		r.DrawWrappedText(problemText(s.err), margin, contentTop+20, r.W-2*margin, fontH+4, er[0], er[1], er[2])
 		ftrY := r.DrawFooterBar(footerH)
 		r.DrawFooterHints(backHints(r.W), ftrY)
 		return

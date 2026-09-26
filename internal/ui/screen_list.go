@@ -633,16 +633,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	}
 	if s.err != nil {
 		_, fontH := r.TextSize("Ag")
-		mid := r.H / 2
-		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
-			er := r.Theme.Error()
-			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-4, r.W, er[0], er[1], er[2])
-			ht := r.Theme.HintText
-			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then press A to retry.", 20, mid+4, r.W-40, fontH+4, ht[0], ht[1], ht[2])
-		} else {
-			er := r.Theme.Error()
-			r.DrawText("Error: "+s.err.Error(), 20, mid, er[0], er[1], er[2])
-		}
+		msg := problemText(s.err)
+		lines := r.WrapText(msg, r.W-40)
+		startY := r.H/2 - int32(len(lines))*(fontH+4)/2
+		er := r.Theme.Error()
+		r.DrawWrappedText(msg, 20, startY, r.W-40, fontH+4, er[0], er[1], er[2])
 		ftrY := r.DrawFooterBar(52)
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgeCircle, Label: "A", Text: "Retry"},
