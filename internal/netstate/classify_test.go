@@ -122,7 +122,7 @@ func TestReasonOffline(t *testing.T) {
 
 func TestDetailOf_stripsURL(t *testing.T) {
 	err := &url.Error{Op: "Get", URL: "https://cdn.example/f.gb?sig=SECRET", Err: io.ErrUnexpectedEOF}
-	if got := detailOf(err); got != "Get: unexpected EOF" {
-		t.Fatalf("detailOf = %q", got)
+	if got := Detail(err); got != "Get: unexpected EOF" {
+		t.Fatalf("Detail = %q", got)
 	}
 }

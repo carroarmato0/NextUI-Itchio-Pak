@@ -77,7 +77,7 @@ func (t *tracker) report(err error) {
 		if !hasRoute() {
 			r = ReasonNoNetwork
 		}
-		t.set(State{Status: StatusOffline, Reason: r, Detail: detailOf(err)})
+		t.set(State{Status: StatusOffline, Reason: r, Detail: Detail(err)})
 	}
 	// Canceled and Other say nothing about the network.
 }

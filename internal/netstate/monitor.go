@@ -111,7 +111,7 @@ func (m *monitor) run() {
 		waited = 0
 		err := m.probe()
 		if err != nil {
-			logger.Info("netstate: reconnect probe failed (%s), next in %v", detailOf(err), min(backoff*2, m.backoffMax))
+			logger.Info("netstate: reconnect probe failed (%s), next in %v", Detail(err), min(backoff*2, m.backoffMax))
 		} else {
 			logger.Info("netstate: reconnect probe answered")
 		}

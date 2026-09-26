@@ -129,9 +129,9 @@ func Classify(err error) Reason {
 	return ReasonOther
 }
 
-// detailOf is err's text for the log, without the request URL: the text of a
+// Detail is err's text for the log, without the request URL: the text of a
 // failed request quotes the whole URL, and signed CDN URLs carry credentials.
-func detailOf(err error) string {
+func Detail(err error) string {
 	if err == nil {
 		return ""
 	}
