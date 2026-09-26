@@ -239,7 +239,7 @@ the release's `html_url`.
 - Destination: `ARCHIVE/` at the root of the card muOS calls SD1
   (`firmware.Env` gains `ArchiveDir()`; `""` on NextUI and host).
 - Download `Itch-io.muOS.<tag>.muxapp` to `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.itchio-part`
-  with the same `.part`/idle-timeout/length rules as game downloads
+  with the same partial-file/idle-timeout/length rules as game downloads
   (connectivity spec §4, including its journal and startup cleanup), checking free space first (asset size + 10 %). Progress bar and B to cancel,
   reusing the download screen's drawing.
 - Verify size and the SHA-256 against the asset `digest`. On mismatch, delete
@@ -296,8 +296,8 @@ the last row scrolls to the bottom. Same behaviour on the new Updates screen.
 | Store DB unreadable | treat as Store-managed |
 | No suitable asset / no digest | notice and QR only, no download |
 | Not enough space | message on the Updates screen, nothing written |
-| Digest or zip check fails | `.part` deleted, message, logged |
-| Cancelled download | `.part` deleted |
+| Digest or zip check fails | partial file deleted, message, logged |
+| Cancelled download | partial file deleted |
 
 ## Testing
 

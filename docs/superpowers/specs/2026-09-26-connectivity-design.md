@@ -126,8 +126,8 @@ requested again.
 - aborts after 30 s with no bytes received (an idle timer reset on each read),
   reporting `Unreachable`;
 - checks the byte count against `Content-Length` when there is one;
-- on success, renames the `.part` over `dest`, so an existing ROM is replaced
-  in one step; on any failure or cancel, deletes the `.part` and leaves the
+- on success, renames the partial file over `dest`, so an existing ROM is replaced
+  in one step; on any failure or cancel, deletes the partial file and leaves the
   existing ROM untouched;
 - logs the outcome and the bytes written.
 
@@ -202,7 +202,7 @@ colour literals.
 Transitions (with reason and the underlying error), partial-file cleanup (see §4), each local route check
 result at debug, each reconnect attempt and its outcome, deferred work being
 queued and run, the image cache's retry set size on reconnect, and download
-`.part` creation, idle abort, length mismatch, rename and cleanup.
+partial-file creation, idle abort, length mismatch, rename and cleanup.
 
 ## Testing
 
