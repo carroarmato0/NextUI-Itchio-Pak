@@ -2,6 +2,8 @@
 
 Date: 2026-09-26 · Target: v1.1.0-rc2 (branch `feature/1.1-app-updates`, from `release/1.1.0`)
 
+Depends on `2026-09-26-connectivity-design.md` (`internal/netstate`), which lands first.
+
 ## Goal
 
 Tell users when a newer Itch-io exists, without nagging them and without going
@@ -236,8 +238,9 @@ the release's `html_url`.
 
 - Destination: `ARCHIVE/` at the root of the card muOS calls SD1
   (`firmware.Env` gains `ArchiveDir()`; `""` on NextUI and host).
-- Download `Itch-io.muOS.<tag>.muxapp` to `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.part`,
-  checking free space first (asset size + 10 %). Progress bar and B to cancel,
+- Download `Itch-io.muOS.<tag>.muxapp` to `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.part`
+  with the same `.part`/idle-timeout/length rules as game downloads
+  (connectivity spec §4), checking free space first (asset size + 10 %). Progress bar and B to cancel,
   reusing the download screen's drawing.
 - Verify size and the SHA-256 against the asset `digest`. On mismatch, delete
   the `.part`, log both hashes, show `Download failed the integrity check`.
@@ -264,7 +267,10 @@ the last row scrolls to the bottom. Same behaviour on the new Updates screen.
 
 - `main_sdl.go` starts the check in a goroutine after the first screen is up,
   when: firmware is NextUI or muOS, the running version parses, the channel is
-  not Off, and `not_before` has passed.
+  not Off, `not_before` has passed, and `netstate` is not Offline. A check
+  skipped for being offline runs when `netstate` reports the connection back.
+- The checker's HTTP client uses the `netstate` transport wrapper, so its
+  failures and successes feed the shared state.
 - `SettingsScreen` receives an `UpdateChecker` interface (like
   `UpdateServicer`) exposing `Verdict()`, `CheckNow()`, `IsRunning()`,
   `CheckedAt()`, `SetChannel()` and the ARCHIVE download.
@@ -284,7 +290,8 @@ the last row scrolls to the bottom. Same behaviour on the new Updates screen.
 
 | Failure | Behaviour |
 |---|---|
-| Offline, DNS, timeout, 5xx | log, keep last result, no UI |
+| Offline (per `netstate`) | skip; run on reconnect; Updates screen shows the `netstate` message |
+| 5xx | log, keep last result, no UI |
 | 403/429 rate limit | set `not_before`, skip until then |
 | Store DB unreadable | treat as Store-managed |
 | No suitable asset / no digest | notice and QR only, no download |
