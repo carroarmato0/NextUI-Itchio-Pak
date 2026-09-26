@@ -72,7 +72,7 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		logger.Error("uploads: game page HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch game page", Code: resp.StatusCode}
 	}
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -215,8 +215,10 @@ func (c *Client) ResolveFreeURL(upload Upload) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// The body (often an HTML error page) goes to the log only: the
+		// error text is drawn on the download screen.
 		logger.Error("uploads: resolver HTTP %d: %.200s", resp.StatusCode, rawBody)
-		return "", fmt.Errorf("resolve CDN URL: HTTP %d: %.200s", resp.StatusCode, rawBody)
+		return "", &netstate.StatusError{What: "resolve CDN URL", Code: resp.StatusCode}
 	}
 
 	var result struct {

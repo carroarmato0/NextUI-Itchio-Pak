@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"golang.org/x/net/html"
 )
@@ -137,7 +138,7 @@ func (c *Client) fetchGamePage(gameURL string) (*GameDetail, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("game: detail page HTTP %d for %s", resp.StatusCode, gameURL)
-		return nil, fmt.Errorf("fetch game detail: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch game detail", Code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -386,7 +387,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("download-page: HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch download page: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch download page", Code: resp.StatusCode}
 	}
 
 	rawHTML, err := io.ReadAll(resp.Body)
