@@ -11,6 +11,7 @@ import (
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 // UpdateService checks each inventory entry for missing cover art, removed
@@ -25,6 +26,9 @@ type UpdateService struct {
 	stopCh        chan struct{}
 	stopOnce      sync.Once
 	running       atomic.Bool
+	// owed is set when a check was abandoned because the network was down, so
+	// the reconnect handler knows to run one.
+	owed atomic.Bool
 }
 
 // NewUpdateService constructs an UpdateService. notify (may be nil) is called
@@ -93,6 +97,15 @@ func (s *UpdateService) IsRunning() bool {
 	return s.running.Load()
 }
 
+// RetryIfOwed queues a check if the last one was abandoned while offline.
+// Registered with netstate.OnReconnect; it does not block.
+func (s *UpdateService) RetryIfOwed() {
+	if s.owed.Swap(false) {
+		logger.Info("update-svc: connection back, running the postponed check")
+		s.TriggerNow()
+	}
+}
+
 // LatestCheckedAt delegates to the inventory's LatestCheckedAt.
 func (s *UpdateService) LatestCheckedAt() time.Time {
 	return s.inv.LatestCheckedAt()
@@ -100,6 +113,12 @@ func (s *UpdateService) LatestCheckedAt() time.Time {
 
 func (s *UpdateService) runCheck() {
 	s.inv.VerifyAndClean(s.inventoryPath)
+
+	if netstate.Offline() {
+		s.owed.Store(true)
+		logger.Info("update-svc: offline, check postponed until the connection is back")
+		return
+	}
 
 	s.inv.mu.Lock()
 	urls := make([]string, 0, len(s.inv.Entries))
@@ -117,17 +136,21 @@ func (s *UpdateService) runCheck() {
 	games := make(map[string]*itchio.GameData, len(urls))
 	var paidIDs []string
 	for _, gameURL := range urls {
-		s.repairCoverArt(gameURL)
 		d, err := s.client.FetchGameData(gameURL)
 		switch {
 		case isGameRemoved(err):
 			s.inv.MarkRemoved(gameURL)
 			logger.Warn("update-svc: game removed (404) %s", gameURL)
 			continue
+		case netstate.Classify(err).Offline():
+			s.owed.Store(true)
+			logger.Warn("update-svc: network down (%v), abandoning this check", err)
+			return
 		case err != nil:
 			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
 			continue
 		}
+		s.repairCoverArt(gameURL)
 		games[gameURL] = d
 		if token != "" && d.Pricing() == itchio.PricingPaid && d.ID != 0 {
 			paidIDs = append(paidIDs, strconv.FormatInt(d.ID, 10))
@@ -151,6 +174,11 @@ func (s *UpdateService) runCheck() {
 	}
 	pending := make(map[string]result)
 	for gameURL, d := range games {
+		if netstate.Offline() {
+			s.owed.Store(true)
+			logger.Warn("update-svc: network went down mid-check, abandoning it")
+			return
+		}
 		if source, files := s.checkGame(gameURL, d, token, keys); files != nil {
 			pending[gameURL] = result{source, files}
 		}

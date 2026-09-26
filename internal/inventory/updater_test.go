@@ -31,12 +31,18 @@ func TestUpdateService_RepairsMissingCoverArt(t *testing.T) {
 	pngData := minimalPNG()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/cover.png" {
+		switch r.URL.Path {
+		case "/cover.png":
 			w.Header().Set("Content-Type", "image/png")
 			w.Write(pngData)
-			return
+		case "/game/data.json":
+			// data.json must succeed for cover art repair to run (it happens
+			// after a game's data is confirmed fetchable); the page's own
+			// upload listing still 404s, so the game is marked removed after.
+			w.Write([]byte(`{"id":1}`))
+		default:
+			http.NotFound(w, r)
 		}
-		http.NotFound(w, r)
 	}))
 	defer srv.Close()
 
@@ -48,7 +54,8 @@ func TestUpdateService_RepairsMissingCoverArt(t *testing.T) {
 
 	invPath := filepath.Join(dir, "inventory.json")
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
-	// Use srv.URL+"/game" as gameURL; FetchUploads will 404 but cover art runs first.
+	// Use srv.URL+"/game" as gameURL; FetchUploads (the page) will 404 but
+	// cover art repair runs once data.json confirms the game is reachable.
 	gameURL := srv.URL + "/game"
 	inv.Add(gameURL,
 		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
