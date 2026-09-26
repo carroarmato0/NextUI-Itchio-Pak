@@ -118,7 +118,7 @@ func Classify(err error) Reason {
 		return ReasonNoNetwork
 	}
 	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 		return ReasonUnreachable
 	}

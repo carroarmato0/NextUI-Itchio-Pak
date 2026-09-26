@@ -13,8 +13,9 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
-// resetListener accepts connections and closes them at once, counting them:
-// every request through it fails with a network error.
+// resetListener accepts connections and resets them at once, counting them:
+// every request through it fails with ECONNRESET. (A plain Close would send a
+// FIN, which the client sees as io.EOF: not a network failure by itself.)
 func resetListener(t *testing.T) (addr string, accepts *int32) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -29,6 +30,9 @@ func resetListener(t *testing.T) (addr string, accepts *int32) {
 				return
 			}
 			atomic.AddInt32(&n, 1)
+			if tc, ok := c.(*net.TCPConn); ok {
+				tc.SetLinger(0) // Close sends RST instead of FIN
+			}
 			c.Close()
 		}
 	}()

@@ -34,7 +34,10 @@ func TestClassify(t *testing.T) {
 		{"host unreachable", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}, ReasonNoNetwork},
 		{"refused", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, ReasonUnreachable},
 		{"reset", &net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}, ReasonUnreachable},
-		{"eof", &url.Error{Op: "Get", Err: io.EOF}, ReasonUnreachable},
+		// A plain io.EOF is an empty or short local read (a 200 with no body),
+		// not the network: only a mid-body io.ErrUnexpectedEOF counts.
+		{"eof", &url.Error{Op: "Get", Err: io.EOF}, ReasonOther},
+		{"wrapped eof", fmt.Errorf("decode data.json: %w", io.EOF), ReasonOther},
 		{"unexpected eof", fmt.Errorf("read stream: %w", io.ErrUnexpectedEOF), ReasonUnreachable},
 		{"deadline", fmt.Errorf("no data: %w", os.ErrDeadlineExceeded), ReasonUnreachable},
 		{"expired, plausible clock", expired, ReasonIntercepted},
@@ -48,6 +51,15 @@ func TestClassify(t *testing.T) {
 		if got := Classify(c.err); got != c.want {
 			t.Errorf("%s: Classify = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestClassify_wrappedEOFIsNotOffline(t *testing.T) {
+	if Classify(fmt.Errorf("decode data.json: %w", io.EOF)).Offline() {
+		t.Fatal("a wrapped io.EOF must not count as offline")
+	}
+	if _, ok := Describe(fmt.Errorf("read zip: %w", io.EOF), "itch.io"); ok {
+		t.Fatal("Describe must leave a local io.EOF to the screen's own text")
 	}
 }
 
