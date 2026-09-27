@@ -1,3 +1,5 @@
+//go:build !headless
+
 package ui
 
 import "testing"
