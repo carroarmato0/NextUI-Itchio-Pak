@@ -212,7 +212,7 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 		y := contentTop + 8
 		r.DrawText("Download failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		msg := s.err.Error()
+		msg := problemText(s.err)
 		msgH := r.DrawWrappedText(msg, 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 		y += msgH + 16
 

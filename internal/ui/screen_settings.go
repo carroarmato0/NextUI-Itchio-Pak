@@ -11,6 +11,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -119,18 +120,28 @@ func (s *SettingsScreen) processAutoRepeat() {
 	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
-	s.moveCursor(s.heldDir)
+	s.moveCursor(s.heldDir, false)
 	s.lastRepeat = now
 }
 
-func (s *SettingsScreen) moveCursor(dir int) {
+// moveCursor steps one row in dir. With wrap, stepping past either end lands
+// on the other, so the last row is one press away from the first; auto-repeat
+// passes false so a held button stops at the end instead of spinning round.
+func (s *SettingsScreen) moveCursor(dir int, wrap bool) {
+	last := sItemCount - 1
 	if dir > 0 {
-		if int(s.cursor) < int(sItemCount)-1 {
+		if s.cursor < last {
 			s.cursor++
+		} else if wrap {
+			s.cursor = 0
+			logger.Debug("settings: cursor wrapped to the first row")
 		}
 	} else if dir < 0 {
 		if s.cursor > 0 {
 			s.cursor--
+		} else if wrap {
+			s.cursor = last
+			logger.Debug("settings: cursor wrapped to the last row")
 		}
 	}
 	// Step past rows that are not rendered, reversing at either end rather than
@@ -166,6 +177,8 @@ func (s *SettingsScreen) rowHidden(item settingsItem) bool {
 		return !s.themeAvailable
 	case sItemMusicLocation:
 		return s.cfg.MusicDownload == "off"
+	case sItemRefreshCache:
+		return s.onRefreshGames == nil
 	default:
 		return false
 	}
@@ -310,10 +323,26 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			annotation := updateInventoryAnnotation(s.updateSvc)
 			aw, _ := r.SmallTextSize(annotation)
 			ax := r.W - aw - 20
+			warn := s.updateSvc.IsRunning() || netstate.Offline()
 			var aR, aG, aB uint8
-			if s.updateSvc.IsRunning() {
+			switch {
+			case isSelected && warn:
+				// Warning is toned against Background, so on the selected row —
+				// filled with an Accent pill — it can be unreadable (orange on
+				// orange). ToneOn adapts the same hue until it clears contrast
+				// against the pill, so "offline"/"checking…" keep reading as a
+				// warning instead of turning into the idle colour.
+				c := r.Theme.ToneOn(r.Theme.Warning(), r.Theme.Accent)
+				aR, aG, aB = c[0], c[1], c[2]
+			case isSelected:
+				// Muted is derived from the background too; de-emphasise
+				// relative to the Accent pill the same way the Account row's
+				// "not signed in" does.
+				c := theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
+				aR, aG, aB = c[0], c[1], c[2]
+			case warn:
 				aR, aG, aB = rgb(r.Theme.Warning())
-			} else {
+			default:
 				aR, aG, aB = rgb(r.Theme.Muted())
 			}
 			_, fh := r.TextSize("Ag")
@@ -347,8 +376,8 @@ func (s *SettingsScreen) startHold(dir int) {
 	s.heldDir = dir
 	s.heldSince = time.Now()
 	s.lastRepeat = s.heldSince
-	// Move immediately on first press
-	s.moveCursor(dir)
+	// Move immediately on first press; only a fresh press wraps round.
+	s.moveCursor(dir, true)
 }
 
 func (s *SettingsScreen) stopHold(dir int) {
@@ -445,6 +474,9 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 // updateInventoryAnnotation returns a short right-aligned label for the
 // "Update Inventory" settings row.
 func updateInventoryAnnotation(svc UpdateServicer) string {
+	if netstate.Offline() {
+		return "offline"
+	}
 	if svc.IsRunning() {
 		return "checking…"
 	}

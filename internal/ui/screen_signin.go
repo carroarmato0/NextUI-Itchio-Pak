@@ -46,6 +46,7 @@ type SignInScreen struct {
 	login      *itchio.DeviceLogin
 	username   string
 	ownedCount int
+	failErr    error // why the last attempt failed, for signInFailed
 
 	qrTex        *sdl.Texture
 	qrURL        string
@@ -73,6 +74,7 @@ func (s *SignInScreen) start() {
 	s.cancel = cancel
 	s.mu.Lock()
 	s.login = nil
+	s.failErr = nil
 	s.mu.Unlock()
 	s.storeState(signInStarting)
 	logger.Info("signin: starting")
@@ -97,7 +99,7 @@ func (s *SignInScreen) start() {
 		}
 		username, owned, err := s.client.ValidateAPIKey(token)
 		if err != nil {
-			logger.Error("signin: token received but profile check failed: %v", err)
+			logger.Error("signin: token received but profile check failed: %s", withoutURL(err))
 			s.fail(ctx, err)
 			return
 		}
@@ -129,7 +131,10 @@ func (s *SignInScreen) fail(ctx context.Context, err error) {
 	case errors.Is(err, itchio.ErrSignInExpired):
 		s.storeState(signInExpired)
 	default:
-		logger.Warn("signin: %v", err)
+		logger.Warn("signin: %s", withoutURL(err))
+		s.mu.Lock()
+		s.failErr = err
+		s.mu.Unlock()
 		s.storeState(signInFailed)
 	}
 }
@@ -206,8 +211,11 @@ func (s *SignInScreen) outcome(r *renderer.Renderer, st signInState) (title, bod
 			"itch.io hasn't enabled QR sign-in for this app. Free games still download without an account.",
 			r.Theme.Warning(), []renderer.FooterHint{back}
 	default:
-		return "Can't reach itch.io", "Check that Wi-Fi is on and connected, then try again.",
-			r.Theme.Error(), []renderer.FooterHint{a("Try again"), back}
+		s.mu.Lock()
+		err := s.failErr
+		s.mu.Unlock()
+		title, body := signInFailureText(err)
+		return title, body, r.Theme.Error(), []renderer.FooterHint{a("Try again"), back}
 	}
 }
 

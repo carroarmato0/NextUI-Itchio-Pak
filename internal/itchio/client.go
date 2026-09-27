@@ -14,6 +14,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 const apiItchIO = "https://api.itch.io"
@@ -141,11 +142,11 @@ func newHTTPClient() *http.Client {
 		Jar:     jar,
 		Timeout: 30 * time.Second,
 		Transport: &uaTransport{
-			wrapped: newRateLimitTransport(&h2FallbackTransport{
+			wrapped: netstate.Transport(newRateLimitTransport(&h2FallbackTransport{
 				h2:      h2t,
 				h1:      h1t,
 				h1hosts: make(map[string]struct{}),
-			}),
+			})),
 		},
 	}
 }
@@ -192,6 +193,22 @@ func NewClientWithBaseAndButler(base, butler string) *Client {
 // HTTPClient returns the underlying *http.Client used for all requests.
 func (c *Client) HTTPClient() *http.Client {
 	return c.http
+}
+
+// Probe makes the cheapest request that proves itch.io answers: HEAD on the
+// site root, no body. Only the reconnect monitor calls it, and only offline.
+func (c *Client) Probe() error {
+	req, err := http.NewRequest(http.MethodHead, c.base+"/", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return withoutURL(err)
+	}
+	resp.Body.Close()
+	logger.Debug("probe: HEAD %s/ -> %d", c.base, resp.StatusCode)
+	return nil
 }
 
 // DownloadURL streams directly from a pre-resolved CDN URL to dest.

@@ -76,6 +76,7 @@ fi
 # Only need a container runtime when launching from the host.
 RUNTIME=""
 GIT_COMMIT="${GIT_COMMIT:-}"
+BUILD_DATE="${BUILD_DATE:-}"
 CACHE_DIR="$(pwd)/.go_cache"
 if [ -z "${IN_CONTAINER:-}" ]; then
     mkdir -p "$CACHE_DIR"
@@ -91,6 +92,11 @@ if [ -z "${IN_CONTAINER:-}" ]; then
             GIT_COMMIT="${GIT_COMMIT}-dirty"
         fi
     fi
+
+    # Commit date, not wall-clock time, so a rebuild of the same commit is
+    # identical. netstate uses it to tell a wrong device clock from a bad
+    # certificate.
+    BUILD_DATE=$(git log -1 --format=%cI 2>/dev/null || echo "")
 fi
 
 DEV_IMAGE="itchio-dev"
@@ -110,10 +116,8 @@ ensure_toolchain_image() {
             -f docker/Dockerfile.toolchain .
 }
 
-LDFLAGS_FOR() {
-    printf -- "-X 'main.version=%s' -X 'main.gitCommit=%s' -X 'github.com/carroarmato0/nextui-itchio-pak/internal/ui.appVersion=%s'" \
-        "$1" "$2" "$1"
-}
+# shellcheck source=scripts/lib/ldflags.sh
+. "$(dirname "$0")/lib/ldflags.sh"
 
 # Fail the build if a target's binary needs a newer glibc than its manifest
 # ceiling allows.  Only targets whose binary runs somewhere other than the
@@ -153,6 +157,7 @@ build_native() {
             -e IN_CONTAINER=1 \
             -e GOCACHE=/go/build-cache \
             -e GIT_COMMIT="$GIT_COMMIT" \
+            -e BUILD_DATE="$BUILD_DATE" \
             "$DEV_IMAGE" "$0" native
     fi
     VERSION="$(pak_version)"
@@ -248,6 +253,7 @@ run_one() {
             -e IN_CONTAINER=1 \
             -e GOCACHE=/go/build-cache \
             -e GIT_COMMIT="$GIT_COMMIT" \
+            -e BUILD_DATE="$BUILD_DATE" \
             "itchio-toolchain-$TOOLCHAIN" "$0" "$TGT"
     fi
     build_target "$TGT"

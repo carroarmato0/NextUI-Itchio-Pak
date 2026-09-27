@@ -11,6 +11,8 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/power"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -31,6 +33,14 @@ func runSDL() {
 	// All mutable app state lives in one directory chosen by the firmware, so a
 	// launcher can put it somewhere that survives a firmware update.
 	dataDir := env.DataDir()
+
+	// Before any download can start: delete partial files a crash or power cut
+	// left behind last time.
+	partfile.SetJournal(filepath.Join(dataDir, "partials.json"))
+	if n := partfile.Recover(); n > 0 {
+		logger.Info("partfile: removed %d leftover partial download(s)", n)
+	}
+
 	cfgPath := filepath.Join(dataDir, "config.json")
 	cachePath := filepath.Join(dataDir, "games_cache.json")
 	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
@@ -92,7 +102,17 @@ func runSDL() {
 	// muOS ships two mappings for the same hardware and lets the user pick,
 	// which swaps the face buttons. Without this line, "confirm and cancel are
 	// the wrong way round" is unanswerable from a log.
+	//
+	// Every pad's GUID is kept for the face-button decision below: on H700 it
+	// is the only sign of which firmware numbering is in force, and from
+	// NextUI h700-rc11 SDL recognises the pad itself, so it never reaches the
+	// mapping branch.
+	var pads []firmware.Pad
 	for i := 0; i < sdl.NumJoysticks(); i++ {
+		if guid := sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)); sdl.IsGameController(i) {
+			logger.Info("input: joystick %d %q guid=%s — SDL recognises it as a controller", i, sdl.JoystickNameForIndex(i), guid)
+			pads = append(pads, firmware.Pad{GUID: guid, Name: sdl.JoystickNameForIndex(i)})
+		}
 		// A pad SDL has no mapping for stays a plain joystick and emits only
 		// SDL_JOYBUTTONDOWN, which no screen in this app handles — the UI
 		// renders and then ignores every press. H700 is such a pad, so ask the
@@ -116,6 +136,7 @@ func runSDL() {
 			}
 			logger.Info("input: joystick %d %q guid=%s buttons=%d hats=%d axes=%d",
 				i, pad.Name, pad.GUID, pad.Buttons, pad.Hats, axes)
+			pads = append(pads, pad)
 			mapping, ok := env.ControllerMapping(pad)
 			if !ok {
 				// The shape logged above is the whole diagnosis for "the app
@@ -152,7 +173,7 @@ func runSDL() {
 	}
 
 	// Bind the face buttons before any screen can handle an event.
-	ui.SetFaceMapping(env.FaceMapping())
+	ui.SetFaceMapping(env.FaceMapping(pads...))
 
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
@@ -207,6 +228,11 @@ func runSDL() {
 	// client, not from cfg, which the UI goroutine owns.
 	client.SetAuthToken(cfg.AuthToken)
 
+	netstate.SetNotify(func() {
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	})
+	netstate.StartMonitor("/", client.Probe)
+
 	cache := renderer.NewImageCache(50, client.HTTPClient())
 	defer cache.Clear()
 	cache.SetNotify(func() {
@@ -229,6 +255,21 @@ func runSDL() {
 	powerMgr.Start()
 
 	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle, ownedCachePath)
+
+	netstate.OnReconnect(listScreen.RetryAfterReconnect)
+	netstate.OnReconnect(updateSvc.RetryIfOwed)
+	netstate.OnReconnect(cache.Resume)
+
+	go func() {
+		dirs := []string{env.MusicRoot()}
+		for _, d := range env.ROMDirs() {
+			if d != "" {
+				dirs = append(dirs, d)
+			}
+		}
+		partfile.Sweep(dirs)
+	}()
+
 	var current ui.Screen
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)

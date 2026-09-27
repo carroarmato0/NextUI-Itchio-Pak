@@ -1103,7 +1103,7 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		y := contentTop + 8
 		r.DrawText("Extraction failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
+		r.DrawWrappedText(problemText(s.err), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
