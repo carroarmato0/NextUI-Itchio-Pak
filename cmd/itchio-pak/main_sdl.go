@@ -92,7 +92,17 @@ func runSDL() {
 	// muOS ships two mappings for the same hardware and lets the user pick,
 	// which swaps the face buttons. Without this line, "confirm and cancel are
 	// the wrong way round" is unanswerable from a log.
+	//
+	// Every pad's GUID is kept for the face-button decision below: on H700 it
+	// is the only sign of which firmware numbering is in force, and from
+	// NextUI h700-rc11 SDL recognises the pad itself, so it never reaches the
+	// mapping branch.
+	var pads []firmware.Pad
 	for i := 0; i < sdl.NumJoysticks(); i++ {
+		if guid := sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)); sdl.IsGameController(i) {
+			logger.Info("input: joystick %d %q guid=%s — SDL recognises it as a controller", i, sdl.JoystickNameForIndex(i), guid)
+			pads = append(pads, firmware.Pad{GUID: guid, Name: sdl.JoystickNameForIndex(i)})
+		}
 		// A pad SDL has no mapping for stays a plain joystick and emits only
 		// SDL_JOYBUTTONDOWN, which no screen in this app handles — the UI
 		// renders and then ignores every press. H700 is such a pad, so ask the
@@ -116,6 +126,7 @@ func runSDL() {
 			}
 			logger.Info("input: joystick %d %q guid=%s buttons=%d hats=%d axes=%d",
 				i, pad.Name, pad.GUID, pad.Buttons, pad.Hats, axes)
+			pads = append(pads, pad)
 			mapping, ok := env.ControllerMapping(pad)
 			if !ok {
 				// The shape logged above is the whole diagnosis for "the app
@@ -152,7 +163,7 @@ func runSDL() {
 	}
 
 	// Bind the face buttons before any screen can handle an event.
-	ui.SetFaceMapping(env.FaceMapping())
+	ui.SetFaceMapping(env.FaceMapping(pads...))
 
 	w, h := int32(1024), int32(768) // sensible default for TrimUI Brick
 	if dm, err := sdl.GetCurrentDisplayMode(0); err == nil {
