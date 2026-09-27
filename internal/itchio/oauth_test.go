@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 // The RFC 7636 appendix B test vector.
@@ -336,5 +338,23 @@ func TestCurrentDeviceInfo_followsShareSetting(t *testing.T) {
 	SetShareDeviceInfo(false)
 	if got := CurrentDeviceInfo(); got != "NextUI-Itchio-Pak 1.1.0" {
 		t.Errorf("opted out = %q", got)
+	}
+}
+
+// An itch.io outage on the profile check must read as an outage, not as a
+// failed sign-in the user should retry from Settings.
+func TestValidateAPIKey_serverErrorIsStatusError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	c := NewClientWithBaseAndButler(srv.URL, srv.URL)
+	_, _, err := c.ValidateAPIKey("t")
+	var se *netstate.StatusError
+	if !errors.As(err, &se) || se.Code != http.StatusServiceUnavailable {
+		t.Fatalf("err = %v, want a netstate.StatusError with code 503", err)
+	}
+	if errors.Is(err, ErrTokenRejected) {
+		t.Fatal("a 503 must not read as a rejected token")
 	}
 }

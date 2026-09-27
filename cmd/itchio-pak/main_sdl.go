@@ -34,13 +34,6 @@ func runSDL() {
 	// launcher can put it somewhere that survives a firmware update.
 	dataDir := env.DataDir()
 
-	// Before any download can start: delete partial files a crash or power cut
-	// left behind last time.
-	partfile.SetJournal(filepath.Join(dataDir, "partials.json"))
-	if n := partfile.Recover(); n > 0 {
-		logger.Info("partfile: removed %d leftover partial download(s)", n)
-	}
-
 	cfgPath := filepath.Join(dataDir, "config.json")
 	cachePath := filepath.Join(dataDir, "games_cache.json")
 	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
@@ -54,6 +47,14 @@ func runSDL() {
 		logger.SetLevel(logger.LevelFromString(envLevel))
 	}
 	logger.RegisterSecret(cfg.AuthToken, "[TOKEN]")
+
+	// Before any download can start: delete partial files a crash or power cut
+	// left behind last time. After the log level is set, so Recover's lines
+	// (a summary and one per file) honour the configured level.
+	partfile.SetJournal(filepath.Join(dataDir, "partials.json"))
+	if n := partfile.Recover(); n > 0 {
+		logger.Info("partfile: removed %d leftover partial download(s)", n)
+	}
 
 	// Before the first request: every client shares this User-Agent.
 	itchio.ConfigureUserAgent(itchio.UAInfoFromEnv(version, env), cfg.ShareDeviceInfo)

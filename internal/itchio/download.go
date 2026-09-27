@@ -282,6 +282,18 @@ func newIdleGuard(d time.Duration, cancel func()) *idleGuard {
 func (g *idleGuard) reset(d time.Duration) { g.timer.Reset(d) }
 func (g *idleGuard) stop()                 { g.timer.Stop() }
 
+// pause and resume bracket a rate-limit cooldown: the request is being held
+// back on purpose, not waiting on a silent server, so the clock stops and
+// then restarts in full once the request is released.
+func (g *idleGuard) pause() {
+	g.timer.Stop()
+	logger.Debug("stream: idle timer paused for a rate-limit cooldown")
+}
+func (g *idleGuard) resume(d time.Duration) {
+	g.timer.Reset(d)
+	logger.Debug("stream: rate-limit cooldown over, idle timer restarted")
+}
+
 // idleErr wraps err as an idle-timeout error (classified Unreachable, not
 // Canceled) when the guard is what caused ctx to be cancelled; otherwise err
 // is returned unchanged.
@@ -330,6 +342,10 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 	// for headers that are never coming.
 	idle := newIdleGuard(streamIdleTimeout, cancel)
 	defer idle.stop()
+	// A 429 cooldown can outlast the idle timeout; the limiter stops the
+	// clock while it holds the request back, or the wait would be reported
+	// as the network going silent and take the app offline.
+	ctx = withCooldownHooks(ctx, idle.pause, func() { idle.resume(streamIdleTimeout) })
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {

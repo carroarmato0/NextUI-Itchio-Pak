@@ -25,6 +25,11 @@ import (
 const (
 	pathScrollDelay = time.Second
 	pathScrollSpeed = int32(50)
+
+	// qrVMargin is drawQR's top/bottom margin around the QR code, reserved by
+	// every caller that back-calculates a box height to get drawQR's exact
+	// pixel size instead of being constrained by a passed-in h.
+	qrVMargin = int32(8)
 )
 
 type modalKind int
@@ -494,7 +499,6 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		// right-column version (qrColW-20).  Back-calculate the box height so
 		// drawQR produces that exact size instead of being constrained by h.
 		_, smallFH := r.SmallTextSize("Ag")
-		const qrVMargin = int32(8) // must match vMargin inside drawQR
 		captionH := int32(4) + smallFH + int32(2) + smallFH
 		qrBoxH := (qrColW - 20) + captionH + qrVMargin*2
 		s.drawQR(r, margin, y, usableW, qrBoxH)
@@ -876,7 +880,6 @@ func (s *DetailScreen) drawReduced(r *renderer.Renderer, l detailLayout) {
 	// image here and usually none, and at the full page's two thirds of the
 	// content area the files card fell below the fold at 640x480.
 	_, smallFH := r.SmallTextSize("Ag")
-	const qrVMargin = int32(8) // must match vMargin inside drawQR
 	boxH := min(l.imgBoxH, (l.qrColW-20)+int32(4)+smallFH+int32(2)+smallFH+qrVMargin*2)
 	r.DrawRect(l.margin, y, l.imgBoxW, boxH, bg[0], bg[1], bg[2])
 	var tex *sdl.Texture
@@ -1076,8 +1079,7 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	captionH := int32(4) + smallFH + int32(2) + smallFH // gap + "Scan to open" + gap + "in browser"
 
 	// Reserve equal top/bottom margins plus the caption below the QR.
-	const vMargin = int32(8)
-	maxH := h - captionH - vMargin*2
+	maxH := h - captionH - qrVMargin*2
 	if maxH < 80 {
 		maxH = 80
 	}
@@ -1104,8 +1106,8 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	blockH := qrS + captionH
 	qrX := x + (w-qrS)/2
 	qrY := y + (h-blockH)/2
-	if qrY < y+vMargin {
-		qrY = y + vMargin
+	if qrY < y+qrVMargin {
+		qrY = y + qrVMargin
 	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
 	mu := r.Theme.Muted()
@@ -1507,7 +1509,7 @@ func backHints(screenW int32) []renderer.FooterHint {
 	if !abbreviate(screenW) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	} else {
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: ""})
 	}
 	return hints
 }

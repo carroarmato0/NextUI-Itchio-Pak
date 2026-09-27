@@ -28,7 +28,7 @@ type ZIPManifest struct {
 var romExts = map[string]bool{
 	".gb": true, ".gbc": true, ".gba": true,
 	".nes": true,
-	".md": true, ".gen": true, ".smd": true,
+	".md":  true, ".gen": true, ".smd": true,
 	".p8": true, ".p8.png": true,
 }
 

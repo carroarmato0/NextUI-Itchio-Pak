@@ -10,6 +10,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -161,7 +162,7 @@ func (s *PurchasePickerScreen) choosePurchase(key itchio.OwnedKey) Screen {
 
 	authUploads, err := s.client.FetchUploadsForKey(s.cfg.AuthToken, s.detail.GameID, downloadKeyID)
 	if err != nil {
-		logger.Error("purchase-picker: fetch uploads for key id=%d: %s", key.ID, withoutURL(err))
+		logger.Error("purchase-picker: fetch uploads for key id=%d: %s", key.ID, netstate.Detail(err))
 		// Show error on the detail screen rather than a dead-end screen.
 		if ds, ok := s.prev.(*DetailScreen); ok {
 			ds.ShowModal("Download Error", problemText(err))

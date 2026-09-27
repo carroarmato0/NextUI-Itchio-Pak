@@ -4,10 +4,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"testing"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
@@ -27,10 +29,12 @@ func TestSignInFailureText(t *testing.T) {
 			"This network is blocking the connection", "Public Wi-Fi may need you to sign in on a phone or computer first."},
 		{"outage", &netstate.StatusError{What: "start sign-in", Code: 503},
 			"itch.io is having problems", "Try again in a few minutes."},
-		{"unclassified", errors.New("decode profile: unexpected token"),
-			"Can't reach itch.io", "Check that Wi-Fi is on and connected, then try again."},
+		{"unclassified decode error", errors.New("decode profile: unexpected token"),
+			"Sign-in didn't work", "Try again. If it keeps failing, sign in again from Settings → Account."},
+		{"401 from the profile check", fmt.Errorf("%w (HTTP %d)", itchio.ErrTokenRejected, 401),
+			"Sign-in didn't work", "Try again. If it keeps failing, sign in again from Settings → Account."},
 		{"no error recorded", nil,
-			"Can't reach itch.io", "Check that Wi-Fi is on and connected, then try again."},
+			"Sign-in didn't work", "Try again. If it keeps failing, sign in again from Settings → Account."},
 	}
 	for _, c := range cases {
 		title, hint := signInFailureText(c.err)

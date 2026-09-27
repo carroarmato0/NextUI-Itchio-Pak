@@ -13,6 +13,7 @@ import (
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/veandco/go-sdl2/sdl"
@@ -62,7 +63,7 @@ func NewSignInScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 	return s
 }
 
-func (s *SignInScreen) loadState() signInState   { return signInState(atomic.LoadInt32(&s.state)) }
+func (s *SignInScreen) loadState() signInState    { return signInState(atomic.LoadInt32(&s.state)) }
 func (s *SignInScreen) storeState(st signInState) { atomic.StoreInt32(&s.state, int32(st)) }
 
 // start begins a fresh sign-in attempt in the background.
@@ -99,7 +100,7 @@ func (s *SignInScreen) start() {
 		}
 		username, owned, err := s.client.ValidateAPIKey(token)
 		if err != nil {
-			logger.Error("signin: token received but profile check failed: %s", withoutURL(err))
+			logger.Error("signin: token received but profile check failed: %s", netstate.Detail(err))
 			s.fail(ctx, err)
 			return
 		}
@@ -131,7 +132,7 @@ func (s *SignInScreen) fail(ctx context.Context, err error) {
 	case errors.Is(err, itchio.ErrSignInExpired):
 		s.storeState(signInExpired)
 	default:
-		logger.Warn("signin: %s", withoutURL(err))
+		logger.Warn("signin: %s", netstate.Detail(err))
 		s.mu.Lock()
 		s.failErr = err
 		s.mu.Unlock()

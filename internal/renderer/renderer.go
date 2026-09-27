@@ -54,9 +54,9 @@ type Renderer struct {
 	W, H          int32
 	Theme         theme.Theme
 	texts         *textCache
-	sizes         map[sizeKey][2]int32 // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
-	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
-	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
+	sizes         map[sizeKey][2]int32     // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
+	runeFont      map[rune]int             // fontIndex result per rune; populated lazily, never evicted
+	wrapCache     map[wrapKey][]string     // WrapText output keyed on (text, maxWidth); no LRU needed
 	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
 	displayFonts  map[int]*ttf.Font        // primary font at custom sizes, see display_text.go
 	descCache     map[string][]descBlock   // parsed game descriptions, see description.go

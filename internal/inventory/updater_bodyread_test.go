@@ -5,9 +5,9 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,5 +150,27 @@ func TestUpdateService_emptyDataJSONDoesNotAbandon(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "transient error") {
 		t.Fatalf("empty data.json not treated as a per-game transient error:\n%s", logs.String())
+	}
+}
+
+// A data.json that arrives complete but is cut short at the source (invalid
+// JSON) is the server's problem, not the network's: the check must go on to
+// the next game and the app must stay online, or it would flap offline and
+// back on this game after every reconnect.
+func TestUpdateService_truncatedDataJSONDoesNotAbandon(t *testing.T) {
+	netstate.ResetForTest()
+	defer netstate.ResetForTest()
+	logs := captureLog(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id": 12, "title": "Cut sh`))
+	}))
+	defer srv.Close()
+	runOneCheck(t, strings.TrimPrefix(srv.URL, "http://"))
+
+	if netstate.Offline() {
+		t.Fatal("netstate offline after a complete but truncated data.json")
+	}
+	if strings.Contains(logs.String(), "abandoning this check") {
+		t.Fatalf("check abandoned on a truncated data.json:\n%s", logs.String())
 	}
 }
