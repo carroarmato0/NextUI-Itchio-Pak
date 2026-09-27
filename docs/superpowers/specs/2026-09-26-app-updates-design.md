@@ -1,8 +1,30 @@
 # App updates: notice, channels and staging — design
 
-Date: 2026-09-26 · Target: v1.1.0-rc2 (branch `feature/1.1-app-updates`, from `release/1.1.0`)
+Date: 2026-09-26, refreshed 2026-09-27 · Target: **v1.1.0-rc3** (branch
+`feature/1.1-app-updates`, brought up to date with `release/1.1.0` at
+`v1.1.0-rc2`)
 
-Depends on `2026-09-26-connectivity-design.md` (`internal/netstate`), which lands first.
+Builds on `2026-09-26-connectivity-design.md`, which has landed: it shipped in
+v1.1.0-rc2 together with the H700 rc11 button fix. The names this design uses
+from it are now real code, listed under "Building blocks" below.
+
+**Changes in the 2026-09-27 refresh:**
+
+- Target moved from rc2 to rc3. rc2 shipped with connectivity and the H700 fix
+  instead, and in-place install moves from rc3 to rc4.
+- Settings wrap-around is done (commit `633e0cf`, in rc2) and dropped from
+  scope. The Updates screen uses the same `moveCursor(dir, wrap)`.
+- Abstract references to connectivity replaced with the real API; see
+  "Building blocks".
+- The ARCHIVE download gets its own small streaming loop on top of
+  `partfile`, not a refactor of the itch.io download path.
+- The "Updates" row annotation uses the selected-row colour rule Settings has
+  had since the rc2 readability fix.
+- The app-update check is the fourth reconnect callback, after the game list,
+  inventory and covers.
+- `partfile.Sweep` also covers `ARCHIVE/`.
+- Research re-checked against rc2's live release: its assets carry digests,
+  and `main`'s `pak.json` still says `v1.0.25`.
 
 ## Goal
 
@@ -12,7 +34,7 @@ around the Pak Store, which stays the main way to install and update on NextUI
 the app also offers to download the update into `ARCHIVE/` for Archive Manager.
 Testers can opt into release candidates.
 
-In scope for rc2:
+In scope for rc3:
 
 1. An update check against GitHub, with two channels (Stable, Release
    candidates) and an Off setting.
@@ -23,22 +45,27 @@ In scope for rc2:
    pointing the user to the Store instead of offering anything itself.
 5. On muOS, "Save to ARCHIVE": download the `.muxapp`, verify it, leave it for
    Archive Manager.
-6. Settings list wraps around: Up on the first row goes to the last, Down on
-   the last goes to the first.
 
-Out of scope (rc3, see "Follow-up"): installing an update in place.
+Out of scope: installing an update in place (rc4, see "Follow-up").
 
 The About screen does not change. Its QR code keeps pointing at the project
 page; the release-page QR code lives on the Updates screen.
 
 ## Research this design rests on
 
-Verified 2026-09-26 against source and both attached devices.
+Verified 2026-09-26 against source and both attached devices, and re-checked
+2026-09-27.
 
 - **GitHub releases.** `GET /repos/carroarmato0/NextUI-Itchio-Pak/releases?per_page=10`
   returns tags with `prerelease` and `draft`, and every asset carries a
-  `digest` of the form `sha256:<hex>` (checked on v1.0.25-rc2, v1.0.25,
-  v1.1.0-rc1). Unauthenticated limit: 60 requests/hour per IP.
+  `digest` of the form `sha256:<hex>`. This was checked on v1.0.25-rc1,
+  v1.0.25-rc2, v1.0.25, v1.1.0-rc1 and v1.1.0-rc2. The current state: the
+  newest release is `v1.1.0-rc2` (`prerelease: true`), with
+  `Itch-io.muOS.v1.1.0-rc2.muxapp` at 12,819,887 bytes; the newest stable
+  release is `v1.0.25`, the only one to also carry the bare `Itch-io.pak.zip`.
+  The unauthenticated rate limit is 60 requests per hour per IP.
+- **`pak.json` on `main`** says `v1.0.25`. Release candidates bump `pak.json`
+  on `release/1.1.0` only, which is why the Store never sees them.
 - **Pak Store** (`LoveRetro/nextui-pak-store`):
   - Keeps installs in SQLite at
     `/mnt/SDCARD/.userdata/<PLATFORM>/nextui-pak-store/pak-store.db`, table
@@ -68,6 +95,32 @@ Verified 2026-09-26 against source and both attached devices.
   verification, has no checksum, and extracts over the live app with no
   rollback. A user reported a blank screen after an in-app update. It is the
   pattern to avoid.
+
+## Building blocks already in `release/1.1.0`
+
+These exist at v1.1.0-rc2. They are the interfaces this design is written
+against, not proposals.
+
+| Need | Use | Notes |
+|---|---|---|
+| Feed the shared online/offline state | `netstate.Transport(next http.RoundTripper)` | Wrap the checker's HTTP client transport with it. A cancelled request never reads as offline. |
+| Skip while offline | `netstate.Offline()` | |
+| Run again when the connection is back | `netstate.OnReconnect(fn)` | Registrations are permanent, and callbacks run on the netstate goroutine: raise a flag and wake the UI, never touch UI state. Registered in `main_sdl.go` after the game list, inventory and covers. |
+| Words for a failure | `netstate.Describe(err, "GitHub")` | Returns a `Message{Title, Hint}`, or ok=false for errors that are not connection problems. |
+| URL-free log detail | `netstate.Detail(err)` | Signed GitHub asset redirects carry tokens in the URL. |
+| HTTP 5xx | `&netstate.StatusError{What, Code}` | `Describe` maps it to "… is having problems". |
+| Partial files | `partfile.Create(dest)` → `(*File).Commit()` / `Abort()` | Writes go to `.<name>.itchio-part` beside `dest` and are journalled. Commit fsyncs, then renames. |
+| Leftovers after a crash | `partfile.Recover()` at startup, `partfile.Sweep(dirs)` | `ARCHIVE/` must be added to the directories passed to `Sweep` in `main_sdl.go`. |
+| Short User-Agent | `itchio.BuildUserAgent(info, false)` | The opt-out form: `NextUI-Itchio-Pak/<ver> (+<url>)`, with no device details. |
+| List wrap-around | `SettingsScreen.moveCursor(dir, wrap)` | A single press wraps; auto-repeat stops at the ends. |
+| Selected-row annotation colour | The `isSelected && warn` switch in `screen_settings.go` | Readable on the Accent pill for every palette, and pinned by `palette-audit.sh` scenes. |
+| Wake the main loop | `sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})` | The code the image cache and netstate already use. |
+
+The itch.io download path (`(*itchio.Client).streamToFile`) is deliberately
+not reused. It is bound to the itch.io client, its rate limiter and its
+User-Agent, and it was reviewed as part of connectivity. The ARCHIVE download
+(§5) has its own small loop on top of `partfile` with the same rules: 30 s
+idle timeout, length check, and fsync by `Commit`.
 
 ## Design
 
@@ -100,9 +153,11 @@ Settings, and a stable user never sees one.
 | NextUI, Pak Store manages it | Stable | `pak.json` on `main` (the Store's own source) |
 | everything else | Stable or RC | GitHub releases list |
 
-Both use the bundled CA file with normal verification, a 10 s timeout, and
-the short User-Agent (`NextUI-Itchio-Pak/<ver> (+<url>)`). The device details
-behind "Share device info" are for itch.io and are not sent to GitHub.
+Both use the bundled CA file with normal verification, a 10 s timeout, the
+short User-Agent (`itchio.BuildUserAgent(info, false)`), and a transport
+wrapped in `netstate.Transport`. The device details behind "Share device info"
+are for itch.io and are not sent to GitHub. A 5xx is returned as a
+`netstate.StatusError`.
 Conditional requests with the stored `ETag`. A 403/429 with rate-limit headers
 records a "not before" time and skips checks until then. Failures are logged
 and leave the last known result in place; they never show UI.
@@ -138,9 +193,9 @@ channel, store status, latest release) to a `Verdict`:
   - `ViaArchive` — muOS, and the release has the `.muxapp` asset with a
     digest.
   - `ViaReleasePage` — anything else: NextUI not managed by the Store, an RC
-    the Store will never offer, or the Store-row trap (row `v1.1.0-rc1`,
-    latest `v1.1.0`, which the Store considers equal). rc2 shows the version
-    and the release-page QR code; rc3 turns this into an in-place install.
+    the Store will never offer, or the Store-row trap (row `v1.1.0-rc2`,
+    latest `v1.1.0`, which the Store considers equal). rc3 shows the version
+    and the release-page QR code; rc4 turns this into an in-place install.
 
 "Available" requires `latest > running` by the real ordering, whatever the
 Store row says: a side-loaded rc build must not be told to "update" to an
@@ -155,8 +210,8 @@ from `config.json` because it is not a user choice:
   "not_before": "0001-01-01T00:00:00Z",
   "etag": { "releases": "W/\"…\"", "pakjson": "W/\"…\"" },
   "latest": { "stable": { "tag": "v1.0.25", "url": "…", "asset": "…", "digest": "sha256:…", "size": 12678524 },
-              "rc":     { "tag": "v1.1.0-rc2", … } },
-  "notified": { "stable": "v1.0.25", "rc": "v1.1.0-rc2" }
+              "rc":     { "tag": "v1.1.0-rc3", … } },
+  "notified": { "stable": "v1.0.25", "rc": "v1.1.0-rc3" }
 }
 ```
 
@@ -172,9 +227,9 @@ quick exit does not swallow it.
 
 Keeping one value per channel is what makes switching work. Examples:
 
-- RC tester sees rc2 (`notified.rc = rc2`), switches to Stable without
-  installing it. Stable's own value is still older, so v1.0.26 is announced.
-- Back on RC: rc2 is not announced again.
+- RC tester sees rc4 (`notified.rc = rc4`), switches to Stable without
+  installing it. Stable's own value is still older, so v1.1.0 is announced.
+- Back on RC: rc4 is not announced again.
 - An update installed through any route raises the running version; the rule
   then compares against that, so nothing is announced for a version already
   installed.
@@ -210,9 +265,11 @@ user is on the Updates screen (the screen already says it).
 ### 4. Settings → Updates screen
 
 New row `Updates >` just above `About`, with a right-aligned annotation in the
-style of "Update Inventory": `v1.1.0 available` (Accent-derived, readable on
-the selected pill the way the Account row's "not signed in" is), otherwise
-nothing.
+style of "Update Inventory": `v1.1.0 available`, otherwise nothing. Its colour
+follows the same selected/unselected switch as the Update Inventory
+annotation, so it stays readable on the Accent pill. A
+`settings-updates-selected` devshot scene puts it under `palette-audit.sh`, as
+the rc2 fix did for Update Inventory.
 
 `internal/ui/screen_updates.go`:
 
@@ -224,7 +281,7 @@ nothing.
 
 Below the rows, a status block:
 
-- `You have the latest version (v1.1.0-rc2)`
+- `You have the latest version (v1.1.0-rc3)`
 - `v1.1.0 is available. Update it in the Pak Store.`
 - `v1.1.0 is available.` with the release-page QR code and
   `Scan for the release notes`
@@ -232,18 +289,27 @@ Below the rows, a status block:
 
 The QR code is laid out like the About screen's (size clamped, placed beside
 the text on wide screens and below it where `abbreviate(w)`), and it points at
-the release's `html_url`.
+the release's `html_url`. The rows wrap with `moveCursor(dir, wrap)`, as
+Settings does.
 
 ### 5. muOS: Save to ARCHIVE
 
 - Destination: `ARCHIVE/` at the root of the card muOS calls SD1
   (`firmware.Env` gains `ArchiveDir()`; `""` on NextUI and host).
-- Download `Itch-io.muOS.<tag>.muxapp` to `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.itchio-part`
-  with the same partial-file/idle-timeout/length rules as game downloads
-  (connectivity spec §4, including its journal and startup cleanup), checking free space first (asset size + 10 %). Progress bar and B to cancel,
-  reusing the download screen's drawing.
-- Verify size and the SHA-256 against the asset `digest`. On mismatch, delete
-  the partial file, log both hashes, show `Download failed the integrity check`.
+- Download `Itch-io.muOS.<tag>.muxapp` through
+  `partfile.Create(ARCHIVE/Itch-io.muOS.<tag>.muxapp)`, which writes
+  `ARCHIVE/.Itch-io.muOS.<tag>.muxapp.itchio-part` and journals it. A small
+  loop in `appupdate` applies the game-download rules: a 30 s idle timeout
+  that also covers the wait for headers, a length check against the asset
+  size, `Abort()` on any failure or cancel, and `Commit()` only after
+  verification. Check free space first (asset size + 10 %). Progress bar and
+  B to cancel, reusing the download screen's progress drawing. Add
+  `env.ArchiveDir()` to the directories `main_sdl.go` passes to
+  `partfile.Sweep`, so a leftover from a crash is cleaned up at the next
+  launch.
+- Verify size and the SHA-256 against the asset `digest` before `Commit()`.
+  On mismatch, `Abort()`, log both hashes, and show `Download failed the
+  integrity check`.
   A release without a digest is not downloadable.
 - Check the zip before accepting it: every entry under `Itch-io/`, and the
   `SAFE_ARCHIVE` rules (no absolute paths, `..`, `\`, links; entry count and
@@ -253,29 +319,22 @@ the release's `html_url`.
   matching our release naming are touched.
 - The rest is Archive Manager's job. The app does not exit or relaunch.
 
-### 6. Settings wrap-around
-
-`moveCursor(dir, wrap bool)`. A single press (`startHold`) wraps: Up on the
-first visible row goes to the last visible row, Down on the last goes to the
-first. Auto-repeat (`processAutoRepeat`) passes `wrap=false` and stops at the
-ends, so holding a direction never loops. "Visible" uses `rowHidden`, so the
-wrap lands on a rendered row even when the last or first rows are hidden by
-firmware. The scroll offset follows the cursor as it does now, so jumping to
-the last row scrolls to the bottom. Same behaviour on the new Updates screen.
-
-### 7. Wiring
+### 6. Wiring
 
 - `main_sdl.go` starts the check in a goroutine after the first screen is up,
   when: firmware is NextUI or muOS, the running version parses, the channel is
-  not Off, `not_before` has passed, and `netstate` is not Offline. A check
-  skipped for being offline runs when `netstate` reports the connection back.
-- The checker's HTTP client uses the `netstate` transport wrapper, so its
-  failures and successes feed the shared state.
+  not Off, `not_before` has passed, and `netstate.Offline()` is false. A check
+  skipped for being offline is owed. The checker exposes
+  `RetryAfterReconnect()`, registered with `netstate.OnReconnect` after the
+  game list, inventory and covers. If a check is owed, it starts it on its own
+  goroutine; otherwise it does nothing.
+- The checker's HTTP client transport is wrapped in `netstate.Transport`, so
+  its failures and successes feed the shared state.
 - `SettingsScreen` receives an `UpdateChecker` interface (like
   `UpdateServicer`) exposing `Verdict()`, `CheckNow()`, `IsRunning()`,
   `CheckedAt()`, `SetChannel()` and the ARCHIVE download.
 
-### 8. Logging
+### 7. Logging
 
 - `appupdate: check start channel=… source=releases|pakjson store=…`
 - the HTTP status, bytes, ETag hit and duration;
@@ -286,11 +345,11 @@ the last row scrolls to the bottom. Same behaviour on the new Updates screen.
 - rate-limit back-off until …;
 - pakstore: path, page size, result, and the reason for `Unknown`.
 
-### 9. Error handling summary
+### 8. Error handling summary
 
 | Failure | Behaviour |
 |---|---|
-| Offline (per `netstate`) | skip; run on reconnect; Updates screen shows the `netstate` message |
+| Offline (`netstate.Offline()`) | skip and mark owed; run on reconnect; the Updates screen shows `netstate.Describe(err, "GitHub")` |
 | 5xx | log, keep last result, no UI |
 | 403/429 rate limit | set `not_before`, skip until then |
 | Store DB unreadable | treat as Store-managed |
@@ -313,10 +372,16 @@ the last row scrolls to the bottom. Same behaviour on the new Updates screen.
 - ARCHIVE download: digest mismatch leaves nothing, cancel leaves nothing,
   older release files are removed and other files are not, unsafe zip
   rejected.
-- `internal/ui/input_test.go`: wrap on single press, no wrap on repeat, hidden
-  first/last rows.
+- Updates screen: wrap on a single press and no wrap on repeat, like the
+  existing `TestMoveCursor_pressWrapsAtEnds` and
+  `TestMoveCursor_repeatStopsAtEnds` for Settings.
+- Offline: a check skipped while `netstate` is Offline runs once on
+  `RetryAfterReconnect`, and not at all when nothing is owed.
+- ARCHIVE: a crash leftover (`.Itch-io.muOS.<tag>.muxapp.itchio-part`) is
+  removed by `partfile.Sweep` when `ArchiveDir()` is passed in.
 - `devshot` scenes: `update-toast` (wide and narrow), `updates` in each status,
-  muOS save in progress and done. Included in `scripts/palette-audit.sh` at all
+  `settings-updates-selected` (the annotation on the Accent pill), and muOS
+  save in progress and done. Included in `scripts/palette-audit.sh` at all
   four geometries.
 - On hardware: Brick (Store row present → Pak Store verdict; delete-row copy →
   release-page verdict) and Smart Pro (Save to ARCHIVE, then install via
@@ -327,7 +392,7 @@ the last row scrolls to the bottom. Same behaviour on the new Updates screen.
 - Whether Archive Manager also scans an `ARCHIVE/` on SD2, and where the app
   should save when it runs from SD2.
 
-## Follow-up: in-place install (rc3)
+## Follow-up: in-place install (rc4)
 
 Recorded here so the research is not lost; it gets its own spec.
 
