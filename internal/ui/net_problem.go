@@ -20,12 +20,12 @@ func problemText(err error) string {
 // itch.io outage is not a Wi-Fi problem. A non-nil error that isn't a
 // connection problem (a 401 from the profile check, a decode error) gets its
 // own honest fallback instead of blaming Wi-Fi for something Wi-Fi didn't
-// cause. Only a nil error — s.failErr is always set to the error that caused
-// signInFailed, so this is not reachable from the running screen — keeps the
-// old "can't reach" wording, since there is truly nothing to go on.
+// cause. A nil error gets the same fallback: s.failErr is always set to the
+// error that caused signInFailed, so nil means nothing is known, and nothing
+// known is not evidence of a Wi-Fi problem.
 func signInFailureText(err error) (title, hint string) {
 	if err == nil {
-		return "Can't reach itch.io", "Check that Wi-Fi is on and connected, then try again."
+		return "Sign-in didn't work", "Try again. If it keeps failing, sign in again from Settings → Account."
 	}
 	if m, ok := netstate.Describe(err, "itch.io"); ok {
 		return m.Title, m.Hint
