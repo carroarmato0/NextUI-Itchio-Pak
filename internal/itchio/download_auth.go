@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 )
 
@@ -292,7 +293,7 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("auth: upload list HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch uploads: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch uploads", Code: resp.StatusCode}
 	}
 
 	// {"uploads":[...]} normally, but {"uploads":{}} (an object) when there
@@ -397,7 +398,7 @@ func (c *Client) CreateDownloadSession(apiKey, gameID, downloadKeyID string) (st
 	decodeErr := json.NewDecoder(resp.Body).Decode(&result)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		logger.Warn("auth: download session HTTP %d for game_id=%s %s", resp.StatusCode, gameID, strings.Join(result.Errors, "; "))
-		return "", fmt.Errorf("create download session: HTTP %d", resp.StatusCode)
+		return "", &netstate.StatusError{What: "create download session", Code: resp.StatusCode}
 	}
 	if decodeErr != nil {
 		return "", fmt.Errorf("decode download session: %w", decodeErr)
@@ -495,7 +496,7 @@ func (c *Client) ResolveAuthURL(apiKey, uploadID string, session *roms.DownloadS
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 			return "", fmt.Errorf("Game not owned or API key does not grant access to this download")
 		}
-		return "", fmt.Errorf("auth CDN resolve status %d", resp.StatusCode)
+		return "", &netstate.StatusError{What: "auth CDN resolve", Code: resp.StatusCode}
 	}
 }
 

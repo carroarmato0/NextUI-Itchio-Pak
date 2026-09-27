@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 const (
@@ -182,7 +183,7 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
-		logger.Error("feed: HTTP 403 from %s (Cloudflare bot-protection)", url)
+		logger.Error("feed: HTTP 403 from %s", url)
 		return nil, ErrCloudflareBlocked
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
@@ -191,7 +192,7 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("feed: HTTP %d from %s", resp.StatusCode, url)
-		return nil, fmt.Errorf("fetch feed: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch feed", Code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -414,7 +415,7 @@ func (c *Client) FetchTotalGames() (int, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
-		logger.Error("feed: total-games HTTP 403 (Cloudflare bot-protection)")
+		logger.Error("feed: total-games HTTP 403")
 		return 0, fmt.Errorf("fetch total games: %w", ErrCloudflareBlocked)
 	}
 	if resp.StatusCode != http.StatusOK {

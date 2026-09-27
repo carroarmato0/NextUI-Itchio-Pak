@@ -11,6 +11,7 @@ import (
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 // UpdateService checks each inventory entry for missing cover art, removed
@@ -25,6 +26,9 @@ type UpdateService struct {
 	stopCh        chan struct{}
 	stopOnce      sync.Once
 	running       atomic.Bool
+	// owed is set when a check was abandoned because the network was down, so
+	// the reconnect handler knows to run one.
+	owed atomic.Bool
 }
 
 // NewUpdateService constructs an UpdateService. notify (may be nil) is called
@@ -93,6 +97,15 @@ func (s *UpdateService) IsRunning() bool {
 	return s.running.Load()
 }
 
+// RetryIfOwed queues a check if the last one was abandoned while offline.
+// Registered with netstate.OnReconnect; it does not block.
+func (s *UpdateService) RetryIfOwed() {
+	if s.owed.Swap(false) {
+		logger.Info("update-svc: connection back, running the postponed check")
+		s.TriggerNow()
+	}
+}
+
 // LatestCheckedAt delegates to the inventory's LatestCheckedAt.
 func (s *UpdateService) LatestCheckedAt() time.Time {
 	return s.inv.LatestCheckedAt()
@@ -100,6 +113,12 @@ func (s *UpdateService) LatestCheckedAt() time.Time {
 
 func (s *UpdateService) runCheck() {
 	s.inv.VerifyAndClean(s.inventoryPath)
+
+	if netstate.Offline() {
+		s.owed.Store(true)
+		logger.Info("update-svc: offline, check postponed until the connection is back")
+		return
+	}
 
 	s.inv.mu.Lock()
 	urls := make([]string, 0, len(s.inv.Entries))
@@ -117,15 +136,28 @@ func (s *UpdateService) runCheck() {
 	games := make(map[string]*itchio.GameData, len(urls))
 	var paidIDs []string
 	for _, gameURL := range urls {
-		s.repairCoverArt(gameURL)
 		d, err := s.client.FetchGameData(gameURL)
+		if netstate.Classify(err).Offline() {
+			s.owed.Store(true)
+			// A failure reading the body happens after the transport saw a
+			// response and reported online; without this the tracker stays
+			// online and no reconnect ever runs the owed check.
+			netstate.Report(err)
+			logger.Warn("update-svc: network down (%s), abandoning this check", netstate.Detail(err))
+			return
+		}
+		// Covers are healed for every game the network could reach, removed
+		// and transiently failing ones included: the cover URL is on itch.io's
+		// CDN and outlives the game page. Only an offline failure skips it,
+		// since every repair request would be doomed too.
+		s.repairCoverArt(gameURL)
 		switch {
 		case isGameRemoved(err):
 			s.inv.MarkRemoved(gameURL)
 			logger.Warn("update-svc: game removed (404) %s", gameURL)
 			continue
 		case err != nil:
-			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
+			logger.Warn("update-svc: transient error for %s: %s", gameURL, netstate.Detail(err))
 			continue
 		}
 		games[gameURL] = d
@@ -139,7 +171,7 @@ func (s *UpdateService) runCheck() {
 	if len(paidIDs) > 0 {
 		var err error
 		if keys, err = s.client.OwnedKeysForGames(token, paidIDs); err != nil {
-			logger.Warn("update-svc: owned keys unavailable, paid games use the page: %v", err)
+			logger.Warn("update-svc: owned keys unavailable, paid games use the page: %s", netstate.Detail(err))
 		}
 	}
 
@@ -151,6 +183,11 @@ func (s *UpdateService) runCheck() {
 	}
 	pending := make(map[string]result)
 	for gameURL, d := range games {
+		if netstate.Offline() {
+			s.owed.Store(true)
+			logger.Warn("update-svc: network went down mid-check, abandoning it")
+			return
+		}
 		if source, files := s.checkGame(gameURL, d, token, keys); files != nil {
 			pending[gameURL] = result{source, files}
 		}
@@ -167,7 +204,12 @@ func (s *UpdateService) runCheck() {
 }
 
 // repairCoverArt downloads cover art that has gone missing from disk.
+// Offline it does nothing: every download would fail.
 func (s *UpdateService) repairCoverArt(gameURL string) {
+	if netstate.Offline() {
+		logger.Debug("update-svc: offline, cover art repair skipped for %s", gameURL)
+		return
+	}
 	s.inv.mu.Lock()
 	entry, ok := s.inv.Entries[gameURL]
 	if !ok {
@@ -189,7 +231,7 @@ func (s *UpdateService) repairCoverArt(gameURL string) {
 		}
 		logger.Info("update-svc: repairing cover art for %s", f.Filename)
 		if err := s.client.DownloadCoverArt(coverURL, f.DestPath); err != nil {
-			logger.Error("update-svc: cover art repair failed for %s: %v", f.Filename, err)
+			logger.Error("update-svc: cover art repair failed for %s: %s", f.Filename, netstate.Detail(err))
 		}
 	}
 }
@@ -216,7 +258,7 @@ func (s *UpdateService) checkGame(gameURL string, d *itchio.GameData, token stri
 			if err == nil {
 				return s.recordFiles(gameURL, SourceAPI, files)
 			}
-			logger.Warn("update-svc: API listing failed for %s, using the page: %v", gameURL, err)
+			logger.Warn("update-svc: API listing failed for %s, using the page: %s", gameURL, netstate.Detail(err))
 		} else {
 			logger.Debug("update-svc: %s is paid and not owned; using the page", gameURL)
 		}
@@ -227,7 +269,7 @@ func (s *UpdateService) checkGame(gameURL string, d *itchio.GameData, token stri
 			s.inv.MarkRemoved(gameURL)
 			logger.Warn("update-svc: game removed (404) %s", gameURL)
 		} else {
-			logger.Warn("update-svc: transient error for %s: %v", gameURL, err)
+			logger.Warn("update-svc: transient error for %s: %s", gameURL, netstate.Detail(err))
 		}
 		return "", nil
 	}

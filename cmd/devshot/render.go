@@ -12,6 +12,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/ui"
@@ -51,6 +52,10 @@ func render(sc ui.Scene, p palChoice, w, h int, full, audit bool, settle time.Du
 		r.BeginDrawLog()
 	}
 
+	// netstate is process-global; a scene that puts it in an offline state
+	// (see internal/ui/dev_scenes_offline.go) must not leak that into whatever
+	// scene renders next.
+	netstate.ResetForTest()
 	screen := sc.Build(deps)
 
 	// Overlay screens (the filter panel, the pickers) draw a panel over whatever
