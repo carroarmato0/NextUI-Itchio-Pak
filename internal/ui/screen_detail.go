@@ -483,7 +483,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 			r.DrawTextureAt(tex, imgX, imgY, dw, dh)
 		} else if !s.cache.Failed(ssURL) {
 			mu := r.Theme.Muted()
-			r.DrawText("Loading...", margin+imgBoxW/2-40, y+imgBoxH/2-10, mu[0], mu[1], mu[2])
+			r.DrawText(coverPlaceholderLabel(), margin+imgBoxW/2-40, y+imgBoxH/2-10, mu[0], mu[1], mu[2])
 		} else {
 			mu := r.Theme.Muted()
 			r.DrawText("No Image", margin+imgBoxW/2-40, y+imgBoxH/2-10, mu[0], mu[1], mu[2])

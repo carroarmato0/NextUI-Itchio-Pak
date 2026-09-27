@@ -27,6 +27,17 @@ var (
 	footerHintsBuf  []renderer.FooterHint
 )
 
+// coverPlaceholderLabel is what a cover or screenshot box says while it has no
+// texture yet and no Failed verdict either. Offline, ImageCache starts no
+// fetch (see ImageCache.Get), so "Loading..." would never resolve until the
+// connection returns; say so instead of implying one is in flight.
+func coverPlaceholderLabel() string {
+	if netstate.Offline() {
+		return "Offline"
+	}
+	return "Loading..."
+}
+
 const (
 	scrollDelay = time.Second
 	scrollSpeed = int32(50)
@@ -1028,7 +1039,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 			} else {
 				phT := r.Theme.Muted()
-				r.DrawTextCenteredInRect("Loading...", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
+				r.DrawTextCenteredInRect(coverPlaceholderLabel(), artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 			}
 		} else {
 			r.DrawRect(artX+2, metaY+2, artW-4, artH-4, bg[0], bg[1], bg[2])
