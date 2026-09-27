@@ -63,7 +63,7 @@ func NewSignInScreen(client *itchio.Client, cfg *settings.Config, cfgPath string
 	return s
 }
 
-func (s *SignInScreen) loadState() signInState   { return signInState(atomic.LoadInt32(&s.state)) }
+func (s *SignInScreen) loadState() signInState    { return signInState(atomic.LoadInt32(&s.state)) }
 func (s *SignInScreen) storeState(st signInState) { atomic.StoreInt32(&s.state, int32(st)) }
 
 // start begins a fresh sign-in attempt in the background.

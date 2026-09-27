@@ -246,7 +246,7 @@ func TestFetchAllGames(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
-		slug := r.URL.Path   // e.g. "/games/made-with-gb-studio.xml"
+		slug := r.URL.Path // e.g. "/games/made-with-gb-studio.xml"
 		page := r.URL.Query().Get("page")
 		switch {
 		case slug == "/games/made-with-gb-studio.xml" && page == "1":

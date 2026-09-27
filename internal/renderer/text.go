@@ -208,4 +208,3 @@ func splitTextRuns(s string, fontIndex func(rune) int) []textRun {
 	}
 	return splitBuf
 }
-

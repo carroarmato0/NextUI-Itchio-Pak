@@ -47,7 +47,7 @@ func (e *cacheEntry) destroyTextures() {
 // rawImage holds decoded pixel data ready to be uploaded to a GPU texture.
 type rawImage struct {
 	url   string
-	pix   []uint8  // frame 0 pixel data (or only frame for static images)
+	pix   []uint8 // frame 0 pixel data (or only frame for static images)
 	w, h  int32
 	pitch int
 	anim  *gifAnim // non-nil when source is an animated GIF
@@ -63,7 +63,7 @@ type ImageCache struct {
 	client   *http.Client
 	readyCh  chan rawImage // pixel data ready for main-thread texture upload
 	sem      chan struct{} // concurrency limiter for background fetches
-	notify   func()       // optional: called when an image lands in readyCh
+	notify   func()        // optional: called when an image lands in readyCh
 }
 
 // SetNotify registers a callback invoked once each time a decoded image is

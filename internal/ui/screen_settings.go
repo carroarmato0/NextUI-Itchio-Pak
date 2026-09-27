@@ -68,7 +68,6 @@ type SettingsScreen struct {
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
-
 }
 
 func NewSettingsScreen(

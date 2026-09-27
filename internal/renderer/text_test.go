@@ -152,9 +152,9 @@ func TestBuildGlyphRanges(t *testing.T) {
 		t.Fatal("buildGlyphRanges returned nil — font parse failed")
 	}
 	cases := []struct {
-		name      string
-		ch        rune
-		wantIn    bool
+		name   string
+		ch     rune
+		wantIn bool
 	}{
 		{"ASCII letter", 'A', true},
 		{"accented Latin", 'é', true},
@@ -172,4 +172,3 @@ func TestBuildGlyphRanges(t *testing.T) {
 		})
 	}
 }
-

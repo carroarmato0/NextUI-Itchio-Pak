@@ -26,10 +26,10 @@ type wrapKey struct {
 }
 
 type textRunKey struct {
-	text   string
-	fontID uint8
-	small  bool
-	bold   bool
+	text    string
+	fontID  uint8
+	small   bool
+	bold    bool
 	r, g, b uint8
 }
 
