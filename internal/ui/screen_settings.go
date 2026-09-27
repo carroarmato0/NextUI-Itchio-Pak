@@ -120,18 +120,28 @@ func (s *SettingsScreen) processAutoRepeat() {
 	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
-	s.moveCursor(s.heldDir)
+	s.moveCursor(s.heldDir, false)
 	s.lastRepeat = now
 }
 
-func (s *SettingsScreen) moveCursor(dir int) {
+// moveCursor steps one row in dir. With wrap, stepping past either end lands
+// on the other, so the last row is one press away from the first; auto-repeat
+// passes false so a held button stops at the end instead of spinning round.
+func (s *SettingsScreen) moveCursor(dir int, wrap bool) {
+	last := sItemCount - 1
 	if dir > 0 {
-		if int(s.cursor) < int(sItemCount)-1 {
+		if s.cursor < last {
 			s.cursor++
+		} else if wrap {
+			s.cursor = 0
+			logger.Debug("settings: cursor wrapped to the first row")
 		}
 	} else if dir < 0 {
 		if s.cursor > 0 {
 			s.cursor--
+		} else if wrap {
+			s.cursor = last
+			logger.Debug("settings: cursor wrapped to the last row")
 		}
 	}
 	// Step past rows that are not rendered, reversing at either end rather than
@@ -366,8 +376,8 @@ func (s *SettingsScreen) startHold(dir int) {
 	s.heldDir = dir
 	s.heldSince = time.Now()
 	s.lastRepeat = s.heldSince
-	// Move immediately on first press
-	s.moveCursor(dir)
+	// Move immediately on first press; only a fresh press wraps round.
+	s.moveCursor(dir, true)
 }
 
 func (s *SettingsScreen) stopHold(dir int) {
