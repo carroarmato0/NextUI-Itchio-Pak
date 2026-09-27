@@ -26,6 +26,35 @@ type Pad struct {
 	Buttons, Hats int
 }
 
+// H700FixedLayoutGUID is the GUID NextUI's SDL gives the H700 pad from
+// h700-rc11 on. With it comes a fixed layout: TrimUI's button numbers on every
+// H700 model (B=0, A=1, Y=2, X=3, L1/R1=4/5, SELECT/START=6/7, MENU=8, L2/R2 on
+// axes 2/5, d-pad on hat 0) and a positional controller mapping built into SDL.
+// Earlier releases, and rc11 with SDL_JOYSTICK_H700_FIXED_LAYOUT=0, report the
+// pad under another GUID with numbers that vary by model, which is what the
+// key-bitmap derivation below exists for.
+// https://github.com/pvaibhav/NextUI/wiki/Porting-NextUI-Paks-to-H700#built-in-controls-in-sdl
+const H700FixedLayoutGUID = "19000000010000000100000000016e01"
+
+// h700FixedLayoutBindings is the positional mapping for the fixed layout — the
+// one rc11's SDL builds in, so SDL_CONTROLLER_BUTTON_A is the bottom button
+// (labelled B), as on tg5040. Only needed if an SDL numbers the pad this way
+// without also carrying the mapping.
+const h700FixedLayoutBindings = "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5," +
+	"back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10," +
+	"lefttrigger:a2,righttrigger:a5,leftx:a0,lefty:a1,rightx:a3,righty:a4," + h700DPadBindings
+
+// h700FixedLayout reports whether any pad is the H700 pad under the fixed
+// layout.
+func h700FixedLayout(pads []Pad) bool {
+	for _, p := range pads {
+		if strings.EqualFold(p.GUID, H700FixedLayoutGUID) {
+			return true
+		}
+	}
+	return false
+}
+
 // keyMax is KEY_MAX. SDL stops below it, so it is not a button.
 const keyMax = 0x2ff
 
@@ -95,6 +124,10 @@ func (e *Env) ControllerMapping(pad Pad) (string, bool) {
 	// A mapping line is comma-separated, so a comma in the name would shift
 	// every binding after it by one field.
 	name := strings.ReplaceAll(pad.Name, ",", " ")
+	if h700FixedLayout([]Pad{pad}) {
+		logger.Info("input: h700 pad uses the fixed layout (NextUI rc11+), positional bindings: %s", h700FixedLayoutBindings)
+		return pad.GUID + "," + name + ",platform:Linux," + h700FixedLayoutBindings, true
+	}
 	return pad.GUID + "," + name + ",platform:Linux," + h700Bindings(pad), true
 }
 
