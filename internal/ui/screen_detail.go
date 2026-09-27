@@ -1507,7 +1507,7 @@ func backHints(screenW int32) []renderer.FooterHint {
 	if !abbreviate(screenW) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: "Settings"})
 	} else {
-		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "⚙", Text: ""})
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "START", Text: ""})
 	}
 	return hints
 }
