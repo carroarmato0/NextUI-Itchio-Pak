@@ -302,3 +302,25 @@ func TestLoggablePath(t *testing.T) {
 		t.Errorf("ordinary path changed: %q", loggablePath(p))
 	}
 }
+
+// The cooldown hooks run around a cooldown wait, in order, and not at all
+// when the host is not cooling down.
+func TestRateLimit_cooldownHooksBracketTheWait(t *testing.T) {
+	clock := newFakeClock()
+	rt := newTestRateLimit(clock)
+	var events []string
+	ctx := withCooldownHooks(context.Background(),
+		func() { events = append(events, "pause") },
+		func() { events = append(events, "resume") })
+
+	if err := rt.waitTurn(ctx, "itch.io"); err != nil || len(events) != 0 {
+		t.Fatalf("no cooldown: err %v, hooks %v; want neither", err, events)
+	}
+	rt.record429("itch.io", "5")
+	if err := rt.waitTurn(ctx, "itch.io"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(events, ",") != "pause,resume" || clock.totalSlept() != 5*time.Second {
+		t.Fatalf("hooks %v, slept %v; want pause,resume around a 5s wait", events, clock.totalSlept())
+	}
+}
