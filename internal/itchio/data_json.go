@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 // GameData is a game's https://{author}.itch.io/{game}/data.json: public, no
@@ -65,6 +66,9 @@ func (d *GameData) Pricing() PricingModel {
 	}
 }
 
+// dataJSONMaxBytes bounds a data.json body; real ones are a few KiB.
+const dataJSONMaxBytes = 1 << 20
+
 // FetchGameData reads a game's data.json. A missing game (404/410) returns
 // ErrGameRemoved; a renamed one is followed, and URL says where it moved.
 func (c *Client) FetchGameData(gameURL string) (*GameData, error) {
@@ -86,10 +90,25 @@ func (c *Client) FetchGameData(gameURL string) (*GameData, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Warn("game: data.json HTTP %d for %s", resp.StatusCode, gameURL)
-		return nil, fmt.Errorf("fetch data.json: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch data.json", Code: resp.StatusCode}
+	}
+	// Read the whole body before decoding, so the two failures stay apart: a
+	// read error is the connection dropping (offline-class), while a body that
+	// arrived complete but is not valid JSON, or is too big, is a bad response.
+	// A streaming decoder reports a short body as io.ErrUnexpectedEOF, which
+	// netstate counts as offline, and the update check would then flap
+	// offline/online on the same game after every reconnect.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, dataJSONMaxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read data.json: %w", err)
+	}
+	if len(body) > dataJSONMaxBytes {
+		logger.Warn("game: data.json for %s is larger than %d bytes, ignored", gameURL, dataJSONMaxBytes)
+		return nil, fmt.Errorf("data.json is larger than %d bytes", dataJSONMaxBytes)
 	}
 	var d GameData
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&d); err != nil {
+	if err := json.Unmarshal(body, &d); err != nil {
+		logger.Warn("game: data.json for %s is not valid JSON (%d bytes): %v", gameURL, len(body), err)
 		return nil, fmt.Errorf("decode data.json: %w", err)
 	}
 	d.URL = d.Links.Self

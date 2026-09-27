@@ -14,6 +14,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/http2"
 )
 
 // Reason says why a request failed.
@@ -134,7 +136,57 @@ func Classify(err error) Reason {
 	if errors.As(err, &ne) && ne.Timeout() {
 		return ReasonUnreachable
 	}
+	if isHTTP2ConnFailure(err) {
+		return ReasonUnreachable
+	}
 	return ReasonOther
+}
+
+// http2ConnFailures are the texts of x/net/http2's unexported errors for a
+// connection that went away under a request. They have no type to match, so
+// each chain link is compared whole; a bare "http2: " prefix would also catch
+// protocol limits (header list too large) that are not the network.
+var http2ConnFailures = map[string]bool{
+	"http2: client connection lost":                               true,
+	"http2: client conn is closed":                                true,
+	"http2: client conn not usable":                               true,
+	"http2: Transport received Server's graceful shutdown GOAWAY": true,
+}
+
+// isHTTP2ConnFailure reports whether err is the HTTP/2 layer losing the
+// stream or connection: a reset stream, a GOAWAY that closed the connection,
+// a connection-level error, or one of the transport's connection-lost errors.
+// The response never arrived or was cut off, the same as a TCP reset.
+func isHTTP2ConnFailure(err error) bool {
+	var se http2.StreamError
+	var ga http2.GoAwayError
+	var ce http2.ConnectionError
+	if errors.As(err, &se) || errors.As(err, &ga) || errors.As(err, &ce) {
+		return true
+	}
+	return anyInChain(err, func(e error) bool { return http2ConnFailures[e.Error()] })
+}
+
+// anyInChain reports whether match holds for err or anything it wraps,
+// following both single and multiple (errors.Join, %w %w) wrapping.
+func anyInChain(err error, match func(error) bool) bool {
+	if err == nil {
+		return false
+	}
+	if match(err) {
+		return true
+	}
+	switch u := err.(type) {
+	case interface{ Unwrap() error }:
+		return anyInChain(u.Unwrap(), match)
+	case interface{ Unwrap() []error }:
+		for _, e := range u.Unwrap() {
+			if anyInChain(e, match) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Detail is err's text for the log, without the request URL: the text of a

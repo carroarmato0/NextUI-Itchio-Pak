@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/net/http2"
 )
 
 func TestClassify(t *testing.T) {
@@ -134,5 +136,46 @@ func TestDetailOf_stripsURL(t *testing.T) {
 	err := &url.Error{Op: "Get", URL: "https://cdn.example/f.gb?sig=SECRET", Err: io.ErrUnexpectedEOF}
 	if got := Detail(err); got != "Get: unexpected EOF" {
 		t.Fatalf("Detail = %q", got)
+	}
+}
+
+// HTTP/2 failures below the request: a reset stream, a GOAWAY that closed the
+// connection, a connection-level error, or the connection lost. Without a
+// mapping they fell through to Other and the screen showed Go's raw text.
+func TestClassify_http2(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"stream error", &url.Error{Op: "Get", URL: "https://itch.io/x", Err: http2.StreamError{StreamID: 3, Code: http2.ErrCodeInternal}}},
+		{"stream error, wrapped", fmt.Errorf("read stream: %w", http2.StreamError{StreamID: 5, Code: http2.ErrCodeProtocol})},
+		{"goaway", &url.Error{Op: "Get", Err: http2.GoAwayError{LastStreamID: 1, ErrCode: http2.ErrCodeNo}}},
+		{"connection error", fmt.Errorf("fetch feed: %w", http2.ConnectionError(http2.ErrCodeProtocol))},
+		{"connection lost", &url.Error{Op: "Get", Err: errors.New("http2: client connection lost")}},
+		{"graceful goaway", &url.Error{Op: "Get", Err: errors.New("http2: Transport received Server's graceful shutdown GOAWAY")}},
+		{"conn closed", fmt.Errorf("read stream: %w", errors.New("http2: client conn is closed"))},
+	}
+	for _, c := range cases {
+		if got := Classify(c.err); got != ReasonUnreachable {
+			t.Errorf("%s: Classify = %v, want unreachable", c.name, got)
+		}
+	}
+	// Other http2 errors are protocol limits, not the connection: left alone.
+	if got := Classify(errors.New("http2: response header list larger than advertised limit")); got != ReasonOther {
+		t.Errorf("header-list limit: Classify = %v, want other", got)
+	}
+	// A stream the user cancelled is still the user.
+	if got := Classify(fmt.Errorf("%w: %w", context.Canceled, http2.StreamError{Code: http2.ErrCodeCancel})); got != ReasonCanceled {
+		t.Errorf("cancelled stream: Classify = %v, want canceled", got)
+	}
+}
+
+// The screen gets plain words for a reset HTTP/2 stream, not "stream error: …".
+func TestDescribe_http2StreamErrorHasPlainWords(t *testing.T) {
+	ResetForTest()
+	defer ResetForTest()
+	m, ok := Describe(fmt.Errorf("read stream: %w", http2.StreamError{StreamID: 7, Code: http2.ErrCodeInternal}), "itch.io")
+	if !ok || m.Title != "Can't reach itch.io" {
+		t.Fatalf("Describe = %+v, %v; want the can't-reach message", m, ok)
 	}
 }

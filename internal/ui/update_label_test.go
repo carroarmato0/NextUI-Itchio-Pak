@@ -26,8 +26,8 @@ func TestUpdateLabel(t *testing.T) {
 
 func TestUpdateBadge(t *testing.T) {
 	pending := []inventory.UpstreamFile{
-		{Filename: "Glory Hunters 2.1", UploadID: "15"},             // from the API: display name + ID
-		{Filename: "Criss Cross Cove (GB Rom)"},                     // from the page: display name only
+		{Filename: "Glory Hunters 2.1", UploadID: "15"}, // from the API: display name + ID
+		{Filename: "Criss Cross Cove (GB Rom)"},         // from the page: display name only
 		{Filename: "game.gb", UploadID: "7", Changed: true},
 	}
 	for _, tc := range []struct {

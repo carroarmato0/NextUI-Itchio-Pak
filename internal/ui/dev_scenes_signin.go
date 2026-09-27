@@ -3,6 +3,8 @@
 package ui
 
 import (
+	"net"
+	"net/url"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -30,7 +32,13 @@ func init() {
 		Scene{Name: "signin-expired", Desc: "QR sign-in code expired", Build: build(signInExpired)},
 		Scene{Name: "signin-denied", Desc: "QR sign-in declined on the phone", Build: build(signInDenied)},
 		Scene{Name: "signin-unavailable", Desc: "QR sign-in not enabled for this app yet", Build: build(signInUnavailable)},
-		Scene{Name: "signin-offline", Desc: "QR sign-in could not reach itch.io", Build: build(signInFailed)},
+		Scene{Name: "signin-offline", Desc: "QR sign-in could not reach itch.io", Build: func(d SceneDeps) Screen {
+			// The failure text comes from the error, so the scene carries the
+			// one a device without Wi-Fi actually produces.
+			s := build(signInFailed)(d).(*SignInScreen)
+			s.failErr = &url.Error{Op: "Post", URL: "https://itch.io/user/oauth/device", Err: &net.DNSError{Err: "no such host", Name: "itch.io", IsNotFound: true}}
+			return s
+		}},
 		Scene{Name: "account-prompt", Desc: "First-run \"Do you have an itch.io account?\" prompt", Build: func(d SceneDeps) Screen {
 			return &AccountPromptScreen{client: d.Client, cfg: d.Cfg, cfgPath: d.CfgPath}
 		}},

@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"errors"
-	"net/url"
-
 	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
@@ -15,29 +12,23 @@ func problemText(err error) string {
 	if m, ok := netstate.Describe(err, "itch.io"); ok {
 		return m.Title + ". " + m.Hint
 	}
-	return withoutURL(err)
-}
-
-// withoutURL is err's text with any request URL stripped: *url.Error quotes
-// the whole URL, and a signed CDN URL carries credentials in the query
-// string. An error that is not a *url.Error keeps its own text unchanged.
-func withoutURL(err error) string {
-	var ue *url.Error
-	if errors.As(err, &ue) {
-		return ue.Op + ": " + ue.Err.Error()
-	}
-	return err.Error()
+	return netstate.Detail(err)
 }
 
 // signInFailureText is the title and hint of the sign-in screen's failure
 // state. Connection problems get netstate's words — a captive portal or an
-// itch.io outage is not a Wi-Fi problem. Anything else keeps the screen's
-// general "can't reach" text.
+// itch.io outage is not a Wi-Fi problem. A non-nil error that isn't a
+// connection problem (a 401 from the profile check, a decode error) gets its
+// own honest fallback instead of blaming Wi-Fi for something Wi-Fi didn't
+// cause. A nil error gets the same fallback: s.failErr is always set to the
+// error that caused signInFailed, so nil means nothing is known, and nothing
+// known is not evidence of a Wi-Fi problem.
 func signInFailureText(err error) (title, hint string) {
-	if err != nil {
-		if m, ok := netstate.Describe(err, "itch.io"); ok {
-			return m.Title, m.Hint
-		}
+	if err == nil {
+		return "Sign-in didn't work", "Try again. If it keeps failing, sign in again from Settings → Account."
 	}
-	return "Can't reach itch.io", "Check that Wi-Fi is on and connected, then try again."
+	if m, ok := netstate.Describe(err, "itch.io"); ok {
+		return m.Title, m.Hint
+	}
+	return "Sign-in didn't work", "Try again. If it keeps failing, sign in again from Settings → Account."
 }

@@ -35,9 +35,9 @@ type GameDetail struct {
 	Uploads        []Upload
 	GameID         string
 	CSRFToken      string
-	PageTags       []string // itch.io tag labels scraped from the game page
-	BundleNames    []string // names of bundles that include this game (from public page)
-	BrowserOnly    bool     // true when page has HTML5 embed but no downloadable or paid files
+	PageTags       []string     // itch.io tag labels scraped from the game page
+	BundleNames    []string     // names of bundles that include this game (from public page)
+	BrowserOnly    bool         // true when page has HTML5 embed but no downloadable or paid files
 	Pricing        PricingModel // how the developer charges; see PricingModel
 	SuggestedPrice string       // developer's suggested amount as itch.io displays it (e.g. "$2.00"); empty when unknown or not applicable
 }
@@ -52,9 +52,9 @@ type Upload struct {
 	DisplayName string // the name itch.io shows, when the uploader set one
 	Type        string // "default", "html" (played in a browser), "soundtrack"...
 	Size        int64
-	MD5       string
-	BuildID   int64 // 0 when the upload is not a butler build
-	UpdatedAt time.Time
+	MD5         string
+	BuildID     int64 // 0 when the upload is not a butler build
+	UpdatedAt   time.Time
 }
 
 var (
@@ -319,32 +319,44 @@ func extractDescription(pageHTML string) string {
 				return
 			case "p":
 				buf.WriteString("<p>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</p>")
 				return
 			case "h1", "h2", "h3", "h4", "h5", "h6":
 				buf.WriteString("<h2>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</h2>")
 				return
 			case "strong", "b", "em", "i":
 				buf.WriteString("<b>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</b>")
 				return
 			case "ul":
 				buf.WriteString("<ul>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</ul>")
 				return
 			case "ol":
 				buf.WriteString("<ol>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</ol>")
 				return
 			case "li":
 				buf.WriteString("<li>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</li>")
 				return
 			case "tr":

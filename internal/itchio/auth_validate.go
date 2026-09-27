@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 // OwnedGame is a public summary of a game the user owns.
@@ -62,7 +63,8 @@ func (c *Client) ValidateAPIKey(apiKey string) (username string, owned []OwnedGa
 		return "", nil, fmt.Errorf("%w (HTTP %d)", ErrTokenRejected, resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("fetch profile: HTTP %d", resp.StatusCode)
+		logger.Warn("validate: profile check answered HTTP %d", resp.StatusCode)
+		return "", nil, &netstate.StatusError{What: "fetch profile", Code: resp.StatusCode}
 	}
 
 	var profileResp struct {

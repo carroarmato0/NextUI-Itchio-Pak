@@ -1651,14 +1651,24 @@ func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
 // It is passed to SettingsScreen as the onRefreshGames callback.
 func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 	logger.Info("cache: manual refresh triggered from settings")
-	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
-		select {
-		case s.cacheUpdateCh <- games:
-		default:
-		}
-		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
-		if s.updateSvc != nil {
-			s.updateSvc.TriggerNow()
-		}
-	})
+	return NewCacheRefreshScreen(s.client, s.cachePath, prev, s.manualRefreshDone)
+}
+
+// manualRefreshDone installs the list a manual refresh fetched and saved. It
+// runs on the refresh screen's goroutine.
+func (s *ListScreen) manualRefreshDone(games []itchio.Game) {
+	// The whole list is now fetched, so a background fetch that failed
+	// earlier is no longer owed: without this the next reconnect would run
+	// another full fetch for nothing.
+	if s.cacheFetchFailed.Swap(false) {
+		logger.Info("cache: manual refresh succeeded, reconnect retry of the failed background fetch dropped")
+	}
+	select {
+	case s.cacheUpdateCh <- games:
+	default:
+	}
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	if s.updateSvc != nil {
+		s.updateSvc.TriggerNow()
+	}
 }

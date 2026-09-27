@@ -8,7 +8,7 @@ import (
 
 const (
 	logMaxBytes = 10 * 1024 * 1024 // 10 MB
-	logMaxRuns  = 5                 // total runs to keep (newest N-1 old + the one about to start)
+	logMaxRuns  = 5                // total runs to keep (newest N-1 old + the one about to start)
 )
 
 // rotateLog trims the log file at path before a new run begins so that at most

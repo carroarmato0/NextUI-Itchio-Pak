@@ -1,6 +1,7 @@
 package itchio_test
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 // serveData serves testdata/data_<kind>.json at /<game>/data.json.
@@ -160,5 +162,69 @@ func TestFetchGameDetail_fallsBackWithoutDataJSON(t *testing.T) {
 	}
 	if d.GameID == "" || d.Pricing != itchio.PricingPaid {
 		t.Errorf("fallback: GameID %q, pricing %v", d.GameID, d.Pricing)
+	}
+}
+
+// A body the server sent completely but that is not whole JSON (cut short at
+// the source) is a bad response, not a network failure: classing it offline
+// makes the updater flap offline/online on the same game every reconnect.
+func TestFetchGameData_truncatedJSONIsNotOffline(t *testing.T) {
+	defer netstate.ResetForTest()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id": 12, "title": "Cut sh`))
+	}))
+	defer srv.Close()
+	_, err := itchio.NewClientWithBase(srv.URL).FetchGameData(srv.URL + "/game")
+	if err == nil {
+		t.Fatal("truncated JSON accepted")
+	}
+	if r := netstate.Classify(err); r.Offline() {
+		t.Fatalf("Classify(%v) = %v, want a non-network reason", err, r)
+	}
+}
+
+func TestFetchGameData_oversizedIsNotOffline(t *testing.T) {
+	defer netstate.ResetForTest()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id": 12, "title": "`))
+		w.Write(bytes.Repeat([]byte("x"), 1<<20))
+		w.Write([]byte(`"}`))
+	}))
+	defer srv.Close()
+	_, err := itchio.NewClientWithBase(srv.URL).FetchGameData(srv.URL + "/game")
+	if err == nil {
+		t.Fatal("oversized data.json accepted")
+	}
+	if r := netstate.Classify(err); r.Offline() {
+		t.Fatalf("Classify(%v) = %v, want a non-network reason", err, r)
+	}
+	if !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("err = %v, want it to say the body was too large", err)
+	}
+}
+
+// The connection dropping partway through the body is the network.
+func TestFetchGameData_connectionCutMidBodyIsOffline(t *testing.T) {
+	defer netstate.ResetForTest()
+	srvURL := truncatingServer(t, 5000, []byte(`{"id": 12, "title": "Cut`))
+	base := strings.TrimSuffix(srvURL, "/f.gb")
+	_, err := itchio.NewClientWithBase(base).FetchGameData(base + "/game")
+	if err == nil {
+		t.Fatal("cut-off transfer accepted")
+	}
+	if r := netstate.Classify(err); !r.Offline() {
+		t.Fatalf("Classify(%v) = %v, want an offline reason", err, r)
+	}
+}
+
+func TestFetchGameData_serverErrorIsStatusError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	_, err := itchio.NewClientWithBase(srv.URL).FetchGameData(srv.URL + "/game")
+	var se *netstate.StatusError
+	if !errors.As(err, &se) || se.Code != http.StatusServiceUnavailable {
+		t.Fatalf("err = %v, want a *netstate.StatusError with code 503", err)
 	}
 }

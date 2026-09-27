@@ -29,8 +29,8 @@ type Game struct {
 	CoverURL    string    `json:"cover_url"`
 	Price       float64   `json:"price"`
 	IsFree      bool      `json:"is_free"`
-	Tags        []string  `json:"tags,omitempty"`   // extracted from [Tag] brackets in the RSS title
-	PublishedAt time.Time `json:"published_at"`     // parsed from <pubDate> in RSS feed
+	Tags        []string  `json:"tags,omitempty"`     // extracted from [Tag] brackets in the RSS title
+	PublishedAt time.Time `json:"published_at"`       // parsed from <pubDate> in RSS feed
 	Platform    string    `json:"platform,omitempty"` // NextUI system code set by FetchAllGames, e.g. "GB"
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -164,5 +165,33 @@ func TestStreamToFile_successReplacesFile(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(dest); string(b) != "NEW ROM" {
 		t.Fatalf("dest = %q", b)
+	}
+}
+
+// The rate limiter holding a download back is not the connection going
+// silent: a 429 cooldown longer than the idle timeout must not abort the
+// download as "no data", nor take the app offline.
+func TestStreamToFile_rateLimitCooldownIsNotIdle(t *testing.T) {
+	defer netstate.ResetForTest()
+	defer itchio.SetStreamIdleTimeoutForTest(200 * time.Millisecond)()
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			w.Header().Set("Retry-After", "1") // the shortest cooldown the limiter honours
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte("NEW ROM"))
+	}))
+	defer srv.Close()
+	dest := filepath.Join(t.TempDir(), "g.gb")
+	if err := itchio.NewClient().DownloadURL(srv.URL, dest, nil); err != nil {
+		t.Fatalf("download failed across a 1s cooldown with a 200ms idle timeout: %v", err)
+	}
+	if b, _ := os.ReadFile(dest); string(b) != "NEW ROM" {
+		t.Fatalf("dest = %q", b)
+	}
+	if netstate.Offline() {
+		t.Fatal("netstate offline after waiting out a rate-limit cooldown")
 	}
 }
