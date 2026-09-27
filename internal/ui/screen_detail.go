@@ -14,6 +14,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -57,6 +58,15 @@ type DetailScreen struct {
 	advisoryTriggered bool  // true when a filter match is found after loading
 	modal             detailModal
 	qrTex             *sdl.Texture // cached QR texture; generated once, destroyed on back
+
+	// Page fetch and the reduced page (shown when the fetch failed).
+	// fetching guards against two fetches at once. failedOffline is written by
+	// the fetch goroutine before it publishes loading=false, like err; the
+	// rest belong to the UI goroutine.
+	fetching      atomic.Bool
+	failedOffline bool // the last fetch failed with an offline-class error
+	sawOffline    bool // the connection has been seen down since that failure
+	reducedLogged bool // the reduced page has been logged for this failure
 
 	// Ownership of a paid game. owned starts from the list's cached owned
 	// games; for a paid game it does not include, a background owned-keys
@@ -132,11 +142,35 @@ func NewDetailScreen(
 		onThemeToggle:  onThemeToggle,
 		formattedPrice: "$" + strconv.FormatFloat(game.Price, 'f', 2, 64),
 	}
+	s.fetchDetail()
+	return s
+}
+
+// fetchDetail fetches the game page in the background: the constructor's
+// first load, and the reduced page's reload once the connection is back. It
+// returns false, starting nothing, when a fetch is already running, so the two
+// can never overlap. Call it from the UI goroutine.
+func (s *DetailScreen) fetchDetail() bool {
+	if !s.fetching.CompareAndSwap(false, true) {
+		logger.Debug("detail: fetch already running for %s, not starting another", s.game.URL)
+		return false
+	}
+	// Reset before the goroutine starts, so nothing it publishes is overwritten.
+	s.loading = true
+	s.err = nil
+	s.detail = nil
+	s.failedOffline = false
+	s.sawOffline = false
+	s.reducedLogged = false
+	s.screenshotIdx = 0
+	s.scrollY = 0
+	game, client, cache, cfg := s.game, s.client, s.cache, s.cfg
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("detail: PANIC in FetchGameDetail goroutine: %v", r)
 				s.err = fmt.Errorf("internal error: %v", r)
+				s.fetching.Store(false)
 				s.loading = false
 				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 			}
@@ -176,6 +210,7 @@ func NewDetailScreen(
 		}
 		s.detail = d
 		s.err = err
+		s.failedOffline = err != nil && netstate.Classify(err).Offline()
 		if d != nil {
 			total := strconv.Itoa(len(d.ScreenshotURLs))
 			labels := make([]string, len(d.ScreenshotURLs))
@@ -207,7 +242,8 @@ func NewDetailScreen(
 				},
 			)
 		}
-		s.loading = false // publish last — renderer sees consistent state
+		s.fetching.Store(false) // before loading: a reload gated on !loading must find it clear
+		s.loading = false       // publish last — renderer sees consistent state
 		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
 
 		// A paid game the owned cache does not list may have been bought since
@@ -216,7 +252,7 @@ func NewDetailScreen(
 			s.checkOwnership(d)
 		}
 	}()
-	return s
+	return true
 }
 
 // WithOwnership tells the page whether the list already knows the game is
@@ -319,6 +355,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	}()
 
 	s.processAutoScroll()
+	s.reloadIfReconnected()
 
 	// Advance horizontal scroll for the on-device file path (1s pause then 50px/s).
 	if !s.pathScrollAt.IsZero() {
@@ -337,60 +374,10 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
 
-	// ── Header ──────────────────────────────────────────────
-	// Two-line header: main title (large font) + "by author" (small font).
-	_, mainFH := r.TextSize("Ag")
+	headerH := s.drawHeader(r)
 	_, smallFH := r.SmallTextSize("Ag")
-	headerH := mainFH + smallFH + 16 // 8px top + 4px gap + 4px bottom
-	hBG := r.Theme.Surface()
 	ac := r.Theme.Accent
-	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
-	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
-
 	mt := r.Theme.MainText
-	ht := r.Theme.HintText
-
-	// Right-side badges — platform and download status.
-	// Compute badge positions right-to-left so they never overlap with title.
-	badgeRightEdge := r.W - 10
-	badgePillH := smallFH + 4
-
-	if s.game.Platform != "" {
-		platLabel := s.game.Platform
-		pw, _ := r.SmallTextSize(platLabel)
-		platPillW := pw + 12
-		platPillX := badgeRightEdge - platPillW
-		platPillY := (headerH - badgePillH) / 2
-		ppBG := r.Theme.Chip()
-		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, ppBG[0], ppBG[1], ppBG[2])
-		ppTx := r.Theme.ContrastText(r.Theme.Chip())
-		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, ppTx[0], ppTx[1], ppTx[2])
-		badgeRightEdge = platPillX - 6
-	}
-
-	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
-		dlLabel := "● Downloaded"
-		if abbreviate(r.W) {
-			dlLabel = "● DL"
-		}
-		dw, _ := r.SmallTextSize(dlLabel)
-		dlPillW := dw + 12
-		dlPillX := badgeRightEdge - dlPillW
-		dlPillY := (headerH - badgePillH) / 2
-		dlBG := r.Theme.SuccessBG()
-		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
-		dlTx := r.Theme.SuccessPillText()
-		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
-		badgeRightEdge = dlPillX - 6
-	}
-
-	// Title truncated to stay clear of badges.
-	maxTitleW := badgeRightEdge - 16
-	title := truncateToWidth(r, s.game.Title, maxTitleW)
-	blockH := mainFH + 4 + smallFH
-	titleY := (headerH - blockH) / 2
-	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
-	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
 
 	contentTop := headerH + 6
 	footerH := int32(52)
@@ -439,11 +426,11 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		return
 	}
 	if s.err != nil {
-		_, fontH := r.TextSize("Ag")
-		er := r.Theme.Error()
-		r.DrawWrappedText(problemText(s.err), margin, contentTop+20, r.W-2*margin, fontH+4, er[0], er[1], er[2])
-		ftrY := r.DrawFooterBar(footerH)
-		r.DrawFooterHints(backHints(r.W), ftrY)
+		s.drawReduced(r, detailLayout{
+			contentTop: contentTop, contentH: contentH, footerH: footerH,
+			margin: margin, usableW: usableW,
+			qrColW: qrColW, imgBoxW: imgBoxW, imgBoxH: imgBoxH,
+		})
 		return
 	}
 
@@ -554,7 +541,6 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		// Row 2: action button LEFT + status card RIGHT on the same line.
 		rowY := y
 		rowH := fontH + 14
-		aT := r.Theme.AccentText
 
 		// Action labels take the unblended hues: they are calls to action, so
 		// they should stand out from the theme rather than settle into it.
@@ -581,84 +567,8 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 		// Status card occupies the remaining width on the same row.
 		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
-			f := entry.Files[0]
-			pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
-			if len(entry.Files) > 1 {
-				pathText += " (+" + strconv.Itoa(len(entry.Files)-1) + " more)"
-			}
-
-			const cp = int32(8)
-			const dlBp = int32(5)
-
-			dlW, _ := r.SmallTextSize("DL")
-			dlPillW := dlW + dlBp*2
-			dlPillH := smallFH + 4
-
-			delCircleD := smallFH + 4
-			delLabelW, _ := r.SmallTextSize("Delete")
-			delBlockW := delCircleD + 6 + delLabelW
-
 			cardX := actionEndX + 12
-			cardW := r.W - margin - cardX
-			cardH := dlPillH + cp*2
-
-			// Align card vertically with the action button.
-			cardY := rowY + (rowH-cardH)/2
-			if cardY < rowY {
-				cardY = rowY
-			}
-
-			cdBd := r.Theme.Chip()
-			r.DrawRect(cardX, cardY, cardW, cardH, cdBd[0], cdBd[1], cdBd[2])
-			cdBG := r.Theme.ModalScrim()
-			r.DrawRect(cardX+1, cardY+1, cardW-2, cardH-2, cdBG[0], cdBG[1], cdBG[2])
-
-			cdDL := r.Theme.Info()
-			r.DrawPill(cardX+cp, cardY+cp, dlPillW, dlPillH, cdDL[0], cdDL[1], cdDL[2])
-			cdDLTx := r.Theme.ContrastText(r.Theme.Info())
-			r.DrawSmallTextCenteredInRect("DL", cardX+cp, cardY+cp, dlPillW, dlPillH, cdDLTx[0], cdDLTx[1], cdDLTx[2])
-
-			delCircleX := cardX + cardW - cp - delBlockW
-			delCircleCX := delCircleX + delCircleD/2
-			delCircleCY := cardY + cardH/2
-			delC := r.Theme.Error()
-			r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, delC[0], delC[1], delC[2])
-			r.DrawSmallTextCenteredInRect("X", delCircleX, cardY+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
-			delT := r.Theme.Error()
-			r.DrawSmallText("Delete", delCircleX+delCircleD+6, cardY+cp+2, delT[0], delT[1], delT[2])
-
-			textX := cardX + cp + dlPillW + 6
-			textMaxW := delCircleX - textX - 4
-			pathW, _ := r.SmallTextSize(pathText)
-
-			r.SetClipRect(textX, cardY, textMaxW, cardH)
-			if pathW <= textMaxW {
-				s.pathScrollX = 0
-				pth := r.Theme.Muted()
-				r.DrawSmallText(pathText, textX, cardY+cp+2, pth[0], pth[1], pth[2])
-			} else if abbreviate(r.W) {
-				// On small screens truncate the path rather than scrolling.
-				truncated := truncateSmallToWidth(r, pathText, textMaxW)
-				pth := r.Theme.Muted()
-				r.DrawSmallText(truncated, textX, cardY+cp+2, pth[0], pth[1], pth[2])
-			} else {
-				maxScrollX := pathW - textMaxW
-				scrollX := s.pathScrollX
-				if scrollX > maxScrollX {
-					scrollX = maxScrollX
-				}
-				pth := r.Theme.Muted()
-				r.DrawSmallText(pathText, textX-scrollX, cardY+cp+2, pth[0], pth[1], pth[2])
-				if s.pathScrollX >= maxScrollX {
-					totalDur := pathScrollDelay +
-						time.Duration(maxScrollX)*time.Second/time.Duration(pathScrollSpeed) +
-						time.Second
-					if time.Since(s.pathScrollAt) > totalDur {
-						s.pathScrollX = 0
-						s.pathScrollAt = time.Now()
-					}
-				}
-			}
+			s.drawFilesCard(r, entry, cardX, r.W-margin-cardX, rowY, rowH)
 			r.SetClipRect(0, contentTop, r.W, contentH)
 
 			// Unified naming toggle (below the combined row, if applicable)
@@ -734,40 +644,7 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 
 	// Redraw the header bar on top of the clipped content so it is never
 	// obscured by content that scrolled toward the top of the screen.
-	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
-	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
-	if s.game.Platform != "" {
-		platLabel := s.game.Platform
-		pw, _ := r.SmallTextSize(platLabel)
-		platPillW := pw + 12
-		platPillX := r.W - 10 - platPillW
-		platPillY := (headerH - badgePillH) / 2
-		ppBG := r.Theme.Chip()
-		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, ppBG[0], ppBG[1], ppBG[2])
-		ppTx := r.Theme.ContrastText(r.Theme.Chip())
-		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, ppTx[0], ppTx[1], ppTx[2])
-	}
-	if s.detail != nil && s.inv.IsPresent(s.game.URL) {
-		dlLabel := "● Downloaded"
-		if abbreviate(r.W) {
-			dlLabel = "● DL"
-		}
-		dw, _ := r.SmallTextSize(dlLabel)
-		dlPillW := dw + 12
-		redrawBadgeRight := r.W - 10
-		if s.game.Platform != "" {
-			pw, _ := r.SmallTextSize(s.game.Platform)
-			redrawBadgeRight = redrawBadgeRight - (pw + 12) - 6
-		}
-		dlPillX := redrawBadgeRight - dlPillW
-		dlPillY := (headerH - badgePillH) / 2
-		dlBG := r.Theme.SuccessBG()
-		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
-		dlTx := r.Theme.SuccessPillText()
-		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
-	}
-	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
-	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
+	s.drawHeader(r)
 
 	// ── Footer ──────────────────────────────────────────────
 	ftrY := r.DrawFooterBar(footerH)
@@ -782,6 +659,305 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "↕", Text: "Scroll"})
 	}
 	r.DrawFooterHints(hints, ftrY)
+}
+
+// drawHeader draws the two-line header — title (large font) and "by author"
+// (small font) — with the platform and Downloaded badges on the right, and
+// returns its height. Draw calls it twice on a scrollable page: once for
+// layout, and again over the clipped content so nothing scrolls across it.
+func (s *DetailScreen) drawHeader(r *renderer.Renderer) int32 {
+	// Two-line header: main title (large font) + "by author" (small font).
+	_, mainFH := r.TextSize("Ag")
+	_, smallFH := r.SmallTextSize("Ag")
+	headerH := mainFH + smallFH + 16 // 8px top + 4px gap + 4px bottom
+	hBG := r.Theme.Surface()
+	ac := r.Theme.Accent
+	r.DrawRect(0, 0, r.W, headerH, hBG[0], hBG[1], hBG[2])
+	r.DrawRect(0, headerH, r.W, 2, ac[0], ac[1], ac[2])
+
+	mt := r.Theme.MainText
+	ht := r.Theme.HintText
+
+	// Right-side badges — platform and download status.
+	// Compute badge positions right-to-left so they never overlap with title.
+	badgeRightEdge := r.W - 10
+	badgePillH := smallFH + 4
+
+	if s.game.Platform != "" {
+		platLabel := s.game.Platform
+		pw, _ := r.SmallTextSize(platLabel)
+		platPillW := pw + 12
+		platPillX := badgeRightEdge - platPillW
+		platPillY := (headerH - badgePillH) / 2
+		ppBG := r.Theme.Chip()
+		r.DrawPill(platPillX, platPillY, platPillW, badgePillH, ppBG[0], ppBG[1], ppBG[2])
+		ppTx := r.Theme.ContrastText(r.Theme.Chip())
+		r.DrawSmallTextCenteredInRect(platLabel, platPillX, platPillY, platPillW, badgePillH, ppTx[0], ppTx[1], ppTx[2])
+		badgeRightEdge = platPillX - 6
+	}
+
+	if !s.loading && s.inv.IsPresent(s.game.URL) {
+		dlLabel := "● Downloaded"
+		if abbreviate(r.W) {
+			dlLabel = "● DL"
+		}
+		dw, _ := r.SmallTextSize(dlLabel)
+		dlPillW := dw + 12
+		dlPillX := badgeRightEdge - dlPillW
+		dlPillY := (headerH - badgePillH) / 2
+		dlBG := r.Theme.SuccessBG()
+		r.DrawPill(dlPillX, dlPillY, dlPillW, badgePillH, dlBG[0], dlBG[1], dlBG[2])
+		dlTx := r.Theme.SuccessPillText()
+		r.DrawSmallTextCenteredInRect(dlLabel, dlPillX, dlPillY, dlPillW, badgePillH, dlTx[0], dlTx[1], dlTx[2])
+		badgeRightEdge = dlPillX - 6
+	}
+
+	// Title truncated to stay clear of badges.
+	maxTitleW := badgeRightEdge - 16
+	title := truncateToWidth(r, s.game.Title, maxTitleW)
+	blockH := mainFH + 4 + smallFH
+	titleY := (headerH - blockH) / 2
+	r.DrawText(title, 12, titleY, mt[0], mt[1], mt[2])
+	r.DrawSmallText("by "+s.game.Author, 12, titleY+mainFH+4, ht[0], ht[1], ht[2])
+	return headerH
+}
+
+// drawFilesCard draws the downloaded-files status card — the DL pill, the
+// on-device path (scrolling, or truncated on small screens, when it does not
+// fit) and the X Delete hint — at cardX..cardX+cardW, centred on the row at
+// rowY of height rowH. It clips while drawing the path and leaves the clip
+// cleared; the caller restores its own. entry must have at least one file.
+// Both the full page and the reduced page draw the card through here.
+func (s *DetailScreen) drawFilesCard(r *renderer.Renderer, entry inventory.Entry, cardX, cardW, rowY, rowH int32) {
+	_, smallFH := r.SmallTextSize("Ag")
+	aT := r.Theme.AccentText
+	f := entry.Files[0]
+	pathText := f.Filename + " → " + filepath.Dir(f.DestPath) + "/"
+	if len(entry.Files) > 1 {
+		pathText += " (+" + strconv.Itoa(len(entry.Files)-1) + " more)"
+	}
+
+	const cp = int32(8)
+	const dlBp = int32(5)
+
+	dlW, _ := r.SmallTextSize("DL")
+	dlPillW := dlW + dlBp*2
+	dlPillH := smallFH + 4
+
+	delCircleD := smallFH + 4
+	delLabelW, _ := r.SmallTextSize("Delete")
+	delBlockW := delCircleD + 6 + delLabelW
+
+	cardH := dlPillH + cp*2
+
+	// Align card vertically with the action button.
+	cardY := rowY + (rowH-cardH)/2
+	if cardY < rowY {
+		cardY = rowY
+	}
+
+	cdBd := r.Theme.Chip()
+	r.DrawRect(cardX, cardY, cardW, cardH, cdBd[0], cdBd[1], cdBd[2])
+	cdBG := r.Theme.ModalScrim()
+	r.DrawRect(cardX+1, cardY+1, cardW-2, cardH-2, cdBG[0], cdBG[1], cdBG[2])
+
+	cdDL := r.Theme.Info()
+	r.DrawPill(cardX+cp, cardY+cp, dlPillW, dlPillH, cdDL[0], cdDL[1], cdDL[2])
+	cdDLTx := r.Theme.ContrastText(r.Theme.Info())
+	r.DrawSmallTextCenteredInRect("DL", cardX+cp, cardY+cp, dlPillW, dlPillH, cdDLTx[0], cdDLTx[1], cdDLTx[2])
+
+	delCircleX := cardX + cardW - cp - delBlockW
+	delCircleCX := delCircleX + delCircleD/2
+	delCircleCY := cardY + cardH/2
+	delC := r.Theme.Error()
+	r.DrawCircleBadge(delCircleCX, delCircleCY, delCircleD, delC[0], delC[1], delC[2])
+	r.DrawSmallTextCenteredInRect("X", delCircleX, cardY+cp, delCircleD, delCircleD, aT[0], aT[1], aT[2])
+	delT := r.Theme.Error()
+	r.DrawSmallText("Delete", delCircleX+delCircleD+6, cardY+cp+2, delT[0], delT[1], delT[2])
+
+	textX := cardX + cp + dlPillW + 6
+	textMaxW := delCircleX - textX - 4
+	pathW, _ := r.SmallTextSize(pathText)
+
+	r.SetClipRect(textX, cardY, textMaxW, cardH)
+	if pathW <= textMaxW {
+		s.pathScrollX = 0
+		pth := r.Theme.Muted()
+		r.DrawSmallText(pathText, textX, cardY+cp+2, pth[0], pth[1], pth[2])
+	} else if abbreviate(r.W) {
+		// On small screens truncate the path rather than scrolling.
+		truncated := truncateSmallToWidth(r, pathText, textMaxW)
+		pth := r.Theme.Muted()
+		r.DrawSmallText(truncated, textX, cardY+cp+2, pth[0], pth[1], pth[2])
+	} else {
+		maxScrollX := pathW - textMaxW
+		scrollX := s.pathScrollX
+		if scrollX > maxScrollX {
+			scrollX = maxScrollX
+		}
+		pth := r.Theme.Muted()
+		r.DrawSmallText(pathText, textX-scrollX, cardY+cp+2, pth[0], pth[1], pth[2])
+		if s.pathScrollX >= maxScrollX {
+			totalDur := pathScrollDelay +
+				time.Duration(maxScrollX)*time.Second/time.Duration(pathScrollSpeed) +
+				time.Second
+			if time.Since(s.pathScrollAt) > totalDur {
+				s.pathScrollX = 0
+				s.pathScrollAt = time.Now()
+			}
+		}
+	}
+	r.ClearClipRect()
+}
+
+// detailLayout is the page geometry Draw computes once and the reduced page
+// shares, so its image box and QR column sit exactly where the full page's do.
+type detailLayout struct {
+	contentTop, contentH, footerH int32
+	margin, usableW               int32
+	qrColW, imgBoxW, imgBoxH      int32
+}
+
+// reloadIfReconnected reloads the full page once the connection is back after
+// an offline-class failure. It runs at the top of Draw, on the UI goroutine:
+// netstate pushes an SDL event on every transition, so Draw runs when the
+// connection returns, and a DetailScreen needs no netstate registration of its
+// own (OnReconnect callbacks are permanent; this screen is short-lived). If
+// the page is not visible when the connection returns — Settings is open on
+// top of it — the reload happens when it is drawn again.
+func (s *DetailScreen) reloadIfReconnected() {
+	if s.err == nil || s.loading {
+		return
+	}
+	offline := netstate.Offline()
+	if offline {
+		s.sawOffline = true
+	}
+	if !shouldReloadDetail(reloadInput{
+		FailedOffline: s.failedOffline,
+		SawOffline:    s.sawOffline,
+		OfflineNow:    offline,
+		Loading:       s.loading,
+	}) {
+		return
+	}
+	logger.Info("detail: connection back, reloading the game page %s", s.game.URL)
+	s.fetchDetail()
+}
+
+// drawReduced draws the reduced game page, shown when the full page could not
+// be fetched: the header, the cover if the image cache already holds it (it
+// never starts a fetch), the QR code, why the rest is missing, the A action
+// when it can work without the page, the downloaded-files card, and the
+// list's tags.
+func (s *DetailScreen) drawReduced(r *renderer.Renderer, l detailLayout) {
+	offline := netstate.Offline()
+	if !s.reducedLogged {
+		s.reducedLogged = true
+		logger.Info("detail: showing the reduced page for %s (reason=%s, offline=%v)",
+			s.game.URL, reducedReason(s.err), offline)
+	}
+
+	bg := r.Theme.Background
+	ac := r.Theme.Accent
+	_, fontH := r.TextSize("Ag")
+
+	r.SetClipRect(0, l.contentTop, r.W, l.contentH)
+	y := l.contentTop - s.scrollY
+
+	// ── Image box + QR ─────────────────────────────────────
+	// Same column geometry as the full page, but only as tall as the QR block
+	// needs (the full page's no-screenshot height): there is at most one
+	// image here and usually none, and at the full page's two thirds of the
+	// content area the files card fell below the fold at 640x480.
+	_, smallFH := r.SmallTextSize("Ag")
+	const qrVMargin = int32(8) // must match vMargin inside drawQR
+	boxH := min(l.imgBoxH, (l.qrColW-20)+int32(4)+smallFH+int32(2)+smallFH+qrVMargin*2)
+	r.DrawRect(l.margin, y, l.imgBoxW, boxH, bg[0], bg[1], bg[2])
+	var tex *sdl.Texture
+	if s.game.CoverURL != "" {
+		tex = s.cache.Peek(r, s.game.CoverURL)
+	}
+	if tex != nil {
+		drawFitted(r, tex, l.margin, y, l.imgBoxW, boxH)
+	} else {
+		mu := r.Theme.Muted()
+		r.DrawTextCenteredInRect(reducedCoverLabel(), l.margin, y, l.imgBoxW, boxH, mu[0], mu[1], mu[2])
+	}
+	s.drawQR(r, l.margin+l.imgBoxW+10, y, l.qrColW, boxH)
+	y += boxH + 6
+
+	// ── Why the page is reduced ────────────────────────────
+	// The full page puts the description last, but here the message is the
+	// point of the page: last, it fell below the fold at 640x480 and 720x480
+	// whenever the files card was showing. It goes where the full page's
+	// "Image N/M" caption sits instead, visible at every shipping geometry.
+	er := r.Theme.Error()
+	y += r.DrawWrappedText(problemText(s.err), l.margin, y, l.usableW, fontH+4, er[0], er[1], er[2]) + 6
+
+	// ── Action row + files card ────────────────────────────
+	act := s.action()
+	offered := reducedActionOffered(act, s.game.IsFree, offline)
+	entry, installed := s.inv.Lookup(s.game.URL)
+	hasFiles := installed && len(entry.Files) > 0
+	if offered || hasFiles {
+		rowH := fontH + 14
+		cardX := l.margin
+		if offered {
+			d := fontH + 4
+			r.DrawCircleBadge(l.margin+d/2, y+d/2, d, ac[0], ac[1], ac[2])
+			bt := r.Theme.ContrastText(ac)
+			r.DrawSmallTextCenteredInRect("A", l.margin, y, d, d, bt[0], bt[1], bt[2])
+			textX := l.margin + d + 8
+			lc := s.actionColor(r, act)
+			r.DrawText(act.Label(), textX, y, lc[0], lc[1], lc[2])
+			lw, _ := r.TextSize(act.Label())
+			cardX = textX + lw + 12
+		}
+		if hasFiles {
+			s.drawFilesCard(r, entry, cardX, r.W-l.margin-cardX, y, rowH)
+			r.SetClipRect(0, l.contentTop, r.W, l.contentH)
+		}
+		y += rowH + 4
+	}
+
+	// ── Tags (the list's, not the page's) ──────────────────
+	if len(s.game.Tags) > 0 {
+		sep := r.Theme.Separator()
+		r.DrawRect(l.margin, y, l.usableW, 1, sep[0], sep[1], sep[2])
+		y += 11
+		bgPill := r.Theme.Chip()
+		tx := r.Theme.ContrastText(bgPill)
+		y += r.DrawTagPills(s.game.Tags, l.margin, y, l.usableW, fontH+6,
+			tx[0], tx[1], tx[2], bgPill[0], bgPill[1], bgPill[2]) + 10
+	}
+
+	s.contentHeight = y - (l.contentTop - s.scrollY)
+	r.ClearClipRect()
+	s.drawHeader(r)
+
+	ftrY := r.DrawFooterBar(l.footerH)
+	hints := backHints(r.W)
+	if s.contentHeight > l.contentH {
+		hints = append(hints, renderer.FooterHint{Kind: renderer.BadgePill, Label: "↕", Text: "Scroll"})
+	}
+	r.DrawFooterHints(hints, ftrY)
+}
+
+// drawFitted draws tex scaled to fit inside the box, centred, keeping its
+// aspect ratio.
+func drawFitted(r *renderer.Renderer, tex *sdl.Texture, x, y, w, h int32) {
+	_, _, tw, th, _ := tex.Query()
+	if tw <= 0 || th <= 0 {
+		return
+	}
+	scale := float32(w) / float32(tw)
+	if sh := float32(h) / float32(th); sh < scale {
+		scale = sh
+	}
+	dw := int32(float32(tw) * scale)
+	dh := int32(float32(th) * scale)
+	r.DrawTextureAt(tex, x+(w-dw)/2, y+(h-dh)/2, dw, dh)
 }
 
 // drawModal renders a centered popup overlay with a title, body, and dismiss hint.
@@ -874,6 +1050,16 @@ func (s *DetailScreen) drawAdvisoryOverlay(r *renderer.Renderer) {
 	footerH := int32(52)
 	ftrY := r.DrawFooterBar(footerH)
 	r.DrawFooterHints(backHints(r.W), ftrY)
+}
+
+// reducedCoverLabel is what the reduced page's image box says when the cover
+// is not in the image cache. The reduced page never starts a fetch, so online
+// nothing is coming ("No Image"); offline it says so, in the covers' wording.
+func reducedCoverLabel() string {
+	if netstate.Offline() {
+		return coverPlaceholderLabel()
+	}
+	return "No Image"
 }
 
 // drawQR renders the QR code centered within the given box.
@@ -1146,6 +1332,12 @@ func (s *DetailScreen) startDownload() Screen {
 		s.ShowModal("Browser-only game",
 			"This game has no downloadable files and can only be played in a web browser. "+
 				"Press any button to dismiss, then scan the QR code to open the game page.")
+		return s
+	}
+	// The reduced page (the full page failed to load) has no GameDetail; A
+	// acts only where reducedActionOffered says the action works without it.
+	if s.detail == nil && !reducedActionOffered(s.action(), s.game.IsFree, netstate.Offline()) {
+		logger.Debug("detail: A does nothing on the reduced page (action=%q, offline=%v)", s.action().Label(), netstate.Offline())
 		return s
 	}
 	switch s.action().onA() {

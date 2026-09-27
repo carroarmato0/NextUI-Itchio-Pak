@@ -44,11 +44,20 @@ func init() {
 			s.err = offlineErr()
 			return s
 		}},
-		Scene{Name: "detail-offline", Desc: "Game page that could not load", Build: func(d SceneDeps) Screen {
+		// F4: the reduced game page. The fetch failed, so there is no
+		// GameDetail: title, author and tags come from the list's game.
+		Scene{Name: "detail-offline", Desc: "Game page that could not load, offline (reduced page)", Build: func(d SceneDeps) Screen {
 			offline(netstate.ReasonDNS)
-			s := devDetail(d)
-			s.err = offlineErr()
-			return s
+			return devReducedDetail(d, offlineErr())
+		}},
+		Scene{Name: "detail-offline-downloaded", Desc: "Reduced game page, offline, game downloaded (files card + Delete)", Build: func(d SceneDeps) Screen {
+			offline(netstate.ReasonDNS)
+			devInstallPaid(d, d.Games[0], false)
+			return devReducedDetail(d, offlineErr())
+		}},
+		Scene{Name: "detail-unavailable", Desc: "Reduced game page, online, itch.io answered 503 (free game keeps Download)", Build: func(d SceneDeps) Screen {
+			netstate.SetForTest(netstate.State{Status: netstate.StatusOnline})
+			return devReducedDetail(d, &netstate.StatusError{What: "fetch game detail", Code: 503})
 		}},
 		// F1: the Update Inventory row's right-aligned annotation is Warning
 		// (running/offline) or Muted (idle) regardless of selection, and the
@@ -72,4 +81,15 @@ func init() {
 			return s
 		}},
 	)
+}
+
+// devReducedDetail is the game page after its fetch failed with err: no
+// GameDetail, so the reduced page renders.
+func devReducedDetail(d SceneDeps, err error) *DetailScreen {
+	s := devDetail(d)
+	s.detail = nil
+	s.screenshotLabels = nil
+	s.err = err
+	s.failedOffline = netstate.Classify(err).Offline()
+	return s
 }
