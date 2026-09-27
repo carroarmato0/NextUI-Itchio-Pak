@@ -825,6 +825,10 @@ type detailLayout struct {
 // own (OnReconnect callbacks are permanent; this screen is short-lived). If
 // the page is not visible when the connection returns — Settings is open on
 // top of it — the reload happens when it is drawn again.
+//
+// Only what Draw observes counts: if the Wi-Fi drops and returns between two
+// Draws, sawOffline is never set and the page does not reload by itself. That
+// is acceptable — Back and re-entering the page fetches it again.
 func (s *DetailScreen) reloadIfReconnected() {
 	if s.err == nil || s.loading {
 		return
@@ -841,8 +845,9 @@ func (s *DetailScreen) reloadIfReconnected() {
 	}) {
 		return
 	}
-	logger.Info("detail: connection back, reloading the game page %s", s.game.URL)
-	s.fetchDetail()
+	if s.fetchDetail() {
+		logger.Info("detail: connection back, reloading the game page %s", s.game.URL)
+	}
 }
 
 // drawReduced draws the reduced game page, shown when the full page could not
@@ -1267,7 +1272,9 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 		case sdl.K_x:
 			return s.triggerDelete()
 		case sdl.K_y:
-			if s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
+			// Not on the reduced page (detail == nil): no Y row is drawn there,
+			// and the toggle renames files.
+			if s.detail != nil && s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
 				return s.startUnifiedNamingToggle()
 			}
 		case sdl.K_s:
@@ -1309,8 +1316,8 @@ func (s *DetailScreen) HandleEvent(e sdl.Event) Screen {
 			if !s.advisoryTriggered {
 				return s.startDownload()
 			}
-		case btnY: // physical Y = unified naming toggle
-			if s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
+		case btnY: // physical Y = unified naming toggle; not on the reduced page
+			if s.detail != nil && s.inv.IsPresent(s.game.URL) && s.cfg.UnifiedNaming {
 				return s.startUnifiedNamingToggle()
 			}
 		case btnX: // physical X = delete
