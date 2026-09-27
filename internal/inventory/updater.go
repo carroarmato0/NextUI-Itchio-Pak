@@ -111,11 +111,35 @@ func (s *UpdateService) LatestCheckedAt() time.Time {
 	return s.inv.LatestCheckedAt()
 }
 
+// offlineNow and reportNetwork are netstate's, replaceable so tests can
+// observe owed at the exact moment the updater reads or reports the state.
+var (
+	offlineNow    = netstate.Offline
+	reportNetwork = netstate.Report
+)
+
+// postponeIfOffline reports whether the check must stop because the network
+// is down, leaving it owed for the reconnect handler.
+//
+// The order matters. RetryIfOwed runs on the netstate goroutine the moment
+// the state flips back online. Reading "offline" first and marking owed
+// second leaves a window in which that reconnect finds nothing owed, and the
+// postponed check is lost. Marking owed first means any reconnect after the
+// read sees it. If the read says online the check goes ahead, so it is no
+// longer owed; a reconnect that raced in between merely queues one extra run.
+func (s *UpdateService) postponeIfOffline() bool {
+	s.owed.Store(true)
+	if offlineNow() {
+		return true
+	}
+	s.owed.Store(false)
+	return false
+}
+
 func (s *UpdateService) runCheck() {
 	s.inv.VerifyAndClean(s.inventoryPath)
 
-	if netstate.Offline() {
-		s.owed.Store(true)
+	if s.postponeIfOffline() {
 		logger.Info("update-svc: offline, check postponed until the connection is back")
 		return
 	}
@@ -138,11 +162,14 @@ func (s *UpdateService) runCheck() {
 	for _, gameURL := range urls {
 		d, err := s.client.FetchGameData(gameURL)
 		if netstate.Classify(err).Offline() {
+			// owed before Report: the report may be the offline transition,
+			// and the reconnect that follows must find the check owed (see
+			// postponeIfOffline).
 			s.owed.Store(true)
 			// A failure reading the body happens after the transport saw a
 			// response and reported online; without this the tracker stays
 			// online and no reconnect ever runs the owed check.
-			netstate.Report(err)
+			reportNetwork(err)
 			logger.Warn("update-svc: network down (%s), abandoning this check", netstate.Detail(err))
 			return
 		}
@@ -183,8 +210,7 @@ func (s *UpdateService) runCheck() {
 	}
 	pending := make(map[string]result)
 	for gameURL, d := range games {
-		if netstate.Offline() {
-			s.owed.Store(true)
+		if s.postponeIfOffline() {
 			logger.Warn("update-svc: network went down mid-check, abandoning it")
 			return
 		}
