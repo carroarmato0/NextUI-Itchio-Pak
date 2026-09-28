@@ -26,6 +26,18 @@ from it are now real code, listed under "Building blocks" below.
 - Research re-checked against rc2's live release: its assets carry digests,
   and `main`'s `pak.json` still says `v1.0.25`.
 
+**Changes in the 2026-09-28 review:**
+
+- The notice moves to the **top-right** corner, inset from the top and right
+  edges by a margin (§3).
+- New §2a "Switching channels": what happens when you switch Stable → RC and
+  RC → Stable, including the case where the Pak Store offers a downgrade. It
+  changes §1 (one releases request fills both channels, `per_page=30`, the
+  default channel is pinned once you run an rc), §2 (seeing a version on the
+  Updates screen counts as being told), §4 (status wording when you are ahead
+  of the channel) and §5 (clean-up removes every other Itch-io `.muxapp`, not
+  only older ones).
+
 ## Goal
 
 Tell users when a newer Itch-io exists, without nagging them and without going
@@ -141,17 +153,31 @@ resolves to `rc` when the running build is a release candidate, `stable`
 otherwise — so an rc tester keeps hearing about the next rc without touching
 Settings, and a stable user never sees one.
 
+The first time an empty channel resolves to `rc`, `"rc"` is written to
+`config.json`. Without that, a tester who installs the final release
+(`v1.1.0-rc4` → `v1.1.0`) would drop silently to Stable and never hear
+about `v1.1.1-rc1`. `"stable"` is never written automatically: a stable user
+who side-loads an rc has shown they want rcs, and gets them the same way.
+
 - Stable considers releases with `prerelease=false`.
 - RC considers every non-draft release, and takes the highest version, so an
   RC tester is also told about the final release.
 - Off makes no request.
 
-**Sources (`source.go`).** One request per launch, at most:
+**Sources (`source.go`).** One request per launch, at most (the single exception is in §2a):
 
 | Install | Channel | Request |
 |---|---|---|
 | NextUI, Pak Store manages it | Stable | `pak.json` on `main` (the Store's own source) |
 | everything else | Stable or RC | GitHub releases list |
+
+One releases response lists both prereleases and stable releases, so every
+releases check fills **both** `latest.stable` and `latest.rc`, whatever the
+channel. Switching channels then costs no request, except switching to
+Stable on a Store-managed install, whose source is `pak.json`. The list is
+fetched with `per_page=30`, so a run of release candidates cannot push the
+newest stable off the page. If the page still contains no stable release,
+the cached `latest.stable` is kept rather than cleared.
 
 Both use the bundled CA file with normal verification, a 10 s timeout, the
 short User-Agent (`itchio.BuildUserAgent(info, false)`), and a transport
@@ -236,7 +262,61 @@ Keeping one value per channel is what makes switching work. Examples:
 
 Changing the channel in Settings uses the cached `latest` for that channel if
 present and triggers a check otherwise. It never shows the notice while the
-user is on the Updates screen (the screen already says it).
+user is on the Updates screen (the screen already says it). When the Updates
+screen shows an `Available` verdict, that counts as being told:
+`notified[channel]` is recorded then, so the next launch does not announce
+a version the user has already seen there.
+
+### 2a. Switching channels
+
+Both directions were worked through against the Store's behaviour and the
+real version ordering. **The app never offers a downgrade**, on either
+channel and through any route (notice, Updates screen, ARCHIVE, and rc4's
+in-place install). Going back is not safe: 1.1 replaces the API key with
+OAuth and moves settings forward, and 1.0.x does not know how to read them,
+so a downgrade would lose sign-in at the very least.
+
+**Stable → RC.**
+
+- Takes effect straight away from the cached `latest.rc` (§1); no request.
+- The newest rc is announced if it is newer than the running version and
+  than `notified.rc`.
+- On NextUI the verdict is always `ViaReleasePage`: the Store never offers an
+  rc. On muOS it is `ViaArchive`.
+- The Store row does not change when an rc is installed by hand. That is the
+  source of the hazard below.
+
+**RC → Stable.**
+
+- If the running rc is newer than the latest stable (`v1.1.0-rc3` against
+  `v1.0.25`), the verdict is `UpToDate`, and nothing is offered. The status
+  line says so plainly instead of "You have the latest version":
+  `You are on v1.1.0-rc3, a release candidate newer than the latest stable
+  release (v1.0.25). You will be told when a newer stable release is out.`
+- The final release of the same line is newer than all its rcs
+  (`v1.1.0 > v1.1.0-rc4`), so it is announced when it ships. From then on the
+  user is back on the stable line.
+- `notified.stable` is separate from `notified.rc`, so the switch does not
+  bring back an old stable announcement.
+
+**The Pak Store downgrade trap (NextUI, Store-managed, running an rc).** This
+happens whatever channel is selected. The Store compares its stale row with
+`pak.json` on `main`, not with what is on disk. On the Brick the row says
+`v1.0.23` and the disk holds an rc. The Store therefore offers "v1.0.25" as
+an update, and installing it would downgrade the app. The Store database is
+never written, so the app cannot stop this. It can warn:
+
+- Condition: Store-managed, and `StoreCompare(row, pakjson) == -1`, and
+  `pakjson < running` by the real ordering.
+- Status on the Updates screen: `The Pak Store may offer v1.0.25 as an
+  update. It is older than this release candidate; installing it would
+  replace it.`
+- This is shown on the Updates screen only, never as a notice. It needs
+  `pak.json`, so while running an rc on a Store-managed install, the check
+  also fetches `pak.json`. That is the one case with two requests per launch.
+
+**Off.** No request is made and the cached results are left alone. Switching
+back from Off uses them straight away and checks if they are missing.
 
 ### 3. The notice (UI)
 
@@ -249,9 +329,19 @@ user is on the Updates screen (the screen already says it).
   the image cache already uses to wake the loop. While the toast animates, the
   main loop treats it like `NeedsRedraw()` (16 ms timeout, redraw every
   frame); afterwards the loop is idle again.
-- **Motion.** Slides down from above the top-left corner over 250 ms (ease
-  out), holds 4 s, slides back up over 250 ms. No input is consumed; buttons
-  keep working on the screen underneath.
+- **Position.** Top-right, right-aligned. It sits in from the right edge and
+  down from the top edge by the same margin: `toastMargin(w, h)`, 12 px, or
+  6 px when `compact(w, h)`. It never touches the screen edge.
+- **Motion.** Slides down from above the top edge to its resting place over
+  250 ms (ease out), holds 4 s, and slides back up over 250 ms. No input is
+  consumed; buttons keep working on the screen underneath.
+- **Overlap.** On the game list, the top-right corner holds the sort,
+  platform and Offline pills (`screen_list.go`). The notice covers them while
+  it is showing. That is acceptable for 4.5 s, but the notice must not read as
+  another header pill. It uses the Accent fill (the header pills use TitlePill
+  and Chip), with a 1 px `ModalBorder()` outline so it separates from them
+  on every palette. The `update-toast` devshot scene is rendered over the
+  list screen so `palette-audit.sh` checks it against those pills.
 - **Text by width** (`abbreviate(w)`):
   - wide: `Itch-io v1.1.0 available`, with a second smaller line —
     `Settings → Updates`, or `Update it in the Pak Store` for `ViaPakStore`;
@@ -286,6 +376,9 @@ Below the rows, a status block:
 - `v1.1.0 is available.` with the release-page QR code and
   `Scan for the release notes`
 - after a save: `Saved to ARCHIVE. Open Applications → Archive Manager to install.`
+- ahead of the channel (RC → Stable, §2a): `You are on v1.1.0-rc3, a release
+  candidate newer than the latest stable release (v1.0.25). …`
+- the Store downgrade warning (§2a), under whichever of the above applies
 
 The QR code is laid out like the About screen's (size clamped, placed beside
 the text on wide screens and below it where `abbreviate(w)`), and it points at
@@ -314,9 +407,12 @@ Settings does.
 - Check the zip before accepting it: every entry under `Itch-io/`, and the
   `SAFE_ARCHIVE` rules (no absolute paths, `..`, `\`, links; entry count and
   size limits), so Archive Manager will not reject it.
-- Rename to the final name. Then remove older `Itch-io.muOS.v*.muxapp` files
-  from the same `ARCHIVE/` so the user cannot install the wrong one. Only files
-  matching our release naming are touched.
+- Rename to the final name. Then remove every **other**
+  `Itch-io.muOS.v*.muxapp` from the same `ARCHIVE/`, so it holds exactly the
+  one the user just saved. Removing only the older ones is not enough once
+  channels switch: save `v1.2.0-rc1` on RC, switch to Stable, save `v1.1.1`,
+  and the rc is the newer file, yet not the one the user chose. Only files
+  matching our release naming are touched, and each removal is logged.
 - The rest is Archive Manager's job. The app does not exit or relaunch.
 
 ### 6. Wiring
@@ -364,14 +460,22 @@ Settings does.
   from running version; decision table covering every row of the `Via` rules,
   including the Store-row trap and the side-loaded-rc case; notification rule
   across channel switches; state load/save with a corrupt file.
+- Channel switching (§2a), as a table test: Stable → RC uses the cached
+  `latest.rc` with no request; RC → Stable while ahead gives `UpToDate` with
+  the ahead-of-channel status; the final release is announced after RC →
+  Stable; no verdict is ever lower than the running version; an empty channel
+  pins `"rc"` when running an rc and never pins `"stable"`; the Store
+  downgrade warning fires exactly when its three conditions hold; one releases
+  response fills both channels; a page with no stable release keeps the
+  cached one; seeing a version on the Updates screen suppresses its notice.
 - Sources against `httptest.NewServer` with fixtures in `testdata/appupdate/`
   (releases list with drafts, prereleases, a missing asset, a missing digest;
   `pak.json`; 304 with ETag; 403 with rate-limit headers).
 - `pakstore` against committed `sqlite3`-built fixtures, including a
   multi-page table and the cases that must return `Unknown`.
 - ARCHIVE download: digest mismatch leaves nothing, cancel leaves nothing,
-  older release files are removed and other files are not, unsafe zip
-  rejected.
+  every other Itch-io release file is removed (including a newer one) and
+  unrelated files are not, unsafe zip rejected.
 - Updates screen: wrap on a single press and no wrap on repeat, like the
   existing `TestMoveCursor_pressWrapsAtEnds` and
   `TestMoveCursor_repeatStopsAtEnds` for Settings.
@@ -379,7 +483,9 @@ Settings does.
   `RetryAfterReconnect`, and not at all when nothing is owed.
 - ARCHIVE: a crash leftover (`.Itch-io.muOS.<tag>.muxapp.itchio-part`) is
   removed by `partfile.Sweep` when `ArchiveDir()` is passed in.
-- `devshot` scenes: `update-toast` (wide and narrow), `updates` in each status,
+- `devshot` scenes: `update-toast` (wide and narrow, top-right over the list
+  header pills), `updates` in each status (including ahead-of-channel and the
+  Store downgrade warning),
   `settings-updates-selected` (the annotation on the Accent pill), and muOS
   save in progress and done. Included in `scripts/palette-audit.sh` at all
   four geometries.
@@ -413,7 +519,8 @@ Stage → verify → swap at next launch → confirm → roll back:
 Applies where the decision is `ViaReleasePage` on NextUI and as an
 "Install now" alternative to Save to ARCHIVE on muOS. Never on a
 Store-managed NextUI install whose update the Store will offer, and the
-Store database is never written. Residual risk: power loss in the
+Store database is never written. Like everything else here, it never
+installs a version lower than the running one (§2a). Residual risk: power loss in the
 milliseconds between the two renames leaves no app folder (the Pak Store's
 own install leaves none for seconds). To verify first: whether NextUI hides
 dot-prefixed folders in `Tools/<platform>/`.
