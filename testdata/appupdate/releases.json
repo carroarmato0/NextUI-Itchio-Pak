@@ -1,0 +1,17 @@
+[
+  {"tag_name": "v1.2.0", "html_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak/releases/tag/v1.2.0", "draft": true, "prerelease": false,
+   "assets": [{"name": "Itch-io.muOS.v1.2.0.muxapp", "browser_download_url": "https://example.invalid/v1.2.0.muxapp", "size": 1, "digest": "sha256:aa"}]},
+  {"tag_name": "nightly", "html_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak/releases/tag/nightly", "draft": false, "prerelease": true, "assets": []},
+  {"tag_name": "v1.1.0-rc3", "html_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak/releases/tag/v1.1.0-rc3", "draft": false, "prerelease": true,
+   "assets": [
+     {"name": "Itch-io.pak.v1.1.0-rc3.zip", "browser_download_url": "https://example.invalid/pak.zip", "size": 13000000, "digest": "sha256:bb"},
+     {"name": "Itch-io.muOS.v1.1.0-rc3.muxapp", "browser_download_url": "https://example.invalid/v1.1.0-rc3.muxapp", "size": 12819887, "digest": "sha256:cc"}]},
+  {"tag_name": "v1.1.0-rc2", "html_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak/releases/tag/v1.1.0-rc2", "draft": false, "prerelease": true,
+   "assets": [{"name": "Itch-io.muOS.v1.1.0-rc2.muxapp", "browser_download_url": "https://example.invalid/v1.1.0-rc2.muxapp", "size": 12819887, "digest": "sha256:dd"}]},
+  {"tag_name": "v1.0.25", "html_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak/releases/tag/v1.0.25", "draft": false, "prerelease": false,
+   "assets": [
+     {"name": "Itch-io.pak.zip", "browser_download_url": "https://example.invalid/Itch-io.pak.zip", "size": 12678524, "digest": "sha256:ee"},
+     {"name": "Itch-io.muOS.v1.0.25.muxapp", "browser_download_url": "https://example.invalid/v1.0.25.muxapp", "size": 12678524, "digest": "sha256:ff"}]},
+  {"tag_name": "v1.0.24", "html_url": "https://github.com/carroarmato0/NextUI-Itchio-Pak/releases/tag/v1.0.24", "draft": false, "prerelease": false,
+   "assets": [{"name": "Itch-io.muOS.v1.0.24.muxapp", "browser_download_url": "https://example.invalid/v1.0.24.muxapp", "size": 12000000}]}
+]
