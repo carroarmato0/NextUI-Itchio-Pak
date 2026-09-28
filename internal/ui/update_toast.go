@@ -1,0 +1,147 @@
+//go:build !headless
+
+package ui
+
+import (
+	"time"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
+)
+
+const (
+	noticeSlide = 250 * time.Millisecond
+	noticeHold  = 4 * time.Second
+	noticeTotal = 2*noticeSlide + noticeHold
+)
+
+// UpdateNotice is the "new version" notice, drawn top-right over whatever
+// screen is current (spec §3). main_sdl.go owns one and calls Tick every loop
+// iteration. It consumes no input.
+type UpdateNotice struct {
+	verdict appupdate.Verdict
+	start   time.Time
+	active  bool
+}
+
+// Animating reports whether the loop must redraw every 16 ms.
+func (n *UpdateNotice) Animating() bool { return n.active }
+
+// Tick starts the notice when one is due and the current screen allows it,
+// and retires it when the animation ends. true means redraw now.
+func (n *UpdateNotice) Tick(r *renderer.Renderer, current Screen, now time.Time) bool {
+	up := appUpdater()
+	if n.active {
+		if now.Sub(n.start) < noticeTotal {
+			return true
+		}
+		n.active = false
+		r.Overlay = nil
+		// Recorded once the notice has been seen in full, so a crash or quick
+		// exit does not swallow it (spec §2).
+		if up != nil {
+			up.MarkNotified(n.verdict.Channel, n.verdict.Latest.Tag)
+		}
+		logger.Debug("update notice: finished for %s", n.verdict.Latest.Tag)
+		return true // one more frame, without it
+	}
+	if up == nil || !noticeAllowed(current) {
+		return false
+	}
+	v, ok := up.PendingNotice()
+	if !ok {
+		return false
+	}
+	n.verdict, n.start, n.active = v, now, true
+	r.Overlay = func(r *renderer.Renderer) {
+		drawNotice(r, n.verdict, noticeShown(time.Since(n.start)))
+	}
+	logger.Info("update notice: showing %s (channel=%s via=%s)", v.Latest.Tag, v.Channel, v.Via)
+	return true
+}
+
+// noticeAllowed keeps the notice off startup and sign-in, and off the Updates
+// screen, which already says it (spec §2, §3).
+func noticeAllowed(s Screen) bool {
+	switch sc := s.(type) {
+	case *SignInScreen, *AccountPromptScreen, *UpdatesScreen, *CacheRefreshScreen, *MigrateFlowScreen:
+		return false
+	case *ListScreen:
+		return !sc.loading.Load()
+	}
+	return true
+}
+
+// noticeText is the notice's wording; narrow (abbreviate) fits one line.
+func noticeText(v appupdate.Verdict, narrow bool) (title, sub string) {
+	if narrow {
+		return "Update available", ""
+	}
+	title = "Itch-io " + v.Latest.Tag + " available"
+	if v.Via == appupdate.ViaPakStore {
+		return title, "Update it in the Pak Store"
+	}
+	return title, "Settings → Updates"
+}
+
+// noticeShown is how far the notice has slid in: 0 above the screen, 1 at
+// rest. Ease-out on the way in, ease-in on the way out.
+func noticeShown(elapsed time.Duration) float64 {
+	switch {
+	case elapsed <= 0 || elapsed >= noticeTotal:
+		return 0
+	case elapsed < noticeSlide:
+		p := float64(elapsed) / float64(noticeSlide)
+		return 1 - (1-p)*(1-p)
+	case elapsed <= noticeSlide+noticeHold:
+		return 1
+	default:
+		p := float64(elapsed-noticeSlide-noticeHold) / float64(noticeSlide)
+		return 1 - p*p
+	}
+}
+
+// noticeMargin insets the notice from the top and right edges.
+func noticeMargin(w, h int32) int32 {
+	if compact(w, h) {
+		return 6
+	}
+	return 12
+}
+
+// drawNotice draws the notice shown (0..1) of the way in. Accent fill with a
+// ModalBorder outline, so it does not read as one more header pill on the
+// game list (those are TitlePill and Chip).
+func drawNotice(r *renderer.Renderer, v appupdate.Verdict, shown float64) {
+	if shown <= 0 || v.Latest == nil {
+		return
+	}
+	title, sub := noticeText(v, abbreviate(r.W))
+	m := noticeMargin(r.W, r.H)
+	padX, padY := int32(16), int32(8)
+	if compact(r.W, r.H) {
+		padX, padY = 10, 5
+	}
+	tw, th := r.TextSize(title)
+	var sw, sh int32
+	if sub != "" {
+		sw, sh = r.SmallTextSize(sub)
+	}
+	w := max(tw, sw) + 2*padX
+	h := th + 2*padY
+	if sub != "" {
+		h += sh + 2
+	}
+	x := r.W - m - w
+	// From fully above the top edge (y = -h) down to the margin.
+	y := int32(float64(-h-2) + shown*float64(h+2+m))
+
+	bd, ac, at := r.Theme.ModalBorder(), r.Theme.Accent, r.Theme.AccentText
+	r.DrawPill(x-1, y-1, w+2, h+2, bd[0], bd[1], bd[2])
+	r.DrawPill(x, y, w, h, ac[0], ac[1], ac[2])
+	r.DrawText(title, x+padX, y+padY, at[0], at[1], at[2])
+	if sub != "" {
+		r.DrawSmallText(sub, x+padX, y+padY+th+2, at[0], at[1], at[2])
+	}
+}

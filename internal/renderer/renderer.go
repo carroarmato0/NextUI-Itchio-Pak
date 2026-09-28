@@ -61,6 +61,11 @@ type Renderer struct {
 	displayFonts  map[int]*ttf.Font        // primary font at custom sizes, see display_text.go
 	descCache     map[string][]descBlock   // parsed game descriptions, see description.go
 
+	// Overlay, when set, draws over whatever the current screen drew, just
+	// before the frame is shown. Used by the app-update notice so no screen
+	// has to know about it. It must not call Present.
+	Overlay func(*Renderer)
+
 	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
 	drawLog   []DrawLogEntry
 	drawLogOn bool
@@ -199,6 +204,9 @@ func (r *Renderer) Clear(red, green, blue uint8) {
 }
 
 func (r *Renderer) Present() {
+	if r.Overlay != nil {
+		r.Overlay(r)
+	}
 	r.Renderer.Present()
 }
 
