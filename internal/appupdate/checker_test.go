@@ -1,6 +1,8 @@
 package appupdate
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +25,7 @@ type fakeGitHub struct {
 	status       int
 	hdr          map[string]string
 	gate         chan struct{} // when set, releases waits on it
+	pakGate      chan struct{} // when set, pak.json waits on it
 }
 
 func newFakeGitHub(t *testing.T, releases, pak string) *fakeGitHub {
@@ -41,6 +44,9 @@ func newFakeGitHub(t *testing.T, releases, pak string) *fakeGitHub {
 			w.Write([]byte(f.releasesBody))
 		case "/pak.json":
 			f.pak.Add(1)
+			if f.pakGate != nil {
+				<-f.pakGate
+			}
 			w.Write([]byte(f.pakBody))
 		default:
 			http.NotFound(w, r)
@@ -105,6 +111,51 @@ func TestChecker_offlineOwedRunsOnceOnReconnect(t *testing.T) {
 	c.wg.Wait()
 	if n := gh.releases.Load(); n != 1 {
 		t.Fatalf("%d requests, want exactly 1 after reconnect", n)
+	}
+}
+
+// TestChecker_offlineMidCheckOwesUntilReconnect covers a check that starts
+// (netstate's own status is unknown or online, so gateOK lets it through)
+// but whose request fails because the network itself is down mid-flight —
+// e.g. Wi-Fi not associated yet at boot. That failure must be treated like
+// gateOK's own offline skip: owed, not recorded as a failed check, and run
+// again — and only once — on reconnect.
+func TestChecker_offlineMidCheckOwesUntilReconnect(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	bad.Close() // refuses every connection from here on
+
+	gh := newFakeGitHub(t, releasesRC3, "")
+	c := newTestChecker(t, firmware.KindMuOS, "v1.1.0-rc2", RC, gh, "")
+	c.src.ReleasesURL = bad.URL + "/releases"
+
+	c.Start()
+	c.wg.Wait()
+	if gh.releases.Load() != 0 {
+		t.Fatal("the bad address must be the one dialed, not the fake")
+	}
+	if v := c.Verdict(); v.Kind != Unknown {
+		t.Fatalf("verdict = %+v, want nothing filled by an offline mid-check failure", v)
+	}
+	if err := c.LastError(); err != nil {
+		t.Fatalf("lastErr = %v, want nil: an offline failure is owed, not recorded as a failed check", err)
+	}
+
+	// Reconnect: point the source at the working fake and let the owed
+	// check run.
+	c.src.ReleasesURL = gh.srv.URL + "/releases"
+	c.RetryAfterReconnect()
+	c.wg.Wait()
+	if n := gh.releases.Load(); n != 1 {
+		t.Fatalf("%d requests to the fake, want exactly 1 after reconnect", n)
+	}
+	if v := c.Verdict(); v.Kind != Available || v.Latest == nil || v.Latest.Tag != "v1.1.0-rc3" {
+		t.Fatalf("verdict = %+v after reconnect", v)
+	}
+
+	c.RetryAfterReconnect()
+	c.wg.Wait()
+	if n := gh.releases.Load(); n != 1 {
+		t.Fatalf("%d requests, want still 1: a second RetryAfterReconnect must do nothing", n)
 	}
 }
 
@@ -196,6 +247,34 @@ func TestChecker_setChannelWhileBusyDoesNotStartSecond(t *testing.T) {
 	}
 }
 
+// TestChecker_setChannelRerunsCheckWhenNewChannelUncached covers the case
+// TestChecker_setChannelWhileBusyDoesNotStartSecond does not: a running
+// check that cannot itself fill the channel switched to (here, a
+// Store-managed Stable check fetches pak.json only, never Releases, so a
+// switch to RC mid-check finds nothing cached when the check finishes and
+// must trigger an actual second run — not just consume the flag).
+func TestChecker_setChannelRerunsCheckWhenNewChannelUncached(t *testing.T) {
+	gh := newFakeGitHub(t, releasesRC3, `{"version":"v1.0.25"}`)
+	gh.pakGate = make(chan struct{})
+	c := newTestChecker(t, firmware.KindNextUI, "v1.0.25", Stable, gh, "../../testdata/pakstore/single.db")
+	c.Start()
+	for gh.pak.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	c.SetChannel(RC) // nothing cached for RC; the running check only touches pak.json
+	close(gh.pakGate)
+	c.wg.Wait()
+	if n := gh.releases.Load(); n != 1 {
+		t.Fatalf("releases requests = %d, want 1 (the queued rerun, for RC)", n)
+	}
+	if n := gh.pak.Load(); n != 1 {
+		t.Fatalf("pak.json requests = %d, want 1 (only the original Stable check)", n)
+	}
+	if v := c.Verdict(); v.Channel != RC || v.Latest == nil || v.Latest.Tag != "v1.1.0-rc3" {
+		t.Fatalf("verdict = %+v, want RC filled by the rerun", v)
+	}
+}
+
 func TestChecker_notificationRulePersists(t *testing.T) {
 	gh := newFakeGitHub(t, releasesRC3, "")
 	c := newTestChecker(t, firmware.KindMuOS, "v1.1.0-rc2", RC, gh, "")
@@ -246,6 +325,47 @@ func TestChecker_archiveSave(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "Itch-io.muOS.v1.1.0-rc3.muxapp")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestChecker_archiveSaveCancelled covers the cancelled-download logging
+// path added for the ARCHIVE save: ArchiveStatus still reports ArchiveFailed
+// with Err = context.Canceled (the UI words that as "Download cancelled"),
+// logged at Info rather than as a Warn "failed", since a user-initiated
+// cancel is not a failure.
+func TestChecker_archiveSaveCancelled(t *testing.T) {
+	partfile.SetJournal(filepath.Join(t.TempDir(), "partials.json"))
+	t.Cleanup(func() { partfile.SetJournal("") })
+	body := goodMuxapp(t)
+	started := make(chan struct{})
+	block := make(chan struct{})
+	asset := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-block
+		w.Write(body)
+	}))
+	t.Cleanup(asset.Close)
+	r := releaseFor(asset.URL, body, "v1.1.0-rc3")
+	gh := newFakeGitHub(t, `[{"tag_name":"v1.1.0-rc3","prerelease":true,"assets":[{"name":"Itch-io.muOS.v1.1.0-rc3.muxapp","browser_download_url":"`+
+		r.Asset+`","size":`+itoa(r.Size)+`,"digest":"`+r.Digest+`"}]}]`, "")
+	var off atomic.Bool
+	onlineForTest(t, &off)
+	dir := filepath.Join(t.TempDir(), "ARCHIVE")
+	c := NewChecker(Config{Firmware: firmware.KindMuOS, Running: "v1.1.0-rc2", Channel: RC,
+		StatePath: filepath.Join(t.TempDir(), "s.json"), ArchiveDir: dir, UserAgent: "ua", Source: testSource(gh.srv.URL)})
+	c.Start()
+	c.wg.Wait()
+	if v := c.Verdict(); v.Via != ViaArchive {
+		t.Fatalf("verdict = %+v, want ViaArchive", v)
+	}
+	c.StartArchiveSave()
+	<-started
+	c.CancelArchiveSave()
+	close(block)
+	c.wg.Wait()
+	st := c.ArchiveStatus()
+	if st.State != ArchiveFailed || !errors.Is(st.Err, context.Canceled) {
+		t.Fatalf("archive status = %+v, want ArchiveFailed/context.Canceled", st)
 	}
 }
 

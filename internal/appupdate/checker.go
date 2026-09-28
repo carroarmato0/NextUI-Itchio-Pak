@@ -59,7 +59,11 @@ type Checker struct {
 
 	busy atomic.Bool
 	owed atomic.Bool
-	wg   sync.WaitGroup // background work; tests wait on it
+	// rerun is set when SetChannel wants a check while one is already
+	// running: the running goroutine consumes it and runs once more for the
+	// channel now in effect, instead of the request being dropped.
+	rerun atomic.Bool
+	wg    sync.WaitGroup // background work; tests wait on it
 
 	mu            sync.Mutex
 	st            *State
@@ -120,41 +124,118 @@ func (c *Checker) RetryAfterReconnect() {
 	}
 }
 
-func (c *Checker) maybeCheck(why string) {
+// gateOK reports whether a check is allowed to start right now: enabled, the
+// channel isn't Off, we're not rate-limited, and we're online. Split out of
+// maybeCheck so the mid-run rerun (see rerun below) can apply the same gates
+// without re-entering the busy check, which it must not touch: the rerun
+// runs inside the goroutine that already holds busy.
+func (c *Checker) gateOK(why string) bool {
 	if !c.Enabled() {
 		logger.Debug("appupdate: %s check skipped: firmware=%s running=%q", why, c.cfg.Firmware, c.cfg.Running)
-		return
+		return false
 	}
 	c.mu.Lock()
 	ch, notBefore := c.channel, c.st.NotBefore
 	c.mu.Unlock()
 	if ch == Off {
 		logger.Debug("appupdate: %s check skipped: channel is off", why)
-		return
+		return false
 	}
 	if time.Now().Before(notBefore) {
 		logger.Info("appupdate: %s check skipped: rate-limited until %s", why, notBefore.Format(time.RFC3339))
-		return
+		return false
 	}
 	// Owed first, then read: the same order as inventory's postponeIfOffline,
 	// so a reconnect landing between the two is not lost.
 	c.owed.Store(true)
 	if offlineNow() {
 		logger.Info("appupdate: offline, %s check owed until the connection is back", why)
-		return
+		return false
 	}
 	c.owed.Store(false)
+	return true
+}
+
+// checkStillNeeded reports whether the channel currently in effect has no
+// cached result yet — the same rule SetChannel uses to decide whether a
+// switch needs a check at all (spec §2a).
+func (c *Checker) checkStillNeeded() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch := c.channel
+	if ch == Off {
+		return false
+	}
+	if c.managedLocked() && ch == Stable {
+		return c.st.PakJSON == nil
+	}
+	return c.st.Latest[ch] == nil
+}
+
+func (c *Checker) maybeCheck(why string) {
+	if !c.gateOK(why) {
+		return
+	}
 	if !c.busy.CompareAndSwap(false, true) {
 		logger.Debug("appupdate: %s check skipped: one is already running", why)
 		return
 	}
+	c.startCheck(why)
+}
+
+// startCheck dispatches the goroutine that runs the check. Caller must have
+// already CompareAndSwap'd busy from false to true: that CAS is the single
+// source of truth for "a check is running", so anyone who loses it (finds
+// busy already true) is guaranteed this goroutine has not yet reached, or
+// is still inside, the rerun loop below — busy is only cleared by the
+// deferred Store(false), which runs after the loop exits. That is what lets
+// SetChannel queue a rerun by CAS-losing here instead of racing a separate
+// busy.Load().
+func (c *Checker) startCheck(why string) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer c.notify()
 		defer c.busy.Store(false)
 		c.run(why)
+		// A channel switch that landed while this check was running (spec
+		// §2): rerun once more, still under busy, for whatever channel is
+		// now in effect — but only if it still needs one; the channel
+		// switched to may already have been filled by the check just run
+		// (Releases fills both channels in one response).
+		for c.rerun.Swap(false) {
+			if !c.checkStillNeeded() || !c.gateOK("rerun") {
+				continue
+			}
+			logger.Info("appupdate: channel changed mid-check, running once more")
+			c.run("rerun")
+		}
 	}()
+}
+
+// abandonIfOffline reports whether err means the network, not GitHub or the
+// Store, is the problem (spec §8: "Offline: skip and mark owed; run on
+// reconnect"). When it is, the check is abandoned right here rather than
+// treated as a failed check: owed is set (before anything else, same
+// owed-then-read ordering as gateOK, so a reconnect racing in cannot be
+// missed) and the caller returns without touching c.st or c.lastErr, so a
+// transient outage never overwrites the last good state or rate-limits the
+// service.
+//
+// Releases and PakJSON read their response bodies themselves
+// (io.ReadAll / json.Decode) after the request's round trip already
+// completed, so a body read that fails offline (e.g. the connection drops
+// mid-download) happens after netstate.Transport's own RoundTrip-level
+// Report and is never seen by it — report it explicitly here or a
+// reconnect never finds this check owed.
+func (c *Checker) abandonIfOffline(err error, why string) bool {
+	if !netstate.Classify(err).Offline() {
+		return false
+	}
+	c.owed.Store(true)
+	netstate.Report(err)
+	logger.Info("appupdate: %s check failed offline (%s), owed until the connection is back", why, netstate.Detail(err))
+	return true
 }
 
 func (c *Checker) run(why string) {
@@ -184,9 +265,15 @@ func (c *Checker) run(why string) {
 	var pakNM bool
 	if useReleases {
 		rel, relErr = c.src.Releases(ctx, etagRel)
+		if c.abandonIfOffline(relErr, why) {
+			return
+		}
 	}
 	if usePak {
 		pak, pakETag, pakNM, pakErr = c.src.PakJSON(ctx, etagPak)
+		if c.abandonIfOffline(pakErr, why) {
+			return
+		}
 	}
 
 	c.mu.Lock()
@@ -298,15 +385,26 @@ func (c *Checker) SetChannel(ch Channel) {
 	c.mu.Lock()
 	prev := c.channel
 	c.channel = ch
-	cached := c.st.Latest[ch] != nil
-	if c.managedLocked() && ch == Stable {
-		cached = c.st.PakJSON != nil
-	}
 	c.mu.Unlock()
-	logger.Info("appupdate: channel %s → %s (cached=%v)", prev, ch, cached)
-	if ch != Off && !cached {
-		c.maybeCheck("channel")
+	needed := ch != Off && c.checkStillNeeded()
+	logger.Info("appupdate: channel %s → %s (needs check=%v)", prev, ch, needed)
+	if !needed {
+		return
 	}
+	if !c.gateOK("channel") {
+		return
+	}
+	if c.busy.CompareAndSwap(false, true) {
+		c.startCheck("channel")
+		return
+	}
+	// A check is already running for the old channel; it would otherwise
+	// finish, clear busy, and drop this channel's need for data entirely
+	// (spec §2a: switching "triggers a check otherwise"). Queue instead:
+	// the running goroutine consumes rerun after run(), still under busy,
+	// and runs once more for whatever channel is now in effect.
+	c.rerun.Store(true)
+	logger.Info("appupdate: channel changed to %s while a check is running, queued a rerun", ch)
 }
 
 // PendingNotice reports whether the notice is due (spec §2).
@@ -366,10 +464,17 @@ func (c *Checker) StartArchiveSave() {
 		c.mu.Unlock()
 		// SaveToArchive's error can embed the signed GitHub redirect URL (a
 		// *url.Error); never log %v on it directly.
-		if err != nil {
-			logger.Warn("appupdate: Save to ARCHIVE failed for %s: %s", r.Tag, netstate.Detail(err))
-		} else {
+		switch {
+		case err == nil:
 			logger.Info("appupdate: Save to ARCHIVE saved %s to %s", r.Tag, path)
+		case errors.Is(err, context.Canceled):
+			// User-initiated (CancelArchiveSave) or app shutdown, not a
+			// failure. ArchiveStatus still reports ArchiveFailed with
+			// Err = context.Canceled; the UI words that as "Download
+			// cancelled."
+			logger.Info("appupdate: Save to ARCHIVE cancelled for %s", r.Tag)
+		default:
+			logger.Warn("appupdate: Save to ARCHIVE failed for %s: %s", r.Tag, netstate.Detail(err))
 		}
 		c.notify()
 	}()
