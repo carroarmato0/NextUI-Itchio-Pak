@@ -72,6 +72,9 @@ type Config struct {
 	// ShareDeviceInfo adds firmware, device and platform to the User-Agent.
 	// Default true — no omitempty so an opt-out survives save/load.
 	ShareDeviceInfo bool `json:"share_device_info"`
+	// UpdateChannel is "stable", "rc" or "off"; empty until chosen, when it
+	// follows the running build (appupdate.ResolveChannel).
+	UpdateChannel string `json:"update_channel,omitempty"`
 }
 
 func defaults() *Config {
