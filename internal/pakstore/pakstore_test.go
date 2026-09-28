@@ -45,16 +45,49 @@ func TestLookup_emptyPathIsNotInstalled(t *testing.T) {
 
 func TestLookup_nonEmptyWALIsUnknown(t *testing.T) {
 	dir := t.TempDir()
-	data, _ := os.ReadFile(fixtures + "single.db")
+	data, err := os.ReadFile(fixtures + "single.db")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
 	db := filepath.Join(dir, "pak-store.db")
-	os.WriteFile(db, data, 0644)
-	os.WriteFile(db+"-wal", []byte("uncommitted pages"), 0644)
+	if err := os.WriteFile(db, data, 0644); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+	if err := os.WriteFile(db+"-wal", []byte("uncommitted pages"), 0644); err != nil {
+		t.Fatalf("write -wal: %v", err)
+	}
 	if got := Lookup(db); got.Status != Unknown {
 		t.Fatalf("with a non-empty -wal: %+v, want Unknown", got)
 	}
-	os.WriteFile(db+"-wal", nil, 0644)
+	if err := os.WriteFile(db+"-wal", nil, 0644); err != nil {
+		t.Fatalf("empty -wal: %v", err)
+	}
 	if got := Lookup(db); got.Status != Managed {
 		t.Fatalf("with an empty -wal: %+v, want Managed", got)
+	}
+}
+
+func TestLookup_nonEmptyJournalIsUnknown(t *testing.T) {
+	dir := t.TempDir()
+	data, err := os.ReadFile(fixtures + "single.db")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	db := filepath.Join(dir, "pak-store.db")
+	if err := os.WriteFile(db, data, 0644); err != nil {
+		t.Fatalf("write db: %v", err)
+	}
+	if err := os.WriteFile(db+"-journal", []byte("hot rollback journal"), 0644); err != nil {
+		t.Fatalf("write -journal: %v", err)
+	}
+	if got := Lookup(db); got.Status != Unknown {
+		t.Fatalf("with a non-empty -journal: %+v, want Unknown", got)
+	}
+	if err := os.WriteFile(db+"-journal", nil, 0644); err != nil {
+		t.Fatalf("empty -journal: %v", err)
+	}
+	if got := Lookup(db); got.Status != Managed {
+		t.Fatalf("with an empty -journal: %+v, want Managed", got)
 	}
 }
 

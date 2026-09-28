@@ -62,7 +62,19 @@ func Lookup(dbPath string) Result {
 	return res
 }
 
-func lookup(dbPath string) Result {
+func lookup(dbPath string) (result Result) {
+	// Safety net: the reader in sqlite.go is hand-written against an
+	// adversarial input (a real device's database, but still a file this
+	// process does not control). If some corner of it panics anyway, treat
+	// that exactly like any other unreadable database — Unknown, which
+	// callers treat as Managed — rather than taking the caller down.
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("pakstore: panic reading %s: %v", dbPath, r)
+			result = Result{Status: Unknown, Reason: fmt.Sprintf("parser panic: %v", r)}
+		}
+	}()
+
 	if dbPath == "" {
 		return Result{Status: NotInstalled, Reason: "no Pak Store on this firmware"}
 	}
@@ -73,9 +85,14 @@ func lookup(dbPath string) Result {
 	if err != nil {
 		return Result{Status: Unknown, Reason: "read: " + err.Error()}
 	}
-	// Committed pages may still be in the write-ahead log, not the main file.
-	if fi, err := os.Stat(dbPath + "-wal"); err == nil && fi.Size() > 0 {
-		return Result{Status: Unknown, Reason: "write-ahead log is not empty"}
+	// Committed pages may still be sitting in a write-ahead log or a hot
+	// rollback journal, not yet in the main file: an interrupted write. Both
+	// are named after the main file, e.g. "pak-store.db-wal".
+	if res, unknown := sidecarIsUnknown(dbPath+"-wal", "write-ahead log"); unknown {
+		return res
+	}
+	if res, unknown := sidecarIsUnknown(dbPath+"-journal", "rollback journal"); unknown {
+		return res
 	}
 	d, err := open(data)
 	if err != nil {
@@ -84,14 +101,31 @@ func lookup(dbPath string) Result {
 	logger.Debug("pakstore: page size %d, %d pages", d.pageSize, d.pages)
 	version, found, err := findItchio(d)
 	switch {
-	case errors.Is(err, errNoTable):
-		return Result{Status: Unknown, Reason: err.Error()}
 	case err != nil:
 		return Result{Status: Unknown, Reason: err.Error()}
 	case !found:
 		return Result{Status: NotInstalled, Reason: "no row for Itch-io"}
 	}
 	return Result{Status: Managed, Version: version}
+}
+
+// sidecarIsUnknown reports whether a WAL or rollback-journal file next to the
+// database makes it Unknown: a non-empty file means the main file may not
+// reflect everything committed, and a Stat error other than "does not exist"
+// means its state can't be trusted either way. An absent or empty sidecar
+// changes nothing (unknown is false, and res is the zero Result).
+func sidecarIsUnknown(path, label string) (res Result, unknown bool) {
+	fi, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return Result{}, false
+	case err != nil:
+		return Result{Status: Unknown, Reason: label + ": " + err.Error()}, true
+	case fi.Size() > 0:
+		return Result{Status: Unknown, Reason: label + " is not empty"}, true
+	default:
+		return Result{}, false
+	}
 }
 
 func findItchio(d *db) (string, bool, error) {

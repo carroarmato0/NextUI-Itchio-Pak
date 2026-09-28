@@ -100,7 +100,11 @@ func (d *db) walkTable(root int, fn func(payload []byte) error) error {
 				if k1 == 0 || k2 == 0 {
 					return fmt.Errorf("page %d: bad cell %d", n, i)
 				}
-				if int(size) > d.usable-35 {
+				// Compare while still uint64: size can be up to 2^64-1, and
+				// int(size) on a corrupt/adversarial file can come out
+				// negative (wrapping through the sign bit), which would let
+				// an oversized cell slip past this guard and panic below.
+				if size > uint64(d.usable-35) {
 					return errOverflow
 				}
 				start := off + k1 + k2
@@ -169,29 +173,35 @@ func decodeRecord(p []byte) ([]value, error) {
 	intSize := [...]int{0, 1, 2, 3, 4, 6, 8}
 	out := make([]value, 0, len(types))
 	for _, t := range types {
-		var size int
+		// size is computed and bounds-checked entirely in uint64: a serial
+		// type near 2^64 (e.g. from a corrupt or adversarial file) makes
+		// (t-12)/2 or (t-13)/2 astronomically large, and converting that to
+		// int before dividing/comparing can wrap around to a negative int,
+		// which would slip past a `body+size > len(p)` check written in int
+		// and panic when slicing p[body:body+size].
+		var size uint64
 		v := value{}
 		switch {
 		case t == 0:
 			v.isNull = true
 		case t >= 1 && t <= 6:
-			size = intSize[t]
+			size = uint64(intSize[t])
 			v.isInt = true
 		case t == 7:
 			size = 8
 		case t == 8, t == 9:
 			v.isInt, v.i = true, int64(t-8)
 		case t >= 12 && t%2 == 0:
-			size = int(t-12) / 2
+			size = (t - 12) / 2
 		case t >= 13:
-			size = int(t-13) / 2
+			size = (t - 13) / 2
 		default:
 			return nil, fmt.Errorf("reserved serial type %d", t)
 		}
-		if body+size > len(p) {
+		if size > uint64(len(p)-body) {
 			return nil, errors.New("record overruns its payload")
 		}
-		field := p[body : body+size]
+		field := p[body : body+int(size)]
 		switch {
 		case v.isInt && size > 0:
 			var x int64
@@ -204,7 +214,7 @@ func decodeRecord(p []byte) ([]value, error) {
 			v.s = string(field)
 		}
 		out = append(out, v)
-		body += size
+		body += int(size)
 	}
 	return out, nil
 }
