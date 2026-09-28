@@ -29,21 +29,16 @@ type UpdateNotice struct {
 func (n *UpdateNotice) Animating() bool { return n.active }
 
 // Tick starts the notice when one is due and the current screen allows it,
-// and retires it when the animation ends. true means redraw now.
+// and retires it when the animation ends or the screen stops allowing it
+// (spec §2, §3 — e.g. the user opens Settings → Updates mid-notice). true
+// means redraw now.
 func (n *UpdateNotice) Tick(r *renderer.Renderer, current Screen, now time.Time) bool {
 	up := appUpdater()
 	if n.active {
-		if now.Sub(n.start) < noticeTotal {
+		if now.Sub(n.start) < noticeTotal && noticeAllowed(current) {
 			return true
 		}
-		n.active = false
-		r.Overlay = nil
-		// Recorded once the notice has been seen in full, so a crash or quick
-		// exit does not swallow it (spec §2).
-		if up != nil {
-			up.MarkNotified(n.verdict.Channel, n.verdict.Latest.Tag)
-		}
-		logger.Debug("update notice: finished for %s", n.verdict.Latest.Tag)
+		n.finish(r, up, now.Sub(n.start) >= noticeTotal)
 		return true // one more frame, without it
 	}
 	if up == nil || !noticeAllowed(current) {
@@ -59,6 +54,23 @@ func (n *UpdateNotice) Tick(r *renderer.Renderer, current Screen, now time.Time)
 	}
 	logger.Info("update notice: showing %s (channel=%s via=%s)", v.Latest.Tag, v.Channel, v.Via)
 	return true
+}
+
+// finish ends the notice, whether it ran its full course or was cut short by
+// leaving to a screen that must not show it. Either way the user has been
+// told — the Updates screen that cuts it short says the same thing itself —
+// so it is marked notified once (spec §2).
+func (n *UpdateNotice) finish(r *renderer.Renderer, up AppUpdater, full bool) {
+	n.active = false
+	r.Overlay = nil
+	if up != nil {
+		up.MarkNotified(n.verdict.Channel, n.verdict.Latest.Tag)
+	}
+	if full {
+		logger.Debug("update notice: finished for %s", n.verdict.Latest.Tag)
+	} else {
+		logger.Debug("update notice: cut short for %s", n.verdict.Latest.Tag)
+	}
 }
 
 // noticeAllowed keeps the notice off startup and sign-in, and off the Updates
