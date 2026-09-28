@@ -11,13 +11,16 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
+	"github.com/veandco/go-sdl2/sdl"
 )
 
 // stubUpdater is a minimal AppUpdater; the Settings tests (Task 12) use it too.
 type stubUpdater struct {
-	v       appupdate.Verdict
-	archive appupdate.ArchiveStatus
+	v         appupdate.Verdict
+	archive   appupdate.ArchiveStatus
+	cancelled int
 }
 
 func (s *stubUpdater) Verdict() appupdate.Verdict               { return s.v }
@@ -31,8 +34,17 @@ func (s *stubUpdater) RateLimitedUntil() time.Time              { return time.Ti
 func (s *stubUpdater) PendingNotice() (appupdate.Verdict, bool) { return s.v, false }
 func (s *stubUpdater) MarkNotified(appupdate.Channel, string)   {}
 func (s *stubUpdater) StartArchiveSave()                        {}
-func (s *stubUpdater) CancelArchiveSave()                       {}
+func (s *stubUpdater) CancelArchiveSave()                       { s.cancelled++ }
 func (s *stubUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return s.archive }
+
+// stubScreen is a minimal Screen distinct from *UpdatesScreen, so a test can
+// tell "stayed on Updates" apart from "left to prev" unambiguously.
+type stubScreen struct{}
+
+func (stubScreen) Draw(*renderer.Renderer)      {}
+func (stubScreen) HandleEvent(sdl.Event) Screen { return stubScreen{} }
+func (stubScreen) NeedsRedraw() bool            { return false }
+func (stubScreen) HasPendingAnimation() bool    { return false }
 
 func ver(s string) appupdate.Version { v, _ := appupdate.Parse(s); return v }
 
@@ -114,6 +126,45 @@ func TestUpdatesScreen_IsBusyWhileArchiveRunning(t *testing.T) {
 	}
 }
 
+// TestUpdatesScreen_StartAndSCancelWhileDownloading guards against Start and
+// keyboard S leaving the screen mid-download: once another screen is
+// current, the main loop's BusyChecker gate no longer sees this screen, so
+// sleep/shutdown stops waiting for the ARCHIVE save. Start and S must behave
+// exactly like B/Escape: cancel and stay while downloading, leave otherwise.
+func TestUpdatesScreen_StartAndSCancelWhileDownloading(t *testing.T) {
+	prev := stubScreen{}
+	up := &stubUpdater{v: archiveVerdict, archive: appupdate.ArchiveStatus{State: appupdate.ArchiveRunning}}
+	cfg := &settings.Config{}
+	s := NewUpdatesScreen(cfg, filepath.Join(t.TempDir(), "config.json"), up, prev)
+
+	startEv := &sdl.ControllerButtonEvent{Type: sdl.CONTROLLERBUTTONDOWN, Button: sdl.CONTROLLER_BUTTON_START}
+	sEv := &sdl.KeyboardEvent{Type: sdl.KEYDOWN, Keysym: sdl.Keysym{Sym: sdl.K_s}}
+
+	if got := s.HandleEvent(startEv); got != Screen(s) {
+		t.Fatalf("Start while downloading: got %v, want the Updates screen itself", got)
+	}
+	if up.cancelled != 1 {
+		t.Fatalf("Start while downloading: cancelled = %d, want 1", up.cancelled)
+	}
+	if got := s.HandleEvent(sEv); got != Screen(s) {
+		t.Fatalf("S while downloading: got %v, want the Updates screen itself", got)
+	}
+	if up.cancelled != 2 {
+		t.Fatalf("S while downloading: cancelled = %d, want 2", up.cancelled)
+	}
+
+	up.archive = appupdate.ArchiveStatus{State: appupdate.ArchiveIdle}
+	if got := s.HandleEvent(startEv); got != Screen(prev) {
+		t.Fatalf("Start while idle: got %v, want prev", got)
+	}
+	if got := s.HandleEvent(sEv); got != Screen(prev) {
+		t.Fatalf("S while idle: got %v, want prev", got)
+	}
+	if up.cancelled != 2 {
+		t.Fatalf("cancelled changed while idle: %d, want unchanged at 2", up.cancelled)
+	}
+}
+
 func TestUpdatesStatus(t *testing.T) {
 	rel := func(tag string) *appupdate.Release {
 		return &appupdate.Release{Tag: tag, URL: "https://example.invalid/" + tag}
@@ -140,6 +191,9 @@ func TestUpdatesStatus(t *testing.T) {
 		{"integrity", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Err: appupdate.ErrIntegrity}, false, nil, "Download failed the integrity check.", true},
 		{"cancelled", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Err: context.Canceled}, false, nil, "Download cancelled.", true},
 		{"check failed", appupdate.Verdict{}, appupdate.ArchiveStatus{}, false, errors.New("decode releases"), "The last check failed.", false},
+		{"available, latest nil", appupdate.Verdict{Kind: appupdate.Available}, appupdate.ArchiveStatus{}, false, nil, "Not checked yet.", false},
+		{"up to date, latest nil", appupdate.Verdict{Kind: appupdate.UpToDate, Running: ver("v1.1.0-rc3")}, appupdate.ArchiveStatus{}, false, nil, "You have the latest version (v1.1.0-rc3).", false},
+		{"archive running, latest nil", appupdate.Verdict{Kind: appupdate.Available, Via: appupdate.ViaArchive}, appupdate.ArchiveStatus{State: appupdate.ArchiveRunning}, false, nil, "Downloading…", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

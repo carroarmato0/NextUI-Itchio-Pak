@@ -35,6 +35,11 @@ func updatesStatus(v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool,
 	case v.Channel == appupdate.Off:
 		add("Update checks are off.", false)
 		return out
+	case v.Kind == appupdate.UpToDate && v.Latest == nil:
+		// Latest is nil-guarded here too: UpToDate is only ever set alongside
+		// a Latest release, but a dereference below must never be the thing
+		// that turns a decide.go bug into a crash on this screen.
+		add(fmt.Sprintf("You have the latest version (%s).", v.Running), false)
 	case v.Kind == appupdate.UpToDate && !v.Ahead:
 		add(fmt.Sprintf("You have the latest version (%s).", v.Running), false)
 	case v.Kind == appupdate.UpToDate && v.Running.IsRC():
@@ -42,6 +47,8 @@ func updatesStatus(v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool,
 			"You will be told when a newer stable release is out.", v.Running, v.Latest.Tag), false)
 	case v.Kind == appupdate.UpToDate:
 		add(fmt.Sprintf("You are on %s, newer than the latest release (%s).", v.Running, v.Latest.Tag), false)
+	case v.Kind == appupdate.Available && v.Latest == nil:
+		add("Not checked yet.", false)
 	case v.Kind == appupdate.Available && v.Via == appupdate.ViaPakStore:
 		add(fmt.Sprintf("%s is available. Update it in the Pak Store.", v.Latest.Tag), false)
 	case v.Kind == appupdate.Available:
@@ -69,7 +76,11 @@ func updatesStatus(v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool,
 
 	switch a.State {
 	case appupdate.ArchiveRunning:
-		add(fmt.Sprintf("Downloading %s…", v.Latest.Tag), false)
+		if v.Latest != nil {
+			add(fmt.Sprintf("Downloading %s…", v.Latest.Tag), false)
+		} else {
+			add("Downloading…", false)
+		}
 	case appupdate.ArchiveDone:
 		add("Saved to ARCHIVE. Open Applications → Archive Manager to install.", false)
 	case appupdate.ArchiveFailed:

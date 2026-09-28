@@ -165,8 +165,20 @@ func (s *UpdatesScreen) back() Screen {
 	return s.prev
 }
 
+// cancelOrBack is the one path shared by every "leave" input (B, Escape, S,
+// Start): while a Save to ARCHIVE is running it cancels and stays, so the
+// download is never orphaned on a screen nothing is watching; otherwise it
+// leaves normally. Routing all four buttons through this single method is
+// what keeps them from diverging again.
+func (s *UpdatesScreen) cancelOrBack() Screen {
+	if s.up.ArchiveStatus().State == appupdate.ArchiveRunning {
+		s.up.CancelArchiveSave()
+		return s
+	}
+	return s.back()
+}
+
 func (s *UpdatesScreen) HandleEvent(e sdl.Event) Screen {
-	downloading := s.up.ArchiveStatus().State == appupdate.ArchiveRunning
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
@@ -188,14 +200,8 @@ func (s *UpdatesScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Keysym.Sym {
 		case sdl.K_RETURN:
 			return s.activate()
-		case sdl.K_ESCAPE:
-			if downloading {
-				s.up.CancelArchiveSave()
-				return s
-			}
-			return s.back()
-		case sdl.K_s:
-			return s.back()
+		case sdl.K_ESCAPE, sdl.K_s:
+			return s.cancelOrBack()
 		}
 	case *sdl.ControllerButtonEvent:
 		switch ev.Button {
@@ -217,14 +223,8 @@ func (s *UpdatesScreen) HandleEvent(e sdl.Event) Screen {
 		switch ev.Button {
 		case btnA:
 			return s.activate()
-		case btnB:
-			if downloading {
-				s.up.CancelArchiveSave()
-				return s
-			}
-			return s.back()
-		case sdl.CONTROLLER_BUTTON_START:
-			return s.back()
+		case btnB, sdl.CONTROLLER_BUTTON_START:
+			return s.cancelOrBack()
 		}
 	}
 	return s
