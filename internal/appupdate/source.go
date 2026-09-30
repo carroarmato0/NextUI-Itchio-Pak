@@ -50,11 +50,15 @@ func NewSource(userAgent string) *Source {
 }
 
 // newClient verifies TLS normally (SSL_CERT_FILE points Go at the bundled CA
-// file on devices) and feeds the shared online/offline state. timeout 0 means
-// none, for the ARCHIVE download, which has its own idle timeout.
+// file on devices). timeout 0 means none, for the ARCHIVE download, which has
+// its own idle timeout.
+//
+// Deliberately not wrapped in netstate.Transport: the monitor probes itch.io,
+// so a GitHub-only failure fed into netstate could never settle (offline,
+// probe says online, owed check reruns, fails, offline again...).
 func newClient(timeout time.Duration) *http.Client {
 	base := http.DefaultTransport.(*http.Transport).Clone()
-	return &http.Client{Timeout: timeout, Transport: netstate.Transport(base)}
+	return &http.Client{Timeout: timeout, Transport: base}
 }
 
 // RateLimitError is GitHub asking us to wait until Until.
@@ -219,10 +223,19 @@ func (s *Source) PakJSON(ctx context.Context, etag string) (*Release, string, bo
 		logger.Info("appupdate: pak.json HTTP 304 (ETag hit) in %v", s.Now().Sub(start).Round(time.Millisecond))
 		return nil, etag, true, nil
 	}
+	// Read first, decode second: a connection dropping mid-body stays a
+	// network error, while a truncated or malformed document is a JSON error
+	// (json.Unmarshal never reports io.ErrUnexpectedEOF), which must not
+	// classify as offline.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return nil, "", false, err
+	}
 	var pj struct {
 		Version string `json:"version"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&pj); err != nil {
+	if err := json.Unmarshal(body, &pj); err != nil {
+		logger.Warn("appupdate: pak.json HTTP 200 but %d bytes do not decode: %v", len(body), err)
 		return nil, "", false, fmt.Errorf("decode pak.json: %w", err)
 	}
 	if _, ok := Parse(pj.Version); !ok {

@@ -184,3 +184,37 @@ func TestPakJSON_badVersion(t *testing.T) {
 		t.Fatal("want an error for a version that is not a release tag")
 	}
 }
+
+// A truncated or malformed body is GitHub's problem, not the network's: it
+// must never classify as offline, or the check is owed instead of failed.
+func TestPakJSON_truncatedIsNotOffline(t *testing.T) {
+	for _, body := range []string{`{"version":`, `{"version":"v1.0.2`, `not json`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		}))
+		_, _, _, err := testSource(srv.URL).PakJSON(context.Background(), "")
+		srv.Close()
+		if err == nil {
+			t.Fatalf("%q: want an error", body)
+		}
+		if r := netstate.Classify(err); r.Offline() {
+			t.Fatalf("%q: err %v classified %s, want not offline", body, err, r)
+		}
+	}
+}
+
+func TestReleases_malformedIsNotOffline(t *testing.T) {
+	for _, body := range []string{`{}`, `[{"tag_name":"v1.1.0-rc3","prerelease":`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(body))
+		}))
+		_, err := testSource(srv.URL).Releases(context.Background(), "")
+		srv.Close()
+		if err == nil {
+			t.Fatalf("%q: want an error", body)
+		}
+		if r := netstate.Classify(err); r.Offline() {
+			t.Fatalf("%q: err %v classified %s, want not offline", body, err, r)
+		}
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 )
 
@@ -370,3 +371,97 @@ func TestChecker_archiveSaveCancelled(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// refusing is an address that refuses every connection.
+func refusing(t *testing.T) string {
+	t.Helper()
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	bad.Close()
+	return bad.URL
+}
+
+// TestChecker_githubFailureLeavesNetstateAlone: GitHub traffic never moves
+// the app-wide online state. netstate's monitor probes itch.io, so a
+// GitHub-only failure reported there would flip the app Offline, be flipped
+// back Online by the probe, rerun the owed check, and fail again — forever.
+func TestChecker_githubFailureLeavesNetstateAlone(t *testing.T) {
+	netstate.ResetForTest()
+	t.Cleanup(netstate.ResetForTest)
+	gh := newFakeGitHub(t, releasesRC3, "")
+	c := newTestChecker(t, firmware.KindMuOS, "v1.1.0-rc2", RC, gh, "")
+	c.src.ReleasesURL = refusing(t) + "/releases"
+	c.Start()
+	c.wg.Wait()
+	if st := netstate.Current(); st.Status != netstate.StatusUnknown {
+		t.Fatalf("netstate = %+v after a refused GitHub check, want untouched (unknown)", st)
+	}
+
+	// The ARCHIVE download client too.
+	dir := archiveSetup(t)
+	_, err := SaveToArchive(context.Background(), c.dl, "ua",
+		Release{Tag: "v1.1.1", Asset: refusing(t), Digest: "sha256:00", Size: 10}, dir, nil)
+	if err == nil {
+		t.Fatal("want the refused download to fail")
+	}
+	if st := netstate.Current(); st.Status != netstate.StatusUnknown {
+		t.Fatalf("netstate = %+v after a refused ARCHIVE download, want untouched (unknown)", st)
+	}
+}
+
+// droppingGitHub hangs up on every request before answering: an
+// offline-classified failure (EOF before any response) that can be counted.
+func droppingGitHub(t *testing.T) (string, *atomic.Int32) {
+	t.Helper()
+	var n atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n.Add(1)
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			conn.Close()
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL, &n
+}
+
+// TestChecker_reconnectRetryBudget: a check that fails offline is owed, but
+// only one reconnect retry per launch; after that retry has itself failed
+// offline nothing is owed. Check now still runs.
+func TestChecker_reconnectRetryBudget(t *testing.T) {
+	url, hits := droppingGitHub(t)
+	gh := newFakeGitHub(t, releasesRC3, "")
+	c := newTestChecker(t, firmware.KindMuOS, "v1.1.0-rc2", RC, gh, "")
+	c.src.ReleasesURL = url + "/releases"
+
+	c.Start()
+	c.wg.Wait()
+	afterLaunch := hits.Load()
+	if afterLaunch == 0 {
+		t.Fatal("the launch check must have reached the dropping server")
+	}
+	if netstate.Classify(c.LastError()).Offline() {
+		t.Fatal("an owed failure must not be recorded")
+	}
+
+	c.RetryAfterReconnect()
+	c.wg.Wait()
+	afterRetry := hits.Load()
+	if afterRetry == afterLaunch {
+		t.Fatal("the first reconnect must run the owed check")
+	}
+
+	c.RetryAfterReconnect()
+	c.wg.Wait()
+	if n := hits.Load(); n != afterRetry {
+		t.Fatalf("second reconnect made %d more request(s), want none: the retry budget is spent", n-afterRetry)
+	}
+	if err := c.LastError(); err == nil || !netstate.Classify(err).Offline() {
+		t.Fatalf("LastError = %v, want the offline failure recorded once nothing is owed", err)
+	}
+
+	c.CheckNow()
+	c.wg.Wait()
+	if hits.Load() == afterRetry {
+		t.Fatal("Check now must still run after the reconnect budget is spent")
+	}
+}

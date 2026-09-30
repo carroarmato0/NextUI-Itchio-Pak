@@ -59,6 +59,10 @@ type Checker struct {
 
 	busy atomic.Bool
 	owed atomic.Bool
+	// retrySpent: a reconnect-triggered check has itself failed offline.
+	// From then on a check that fails offline is recorded as failed, not
+	// owed: at most one reconnect retry per launch (see abandonIfOffline).
+	retrySpent atomic.Bool
 	// rerun is set when SetChannel wants a check while one is already
 	// running: the running goroutine consumes it and runs once more for the
 	// channel now in effect, instead of the request being dropped.
@@ -222,18 +226,29 @@ func (c *Checker) startCheck(why string) {
 // transient outage never overwrites the last good state or rate-limits the
 // service.
 //
-// Releases and PakJSON read their response bodies themselves
-// (io.ReadAll / json.Decode) after the request's round trip already
-// completed, so a body read that fails offline (e.g. the connection drops
-// mid-download) happens after netstate.Transport's own RoundTrip-level
-// Report and is never seen by it — report it explicitly here or a
-// reconnect never finds this check owed.
+// GitHub failures are never fed into netstate (see newClient): the app-wide
+// state is itch.io's, and the monitor that settles it probes itch.io. So a
+// GitHub-only outage would find itch.io reachable on every reconnect, and an
+// owed check could rerun and fail forever. The budget stops that: once a
+// reconnect-triggered check has failed offline, later offline failures are
+// not owed again this launch; they are recorded as a failed check instead
+// (still without touching c.st), so the Updates screen says so. Check now
+// and a channel switch still run.
 func (c *Checker) abandonIfOffline(err error, why string) bool {
 	if !netstate.Classify(err).Offline() {
 		return false
 	}
+	if why == "reconnect" && !c.retrySpent.Swap(true) {
+		logger.Warn("appupdate: reconnect check failed offline too (%s); reconnect retry spent for this launch, not owing it again", netstate.Detail(err))
+	}
+	if c.retrySpent.Load() {
+		c.mu.Lock()
+		c.lastErr = err
+		c.mu.Unlock()
+		logger.Info("appupdate: %s check failed offline (%s), not owed: reconnect retry already spent", why, netstate.Detail(err))
+		return true
+	}
 	c.owed.Store(true)
-	netstate.Report(err)
 	logger.Info("appupdate: %s check failed offline (%s), owed until the connection is back", why, netstate.Detail(err))
 	return true
 }
