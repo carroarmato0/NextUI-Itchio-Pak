@@ -67,6 +67,11 @@ The active platform and sort mode are shown as pills in the header and saved aut
 - Scrollable description with basic HTML formatting preserved (paragraphs, headings, bullet and numbered lists)
 - QR code for every game — scan to open the itch.io page in a browser
 - Download button (A) — paid games need you to be [signed in](sign-in.md)
+- **Paid games are shown to everyone.** The page says what **A** will do:
+  sign in to download, download a game you own, or — for a game you don't own —
+  scan the QR code to buy it on itch.io. A game you downloaded while it was free
+  that has since become paid says so: *You have a free copy — buy it on itch.io
+  to update*
 - Downloaded files are listed with their on-device paths; press **Y** to manage, delete, or toggle title-based filename for the game
 - Game titles and descriptions in non-Latin scripts render correctly — the bundled font set covers Arabic, Cyrillic, Devanagari, Hebrew, Japanese/CJK, and Thai automatically, with no configuration required
 
@@ -75,6 +80,10 @@ The active platform and sort mode are shown as pills in the header and saved aut
 Many Game Boy games on itch.io are not really "free" — they are
 **name-your-own-price**. The developer lets you pay nothing, but they are asking
 for a donation.
+
+<img src="screenshots/paid-game.png" alt="A paid game you do not own: its price, and a QR code to buy it" width="640"/>
+
+<sub>A paid game you don't own</sub>
 
 <img src="screenshots/donation.png" alt="A game page showing &quot;Consider donating — $4.00 suggested&quot; above the download button" width="640"/>
 
@@ -155,9 +164,9 @@ know whether you gave any. Genuinely free games and paid games show nothing new.
 
 ## Unified naming
 
-When **Use game title as filename** is enabled (the default), downloaded ROMs are automatically renamed to match the game's title on itch.io. For example, a file named `gb-studio-export.gb` becomes `Doomslinger Dungeon.gb`.
+When **Game title as file name** is enabled in Settings (the default), downloaded ROMs are automatically renamed to match the game's title on itch.io. For example, a file named `gb-studio-export.gb` becomes `Doomslinger Dungeon.gb`.
 
-- **Global toggle** — in Settings, **Use game title as filename** turns the feature on or off for all future downloads
+- **Global toggle** — in Settings, **Game title as file name** turns the feature on or off for all future downloads
 - **Per-game toggle** — press **Y** from a game's detail screen to enable or disable title-based naming for that specific game; this option appears only when a download exists and the global toggle is on
   - Multi-file games have a **Use game title as filename** toggle row at the bottom of the **Manage Downloads** screen
 - When toggling a game that already has a ROM on device, a guided flow offers to rename the existing file and — if save data is detected — rename the matching SRAM save and save states at the same time
@@ -185,8 +194,8 @@ your filters.
 
 ### Configuring filters
 
-Press **Start** from any screen to open **Settings**, then scroll to the content
-filter section. Each category can be toggled independently:
+Press **Start** from any screen to open **Settings**, then **Content moderation**
+in the Library section. Each category can be toggled independently:
 
 - **Adult Content** — covers explicit and suggestive material (nudity, gore,
   innuendo, and similar). Supports per-tag control. Defaults to **on**.
@@ -229,14 +238,14 @@ in the Settings screen on the device.
 ## Theming
 
 Itch-io can follow NextUI's own colour palette, so it looks like part of the
-system rather than a separate app. Turn it on with **NextUI Theme** in Settings.
+system rather than a separate app. Turn it on with **NextUI theme** in Settings (Appearance section).
 
 <img src="screenshots/theme-macchiato.png" alt="Itch-io using the Catppuccin Macchiato palette" width="800"/>
 
 - Reads the active palette from NextUI's own settings — no configuration in Itch-io
 - Works with every palette NextUI ships, including the light ones, and with any
   custom palette you drop into `Palettes/` on the SD card
-- The Settings row names the palette in use, e.g. `NextUI Theme: On (Catppuccin Macchiato)`
+- The Settings row names the palette in use, e.g. `On (Catppuccin Macchiato)`
 - Selection highlights, list text, header and footer bars, pills and hint text all
   follow the palette; status badges tint to it too
 - Update (`[UP]`) and error (`[!]`) badges deliberately keep their amber and red so
@@ -265,31 +274,140 @@ If a background task (ROM download, game list cache build, inventory check) is r
 
 ## Settings
 
-- **Account** — shows who is signed in to itch.io, or `not signed in`. Press **A** to sign in with a QR code (or sign in again), **Y** to sign out. See [Signing in](sign-in.md)
-- **ROM Selection mode** — `auto` (best file chosen automatically) or `ask` (always show picker)
-- **ROM Location** — `auto` (saves to the default folder for the file type) or `ask` (directory browser shown before each download; remembers last path per file type)
-- **Pico-8 Core** — selects which Pico-8 emulator downloaded `.p8` / `.p8.png` files are destined for:
+Press **Start** from any screen. Settings is grouped into sections; each value
+is shown on the right of its row, and rows that open another screen end in `>`.
+**L1 / R1** jump to the previous or next section.
+
+<img src="screenshots/settings.png" alt="Settings: the Account and Downloads sections" width="480"/>
+<img src="screenshots/settings-app.png" alt="Settings: the Library, Appearance and App sections" width="480"/>
+
+<sub>The top and the bottom of Settings</sub>
+
+### Account
+
+- **Account** — who is signed in to itch.io, or `not signed in`. Press **A** to
+  sign in with a QR code (or sign in again), **Y** to sign out. See
+  [Signing in](sign-in.md)
+- **Share device info with itch.io** — `On` (default) adds the firmware, its
+  version, the device and the CPU platform to the User-Agent sent to itch.io;
+  `Off` sends only the app name, version and project URL. Takes effect
+  immediately. See [Privacy](#privacy)
+
+### Downloads
+
+- **ROM location** — `Auto` (saves to the default folder for the file type) or
+  `Ask` (directory browser shown before each download; remembers the last path
+  per file type)
+- **Game title as file name** — when `On` (default), downloaded ROMs are renamed
+  to match the itch.io game title; `Off` keeps the original upload file name.
+  See [Unified naming](#unified-naming)
+- **Pico-8 core** (NextUI only) — which Pico-8 emulator downloaded `.p8` /
+  `.p8.png` files are for:
   - `FakeO8 (default)` — saves to `Roms/Pico-8 (P8)/`, used by NextUI's built-in FakeO8 core. Free to use; compatible with most single-cartridge games.
   - `Pico-8 (official)` — saves to `Roms/Pico-8 (PICO)/`, used by the [minui-pico-8-pak](https://github.com/josegonzalez/minui-pico-8-pak). Requires a **paid copy of Pico-8** (a licensed BIOS file must be present); in return it offers broader game compatibility and full **multi-cart support** for games that ship as several linked cartridges.
 
   > **Note:** Some Pico-8 games on itch.io are designed to run only inside the official Pico-8 runtime and will not work correctly under FakeO8. If a game behaves incorrectly or refuses to start, try switching to the official core.
 
   Switching cores instantly moves all previously downloaded Pico-8 files (ROMs and cover art) to the new folder — no manual file management needed. Switching back moves them back.
-- **Use game title as filename** — when `ON` (default), downloaded ROMs are renamed to match the itch.io game title; set to `OFF` to keep the original upload filename
-- **NextUI Theme** — when `On`, Itch-io follows the colour palette configured in
-  NextUI, and the row shows which one is active. Only appears when NextUI's
-  settings file is present. Defaults to `Off`
-- **Share device info with itch.io** — `ON` (default) adds the firmware, its version, the device and the CPU platform to the User-Agent sent to itch.io; `OFF` sends only the app name, version and project URL. Takes effect immediately. See [Privacy](#privacy)
-- **Log Level** — `Info` (default) records key events and all errors. Set to `Debug` to capture the full HTTP request/response flow — useful when reporting a bug involving a download failure or a feed that won't load. The log file is written to `.userdata/<platform>/logs/itchio.log` on the SD card.
-- **Clear Image Cache** — removes cached cover art from `/tmp`
-- **Refresh Game List** — re-fetches the full game list from itch.io across all platform feeds with a live progress screen showing how many games have been retrieved; the cache is updated on completion. Press **B** at any time to cancel the fetch cleanly — no partial cache is written
-- **Update Inventory** — manually triggers a background check for new upstream files, removed games, and missing cover art across all inventory entries; the right side of the row shows when the last check ran (`just now`, `Xm ago`, `Xh ago`, or `Xd ago`) or `never` if no check has run yet
-- **Content Moderation** — configure per-category content filters
-- **About** — app description, version, and QR code linking to the project page
+- **Music downloads** — `Auto`, `Ask` or `Off`: whether a game's soundtrack is
+  downloaded alongside it
+- **Music location** — `Auto` or `Ask`, like ROM location; hidden while music
+  downloads are off
+
+### Library
+
+- **Content moderation** — configure per-category content filters. See
+  [Content filters](#content-filters)
+- **Clear image cache** — removes cached cover art from `/tmp`
+- **Refresh game list** — re-fetches the full game list from itch.io across all
+  platform feeds with a live progress screen; the cache is updated on
+  completion. Press **B** at any time to cancel — no partial cache is written
+- **Update inventory** — checks your downloaded games for new files, removed
+  games and missing cover art. The right of the row shows when the last check
+  ran (`just now`, `Xm ago`, `Xh ago`, `Xd ago`), `never`, or `offline`
+
+### Appearance
+
+- **NextUI theme** (NextUI only) — when `On`, Itch-io follows the colour
+  palette configured in NextUI, and the row names the active palette. See
+  [Theming](#theming)
+
+### App
+
+- **App updates** — the update channel, a manual check, and what is available.
+  See [App updates](#app-updates)
+- **Log level** — `Info` (default) records key events and all errors. `Debug`
+  also captures the full HTTP request/response flow — useful when reporting a
+  bug involving a download failure or a feed that won't load. The log is
+  written to `.userdata/<platform>/logs/itchio.log` on NextUI, and to the app's
+  `data/` folder on muOS
+- **About** — app description, version, and a QR code linking to the project page
+
+---
+
+## App updates
+
+Itch-io checks GitHub for a newer version once per launch and tells you, without
+nagging.
+
+<img src="screenshots/update-notice.png" alt="The update notice in the top-right corner of the game list" width="480"/>
+<img src="screenshots/app-updates.png" alt="Settings, App updates" width="480"/>
+
+<sub>The notice, and Settings → App updates</sub>
+
+- **The notice** slides in at the top right for a few seconds, once per new
+  version. It never covers the startup, sign-in or Updates screens, and it
+  consumes no button presses
+- **Settings → App updates** shows the channel, when the last check ran
+  (**Check now** runs one), what is available, and a QR code to the release
+  notes. The Settings row also says `vX.Y.Z available`
+- **Channels** — `Stable` (final releases only), `Release candidates` (test
+  builds too, plus the final releases they lead to) or `Off` (no check at all).
+  If you are running a release candidate you are kept on release candidates;
+  otherwise the default is Stable
+- **Never a downgrade.** Only a newer version than the one you run is offered.
+  Switching from Release candidates to Stable while on a test build says you are
+  ahead of the latest stable, and tells you when a newer one is out
+
+**How to install an update:**
+
+- **NextUI with the Pak Store** — the notice and the Updates screen point you to
+  the Store, which stays the way to install on NextUI. If the Store is about to
+  offer a version *older* than the release candidate you run, the Updates screen
+  warns you, so you do not replace it by accident
+- **NextUI without the Store**, or a release candidate the Store never offers —
+  scan the QR code on the Updates screen for the release page
+- **muOS** — **Save to ARCHIVE** downloads the update, checks its size and
+  checksum against the release and that Archive Manager will accept it, and
+  leaves it in `ARCHIVE/` on the first card (older Itch-io archives there are
+  removed). Then install it from **Applications → Archive Manager**; your
+  settings, sign-in and inventory are kept. **B** cancels a download in progress
+  and leaves nothing behind
+
+Checks are skipped while offline and run when the connection is back. If GitHub
+is unreachable while itch.io works, the Updates screen says so and the rest of
+the app carries on normally.
 
 ---
 
 ## Network notes
+
+### When the connection drops
+
+- The game list stays usable from the cache; an `Offline` chip in its header
+  says why nothing new is arriving, and covers show `Offline`
+- A game page that cannot load still shows the title, tags and QR code, and for
+  downloaded games the files and **Delete** — so you can manage games offline
+- The game list, covers, the inventory check and the app-update check pick up
+  by themselves when the connection is back; no relaunch needed
+- Problems are named in plain words — no Wi-Fi, itch.io having problems, a Wi-Fi
+  sign-in page, a wrong date and time — instead of technical errors
+- Updating a game over a connection that drops never damages the copy you
+  already have: downloads go to a hidden partial file and only replace the game
+  once complete. Leftovers from a crash or power cut are cleaned up at the next
+  start
+
+### Talking to itch.io
 
 Itch-io identifies itself honestly on every request instead of posing as a web
 browser, so itch.io can see and support its traffic
@@ -299,10 +417,14 @@ bot challenges. Itch-io caches aggressively to keep its request volume polite.
 
 ### Privacy
 
+The update check talks to GitHub (the releases list, and on NextUI with the Pak
+Store the project's `pak.json`), using the short User-Agent below — device
+details are only ever sent to itch.io.
+
 The User-Agent looks like this:
 
 ```
-NextUI-Itchio-Pak/1.0.25 (+https://github.com/carroarmato0/NextUI-Itchio-Pak; NextUI 20260719-0; tg5040; TrimUI Brick / Smart Pro; linux/arm64)
+NextUI-Itchio-Pak/1.1.0 (+https://github.com/carroarmato0/NextUI-Itchio-Pak; NextUI 20260719-0; tg5040; TrimUI Brick / Smart Pro; linux/arm64)
 ```
 
 It contains the app version, the firmware (NextUI or muOS) and its version,
@@ -314,5 +436,5 @@ username, settings, file names, serial numbers or hardware IDs.
 Turning **Share device info with itch.io** off in Settings reduces it to:
 
 ```
-NextUI-Itchio-Pak/1.0.25 (+https://github.com/carroarmato0/NextUI-Itchio-Pak)
+NextUI-Itchio-Pak/1.1.0 (+https://github.com/carroarmato0/NextUI-Itchio-Pak)
 ```

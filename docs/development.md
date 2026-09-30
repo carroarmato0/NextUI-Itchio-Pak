@@ -79,17 +79,21 @@ cross-compile before claiming a build is good.
 cmd/itchio-pak/       — main binary entry point
 cmd/devshot/          — offscreen screen renderer (PNG, no device needed)
 internal/
+  appupdate/          — app-update checks against GitHub: channels, the verdict, muOS Save to ARCHIVE
   firmware/           — NextUI/muOS detection, firmware-specific paths and capabilities
   inventory/          — downloaded-game tracking, update and removal detection
   itchio/             — itch.io client: RSS feed, page scraping, download flow
   logger/             — levelled file logger
+  netstate/           — shared online/offline state, reconnect callbacks, plain-words error messages
+  pakstore/           — read-only reader for the NextUI Pak Store's SQLite install database
+  partfile/           — partial downloads that only replace the real file once complete
   power/              — power button detection via evdev; sleep/shutdown callback
   renderer/           — SDL2 drawing layer, image cache, QR code generation
   roms/               — ROM type detection, destination folder mapping
   settings/           — JSON config read/write
   text/               — font loading and glyph coverage
   theme/              — colour palettes; every colour in the UI comes from here
-  ui/                 — screen-based UI (list, detail, fetch, ROM picker, download, settings)
+  ui/                 — screen-based UI (list, detail, fetch, ROM picker, download, settings, app updates)
 bin/<firmware>/<device>/ — built binaries, e.g. bin/nextui/tg5040/itchio
 lib/<toolchain>/      — SDL2 .so files harvested from each toolchain sysroot
 packaging/muos/       — mux_launch.sh, glyph and mux_lang.ini for the muOS application
