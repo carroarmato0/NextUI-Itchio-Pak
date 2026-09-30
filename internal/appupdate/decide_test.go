@@ -38,6 +38,10 @@ func TestDecide(t *testing.T) {
 		{"NextUI managed stable", Inputs{firmware.KindNextUI, v("v1.0.25"), Stable, managed("v1.0.25"), rel("v1.0.26"), rel("v1.0.26")}, Available, ViaPakStore, false, ""},
 		{"Store never offers an rc", Inputs{firmware.KindNextUI, v("v1.1.0-rc3"), RC, managed("v1.0.25"), rel("v1.1.0-rc4"), rel("v1.0.25")}, Available, ViaReleasePage, false, ""},
 		{"Store-row trap", Inputs{firmware.KindNextUI, v("v1.1.0-rc2"), Stable, managed("v1.1.0-rc2"), rel("v1.1.0"), rel("v1.1.0")}, Available, ViaReleasePage, false, ""},
+		// main's pak.json not bumped yet: the Store would offer v1.0.25, not
+		// the final an rc tester is told about.
+		{"Store has not caught up with the final", Inputs{firmware.KindNextUI, v("v1.1.0-rc3"), RC, managed("v1.0.25"), rel("v1.1.0"), rel("v1.0.25")}, Available, ViaReleasePage, false, ""},
+		{"Store offers the final once pak.json has it", Inputs{firmware.KindNextUI, v("v1.1.0-rc3"), RC, managed("v1.0.25"), rel("v1.1.0"), rel("v1.1.0")}, Available, ViaPakStore, false, ""},
 		{"Store unreadable counts as managed", Inputs{firmware.KindNextUI, v("v1.0.25"), Stable, pakstore.Result{Status: pakstore.Unknown}, rel("v1.0.26"), rel("v1.0.26")}, Available, ViaPakStore, false, ""},
 		{"side-loaded rc, Store offers a downgrade", Inputs{firmware.KindNextUI, v("v1.1.0-rc3"), Stable, managed("v1.0.23"), rel("v1.0.25"), rel("v1.0.25")}, UpToDate, 0, true, "v1.0.25"},
 		{"downgrade warning on RC too", Inputs{firmware.KindNextUI, v("v1.1.0-rc3"), RC, managed("v1.0.23"), rel("v1.1.0-rc3"), rel("v1.0.25")}, UpToDate, 0, false, "v1.0.25"},

@@ -104,6 +104,14 @@ func via(in Inputs, latest Version) Via {
 		// release only when its row compares lower (its comparison thinks
 		// v1.1.0-rc2 == v1.1.0: the Store-row trap).
 		if in.Store.Status != pakstore.NotInstalled && !latest.IsRC() {
+			// The Store offers what pak.json on main says, not GitHub's
+			// latest: until main is bumped it would offer an older version,
+			// so point at the release page instead.
+			if in.PakJSON != nil {
+				if pj, ok := Parse(in.PakJSON.Tag); ok && Compare(pj, latest) < 0 {
+					return ViaReleasePage
+				}
+			}
 			if in.Store.Status == pakstore.Unknown || StoreCompare(in.Store.Version, in.Latest.Tag) == -1 {
 				return ViaPakStore
 			}
