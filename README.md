@@ -75,8 +75,8 @@ the caveats.
 | L1 / R1 (Settings) | Jump to the previous/next section |
 | A | Select / confirm / download |
 | B | Back / cancel (also cancels a Save to ARCHIVE download) |
-| X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
-| Y | Manage / delete downloaded ROMs, or sign out in Settings |
+| X | Delete the downloaded ROMs of a game (game page) |
+| Y | Dismiss the update (`[UP]`) or removal (`[!]`) flag of the selected game (game list); turn title-based file naming on or off (game page); sign out (Settings → Account); clear all filters (Filter &amp; Search) |
 | SELECT | Open Filter &amp; Search overlay (game list) |
 | Start | Open Settings from any screen |
 | Power (short press) | Sleep — resumes at the same screen on wake |

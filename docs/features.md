@@ -17,8 +17,8 @@ than collected at the end.
 - Cache auto-refreshes after 24 hours; manual refresh available in Settings
 - Total game count displayed in the header
 - Games already downloaded to the device are marked with a `[DL]` badge
-- When a background check detects a new upstream file for a downloaded game, its badge changes to `[UP]` — press **X** from the game list to dismiss the notification
-- If a downloaded game has been removed from itch.io (HTTP 404/410), its badge changes to `[!]` — press **X** to dismiss
+- When a background check detects a new upstream file for a downloaded game, its badge changes to `[UP]` — press **Y** from the game list to dismiss the notification
+- If a downloaded game has been removed from itch.io (HTTP 404/410), its badge changes to `[!]` — press **Y** to dismiss
 
 > **Animated GIF thumbnails are best-effort.** When a game's cover art is an
 > animated GIF, a static PNG thumbnail is derived from it using a colour-variance
@@ -72,7 +72,7 @@ The active platform and sort mode are shown as pills in the header and saved aut
   scan the QR code to buy it on itch.io. A game you downloaded while it was free
   that has since become paid says so: *You have a free copy — buy it on itch.io
   to update*
-- Downloaded files are listed with their on-device paths; press **Y** to manage, delete, or toggle title-based filename for the game
+- Downloaded files are listed with their on-device paths; press **X** to delete them, and **Y** to turn title-based file naming on or off for the game
 - Game titles and descriptions in non-Latin scripts render correctly — the bundled font set covers Arabic, Cyrillic, Devanagari, Hebrew, Japanese/CJK, and Thai automatically, with no configuration required
 
 ### Supporting developers
@@ -151,7 +151,7 @@ know whether you gave any. Genuinely free games and paid games show nothing new.
 ## Game management
 
 - Downloaded games are tracked in an on-device inventory
-- From the game detail screen, press **Y** to delete downloaded ROMs:
+- From the game detail screen, press **X** to delete downloaded ROMs:
   - Single-file games show a confirmation prompt with the filename and path
   - Multi-file games open a **Manage Downloads** screen where you can delete files individually or all at once with **Delete all**
 - After deletion the `[DL]` badge is removed and the Download button becomes available again
