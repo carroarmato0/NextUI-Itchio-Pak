@@ -43,6 +43,13 @@ func ClassifyEntry(name string) FileKind {
 		return KindOther
 	}
 	ext := strings.ToLower(ROMExt(name))
+	// ".md" is both the Mega Drive extension and Markdown, and archives ship
+	// README.md far more often than Mega Drive images. Leave it unclassified:
+	// the callers' magic-byte check promotes a real ROM (it has "SEGA " at
+	// 0x100) and leaves a README as an ordinary file.
+	if ext == ".md" {
+		return KindOther
+	}
 	if romExts[ext] {
 		return KindROM
 	}
