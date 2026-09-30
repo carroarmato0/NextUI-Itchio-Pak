@@ -26,10 +26,17 @@ type updatesStatusView struct {
 	QR    string // release page to encode; "" for none
 }
 
-// updatesStatus builds the status block (spec §4, §2a).
-func updatesStatus(v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool, lastErr error, rateUntil time.Time) updatesStatusView {
+// updatesStatus builds the status block (spec §4, §2a). enabled is the
+// checker's Enabled(): a dev or unparseable build never checks, so it says
+// that and nothing else rather than "Not checked yet" forever.
+func updatesStatus(enabled bool, v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool, lastErr error, rateUntil time.Time) updatesStatusView {
 	var out updatesStatusView
 	add := func(text string, warn bool) { out.Lines = append(out.Lines, statusLine{text, warn}) }
+
+	if !enabled {
+		add("Update checks need a release build.", false)
+		return out
+	}
 
 	switch {
 	case v.Channel == appupdate.Off:
@@ -74,13 +81,16 @@ func updatesStatus(v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool,
 		}
 	}
 
-	switch a.State {
+	// An ARCHIVE outcome is shown only under the version it was saved for: a
+	// later check can move Latest on, and "Saved to ARCHIVE" must not then
+	// appear to be about the newer release.
+	archiveState := appupdate.ArchiveIdle
+	if v.Latest != nil && a.Tag == v.Latest.Tag {
+		archiveState = a.State
+	}
+	switch archiveState {
 	case appupdate.ArchiveRunning:
-		if v.Latest != nil {
-			add(fmt.Sprintf("Downloading %s…", v.Latest.Tag), false)
-		} else {
-			add("Downloading…", false)
-		}
+		add(fmt.Sprintf("Downloading %s…", v.Latest.Tag), false)
 	case appupdate.ArchiveDone:
 		add("Saved to ARCHIVE. Open Applications → Archive Manager to install.", false)
 	case appupdate.ArchiveFailed:

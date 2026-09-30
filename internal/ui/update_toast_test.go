@@ -80,6 +80,7 @@ type noticeStubUpdater struct {
 	notifiedTag string
 }
 
+func (u *noticeStubUpdater) Enabled() bool                            { return true }
 func (u *noticeStubUpdater) Verdict() appupdate.Verdict               { return u.v }
 func (u *noticeStubUpdater) Channel() appupdate.Channel               { return u.v.Channel }
 func (u *noticeStubUpdater) SetChannel(appupdate.Channel)             {}

@@ -13,13 +13,15 @@ import (
 // devAppUpdater is a stand-in for *appupdate.Checker so scenes can show every
 // Updates state without a network.
 type devAppUpdater struct {
-	v       appupdate.Verdict
-	running bool
-	at      time.Time
-	err     error
-	archive appupdate.ArchiveStatus
+	disabled bool
+	v        appupdate.Verdict
+	running  bool
+	at       time.Time
+	err      error
+	archive  appupdate.ArchiveStatus
 }
 
+func (d *devAppUpdater) Enabled() bool                            { return !d.disabled }
 func (d *devAppUpdater) Verdict() appupdate.Verdict               { return d.v }
 func (d *devAppUpdater) Channel() appupdate.Channel               { return d.v.Channel }
 func (d *devAppUpdater) SetChannel(ch appupdate.Channel)          { d.v.Channel = ch }
@@ -104,17 +106,20 @@ func init() {
 			netstate.SetForTest(netstate.State{Status: netstate.StatusOffline, Reason: netstate.ReasonDNS})
 			return s
 		}},
+		Scene{Name: "updates-dev-build", Desc: "Updates: a dev build, which never checks", Build: func(d SceneDeps) Screen {
+			return devUpdates(d, &devAppUpdater{disabled: true, v: appupdate.Verdict{Channel: appupdate.Stable}})
+		}},
 		Scene{Name: "updates-archive-progress", Desc: "Updates (muOS): Save to ARCHIVE in progress", Build: func(d SceneDeps) Screen {
 			return devUpdates(d, &devAppUpdater{at: time.Now(), v: archive,
-				archive: appupdate.ArchiveStatus{State: appupdate.ArchiveRunning, Done: 5 << 20, Total: 12819887}})
+				archive: appupdate.ArchiveStatus{State: appupdate.ArchiveRunning, Tag: "v1.1.0-rc3", Done: 5 << 20, Total: 12819887}})
 		}},
 		Scene{Name: "updates-archive-done", Desc: "Updates (muOS): saved to ARCHIVE", Build: func(d SceneDeps) Screen {
 			return devUpdates(d, &devAppUpdater{at: time.Now(), v: archive,
-				archive: appupdate.ArchiveStatus{State: appupdate.ArchiveDone, Path: "/mnt/mmc/ARCHIVE/" + appupdate.AssetName("v1.1.0-rc3")}})
+				archive: appupdate.ArchiveStatus{State: appupdate.ArchiveDone, Tag: "v1.1.0-rc3", Path: "/mnt/mmc/ARCHIVE/" + appupdate.AssetName("v1.1.0-rc3")}})
 		}},
 		Scene{Name: "updates-archive-failed", Desc: "Updates (muOS): integrity check failed", Build: func(d SceneDeps) Screen {
 			return devUpdates(d, &devAppUpdater{at: time.Now(), v: archive,
-				archive: appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Err: appupdate.ErrIntegrity}})
+				archive: appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Tag: "v1.1.0-rc3", Err: appupdate.ErrIntegrity}})
 		}},
 	)
 }

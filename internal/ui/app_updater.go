@@ -12,6 +12,9 @@ import (
 // AppUpdater is satisfied by *appupdate.Checker; an interface so offscreen
 // scenes and tests can use a stand-in.
 type AppUpdater interface {
+	// Enabled is false for a dev or unparseable build, or a firmware that
+	// never checks: Settings → Updates then says so instead of waiting.
+	Enabled() bool
 	Verdict() appupdate.Verdict
 	Channel() appupdate.Channel
 	SetChannel(appupdate.Channel)

@@ -18,11 +18,13 @@ import (
 
 // stubUpdater is a minimal AppUpdater; the Settings tests (Task 12) use it too.
 type stubUpdater struct {
+	disabled  bool
 	v         appupdate.Verdict
 	archive   appupdate.ArchiveStatus
 	cancelled int
 }
 
+func (s *stubUpdater) Enabled() bool                            { return !s.disabled }
 func (s *stubUpdater) Verdict() appupdate.Verdict               { return s.v }
 func (s *stubUpdater) Channel() appupdate.Channel               { return s.v.Channel }
 func (s *stubUpdater) SetChannel(ch appupdate.Channel)          { s.v.Channel = ch }
@@ -187,17 +189,17 @@ func TestUpdatesStatus(t *testing.T) {
 		{"offline, nothing known", appupdate.Verdict{}, appupdate.ArchiveStatus{}, true, nil, "You're offline.", false},
 		{"store downgrade", appupdate.Verdict{Kind: appupdate.UpToDate, Running: ver("v1.1.0-rc3"), Latest: rel("v1.1.0-rc3"), StoreOffers: "v1.0.25"}, appupdate.ArchiveStatus{}, false, nil,
 			"The Pak Store may offer v1.0.25 as an update. It is older than this release candidate; installing it would replace it.", false},
-		{"saved", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveDone}, false, nil, "Saved to ARCHIVE. Open Applications → Archive Manager to install.", true},
-		{"integrity", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Err: appupdate.ErrIntegrity}, false, nil, "Download failed the integrity check.", true},
-		{"cancelled", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Err: context.Canceled}, false, nil, "Download cancelled.", true},
+		{"saved", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveDone, Tag: "v1.1.0-rc3"}, false, nil, "Saved to ARCHIVE. Open Applications → Archive Manager to install.", true},
+		{"integrity", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Tag: "v1.1.0-rc3", Err: appupdate.ErrIntegrity}, false, nil, "Download failed the integrity check.", true},
+		{"cancelled", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveFailed, Tag: "v1.1.0-rc3", Err: context.Canceled}, false, nil, "Download cancelled.", true},
 		{"check failed", appupdate.Verdict{}, appupdate.ArchiveStatus{}, false, errors.New("decode releases"), "The last check failed.", false},
 		{"available, latest nil", appupdate.Verdict{Kind: appupdate.Available}, appupdate.ArchiveStatus{}, false, nil, "Not checked yet.", false},
 		{"up to date, latest nil", appupdate.Verdict{Kind: appupdate.UpToDate, Running: ver("v1.1.0-rc3")}, appupdate.ArchiveStatus{}, false, nil, "You have the latest version (v1.1.0-rc3).", false},
-		{"archive running, latest nil", appupdate.Verdict{Kind: appupdate.Available, Via: appupdate.ViaArchive}, appupdate.ArchiveStatus{State: appupdate.ArchiveRunning}, false, nil, "Downloading…", false},
+		{"archive running", archiveVerdict, appupdate.ArchiveStatus{State: appupdate.ArchiveRunning, Tag: "v1.1.0-rc3"}, false, nil, "Downloading v1.1.0-rc3…", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			view := updatesStatus(c.v, c.a, c.offline, c.err, time.Time{})
+			view := updatesStatus(true, c.v, c.a, c.offline, c.err, time.Time{})
 			var texts []string
 			for _, l := range view.Lines {
 				texts = append(texts, l.Text)
@@ -210,5 +212,37 @@ func TestUpdatesStatus(t *testing.T) {
 				t.Fatalf("QR = %q, want present=%v", view.QR, c.qr)
 			}
 		})
+	}
+}
+
+// An ARCHIVE outcome belongs to the version it was saved for: once Latest
+// moves on (or is unknown), it is not shown under another version.
+func TestUpdatesStatus_archiveLineOnlyForItsVersion(t *testing.T) {
+	for _, st := range []appupdate.ArchiveState{appupdate.ArchiveRunning, appupdate.ArchiveDone, appupdate.ArchiveFailed} {
+		for name, v := range map[string]appupdate.Verdict{
+			"other version": archiveVerdict,
+			"latest nil":    {Kind: appupdate.Available, Via: appupdate.ViaArchive},
+		} {
+			a := appupdate.ArchiveStatus{State: st, Tag: "v1.1.0-rc2", Err: appupdate.ErrIntegrity}
+			for _, l := range updatesStatus(true, v, a, false, nil, time.Time{}).Lines {
+				if strings.Contains(l.Text, "Download") || strings.Contains(l.Text, "ARCHIVE") {
+					t.Fatalf("state %d, %s: line %q shown for an outcome saved for v1.1.0-rc2", st, name, l.Text)
+				}
+			}
+		}
+	}
+}
+
+// A dev or unparseable build never checks: say so, and nothing else.
+func TestUpdatesStatus_disabledBuild(t *testing.T) {
+	for _, v := range []appupdate.Verdict{
+		{Channel: appupdate.Stable},
+		{Channel: appupdate.Off},
+		{Kind: appupdate.Available, Channel: appupdate.RC, Latest: &appupdate.Release{Tag: "v1.1.0", URL: "https://example.invalid/"}, StoreOffers: "v1.0.25"},
+	} {
+		view := updatesStatus(false, v, appupdate.ArchiveStatus{}, true, errors.New("boom"), time.Now().Add(time.Hour))
+		if len(view.Lines) != 1 || view.Lines[0].Text != "Update checks need a release build." || view.QR != "" {
+			t.Fatalf("verdict %+v: view = %+v, want exactly the release-build line", v, view)
+		}
 	}
 }

@@ -40,6 +40,7 @@ const (
 // ArchiveStatus is a snapshot of the ARCHIVE download.
 type ArchiveStatus struct {
 	State       ArchiveState
+	Tag         string // the release being (or last) saved; set when it starts
 	Done, Total int64
 	Path        string
 	Err         error
@@ -115,6 +116,11 @@ func (c *Checker) Start() { c.maybeCheck("launch") }
 
 // CheckNow is "Check now" on the Updates screen.
 func (c *Checker) CheckNow() {
+	if !c.Enabled() {
+		logger.Info("appupdate: check requested from Settings, but checks are disabled: firmware=%s running=%q (not a release build)",
+			c.cfg.Firmware, c.cfg.Running)
+		return
+	}
 	logger.Info("appupdate: check requested from Settings")
 	c.maybeCheck("manual")
 }
@@ -456,7 +462,7 @@ func (c *Checker) StartArchiveSave() {
 	r := *v.Latest
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelArchive = cancel
-	c.archive = ArchiveStatus{State: ArchiveRunning, Total: r.Size}
+	c.archive = ArchiveStatus{State: ArchiveRunning, Tag: r.Tag, Total: r.Size}
 	c.mu.Unlock()
 
 	logger.Info("appupdate: Save to ARCHIVE started for %s", r.Tag)

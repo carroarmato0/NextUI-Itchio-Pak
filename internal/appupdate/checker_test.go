@@ -465,3 +465,30 @@ func TestChecker_reconnectRetryBudget(t *testing.T) {
 		t.Fatal("Check now must still run after the reconnect budget is spent")
 	}
 }
+
+// The ARCHIVE status names the version it was started for, so the UI never
+// shows one version's outcome under another.
+func TestChecker_archiveStatusRecordsTag(t *testing.T) {
+	partfile.SetJournal(filepath.Join(t.TempDir(), "partials.json"))
+	t.Cleanup(func() { partfile.SetJournal("") })
+	body := goodMuxapp(t)
+	asset := serve(t, body)
+	r := releaseFor(asset.URL, body, "v1.1.0-rc3")
+	gh := newFakeGitHub(t, `[{"tag_name":"v1.1.0-rc3","prerelease":true,"assets":[{"name":"Itch-io.muOS.v1.1.0-rc3.muxapp","browser_download_url":"`+
+		r.Asset+`","size":`+itoa(r.Size)+`,"digest":"`+r.Digest+`"}]}]`, "")
+	var off atomic.Bool
+	onlineForTest(t, &off)
+	c := NewChecker(Config{Firmware: firmware.KindMuOS, Running: "v1.1.0-rc2", Channel: RC,
+		StatePath: filepath.Join(t.TempDir(), "s.json"), ArchiveDir: filepath.Join(t.TempDir(), "ARCHIVE"),
+		UserAgent: "ua", Source: testSource(gh.srv.URL)})
+	c.Start()
+	c.wg.Wait()
+	c.StartArchiveSave()
+	if st := c.ArchiveStatus(); st.Tag != "v1.1.0-rc3" {
+		t.Fatalf("running status Tag = %q, want v1.1.0-rc3", st.Tag)
+	}
+	c.wg.Wait()
+	if st := c.ArchiveStatus(); st.State != ArchiveDone || st.Tag != "v1.1.0-rc3" {
+		t.Fatalf("finished status = %+v, want Done with Tag v1.1.0-rc3", st)
+	}
+}

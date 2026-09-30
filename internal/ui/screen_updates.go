@@ -267,7 +267,7 @@ func (s *UpdatesScreen) Draw(r *renderer.Renderer) {
 		y += rowH
 	}
 
-	view := updatesStatus(v, a, netstate.Offline(), s.up.LastError(), s.up.RateLimitedUntil())
+	view := updatesStatus(s.up.Enabled(), v, a, netstate.Offline(), s.up.LastError(), s.up.RateLimitedUntil())
 	y += 10
 	statusTop := y
 	textW := r.W - 40
