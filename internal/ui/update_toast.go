@@ -31,7 +31,7 @@ func (n *UpdateNotice) Animating() bool { return n.active }
 
 // Tick starts the notice when one is due and the current screen allows it,
 // and retires it when the animation ends or the screen stops allowing it
-// (spec §2, §3 — e.g. the user opens Settings → Updates mid-notice). true
+// (spec §2, §3 — e.g. the user opens Settings → App updates mid-notice). true
 // means redraw now.
 func (n *UpdateNotice) Tick(r *renderer.Renderer, current Screen, now time.Time) bool {
 	up := appUpdater()
@@ -95,7 +95,7 @@ func noticeText(v appupdate.Verdict, narrow bool) (title, sub string) {
 	if v.Via == appupdate.ViaPakStore {
 		return title, "Update it in the Pak Store"
 	}
-	return title, "Settings → Updates"
+	return title, "Settings → App updates"
 }
 
 // noticeShown is how far the notice has slid in: 0 above the screen, 1 at

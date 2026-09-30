@@ -12,7 +12,7 @@ import (
 
 func TestNoticeText(t *testing.T) {
 	v := appupdate.Verdict{Kind: appupdate.Available, Latest: &appupdate.Release{Tag: "v1.1.0"}}
-	if ti, sub := noticeText(v, false); ti != "Itch-io v1.1.0 available" || sub != "Settings → Updates" {
+	if ti, sub := noticeText(v, false); ti != "Itch-io v1.1.0 available" || sub != "Settings → App updates" {
 		t.Errorf("wide = %q / %q", ti, sub)
 	}
 	v.Via = appupdate.ViaPakStore

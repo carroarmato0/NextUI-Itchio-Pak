@@ -22,7 +22,7 @@ const (
 	uRowArchive // muOS and ViaArchive only
 )
 
-// UpdatesScreen is Settings → Updates (spec §4).
+// UpdatesScreen is Settings → App updates (spec §4).
 type UpdatesScreen struct {
 	cfg     *settings.Config
 	cfgPath string
@@ -245,7 +245,7 @@ func (s *UpdatesScreen) Draw(r *renderer.Renderer) {
 	headerH, footerH := int32(72), int32(52)
 	textY := r.DrawHeaderBar(headerH)
 	mt := r.Theme.MainText
-	r.DrawText("Updates", 20, textY, mt[0], mt[1], mt[2])
+	r.DrawText("App updates", 20, textY, mt[0], mt[1], mt[2])
 
 	_, fontH := r.TextSize("Ag")
 	_, smallH := r.SmallTextSize("Ag")
