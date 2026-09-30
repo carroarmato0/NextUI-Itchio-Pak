@@ -8,6 +8,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
 )
 
 const (
@@ -131,29 +132,34 @@ func drawNotice(r *renderer.Renderer, v appupdate.Verdict, shown float64) {
 	}
 	title, sub := noticeText(v, abbreviate(r.W))
 	m := noticeMargin(r.W, r.H)
-	padX, padY := int32(16), int32(8)
-	if compact(r.W, r.H) {
-		padX, padY = 10, 5
-	}
-	tw, th := r.TextSize(title)
+
+	// Both lines at the small size: the title bold, the hint regular and
+	// softer, so the notice reads as a notice rather than a second header.
+	// Padding follows the text height, so every geometry gets the same
+	// proportions (pixel constants were cramped at 480 and loose at 768).
+	size := int(r.H / 32)
+	tw, th := r.DisplayTextSize(title, size)
 	var sw, sh int32
 	if sub != "" {
 		sw, sh = r.SmallTextSize(sub)
 	}
+	padX, padY, gap := th*3/4, th/4, int32(0)
 	w := max(tw, sw) + 2*padX
 	h := th + 2*padY
 	if sub != "" {
-		h += sh + 2
+		h += gap + sh
 	}
 	x := r.W - m - w
 	// From fully above the top edge (y = -h) down to the margin.
 	y := int32(float64(-h-2) + shown*float64(h+2+m))
 
 	bd, ac, at := r.Theme.ModalBorder(), r.Theme.Accent, r.Theme.AccentText
-	r.DrawPill(x-1, y-1, w+2, h+2, bd[0], bd[1], bd[2])
-	r.DrawPill(x, y, w, h, ac[0], ac[1], ac[2])
-	r.DrawText(title, x+padX, y+padY, at[0], at[1], at[2])
+	hint := theme.Mix(ac, at, 75)
+	rad := th / 3
+	r.DrawRoundedRect(x-1, y-1, w+2, h+2, rad+1, bd[0], bd[1], bd[2])
+	r.DrawRoundedRect(x, y, w, h, rad, ac[0], ac[1], ac[2])
+	r.DrawDisplayText(title, x+padX, y+padY, size, at[0], at[1], at[2])
 	if sub != "" {
-		r.DrawSmallText(sub, x+padX, y+padY+th+2, at[0], at[1], at[2])
+		r.DrawSmallText(sub, x+padX, y+padY+th+gap, hint[0], hint[1], hint[2])
 	}
 }

@@ -726,6 +726,34 @@ func (r *Renderer) drawPillDirect(x, y, w, h int32, red, green, blue uint8) {
 	drawFilledCircle(r.Renderer, x+w-radius, y+radius, radius, red, green, blue)
 }
 
+// DrawRoundedRect fills a rectangle with corners of the given radius: a card,
+// where DrawPill's half-height radius would turn a two-line box into a
+// capsule. Drawn directly, not cached — it is for short-lived overlays.
+func (r *Renderer) DrawRoundedRect(x, y, w, h, radius int32, red, green, blue uint8) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	radius = min(radius, w/2, h/2)
+	if radius < 1 {
+		r.DrawRect(x, y, w, h, red, green, blue)
+		return
+	}
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	body := sdl.Rect{X: x + radius, Y: y, W: w - radius*2, H: h}
+	r.Renderer.FillRect(&body)
+	sides := [2]sdl.Rect{
+		{X: x, Y: y + radius, W: radius, H: h - radius*2},
+		{X: x + w - radius, Y: y + radius, W: radius, H: h - radius*2},
+	}
+	r.Renderer.FillRects(sides[:])
+	for _, c := range [4][2]int32{
+		{x + radius, y + radius}, {x + w - radius - 1, y + radius},
+		{x + radius, y + h - radius - 1}, {x + w - radius - 1, y + h - radius - 1},
+	} {
+		drawFilledCircle(r.Renderer, c[0], c[1], radius, red, green, blue)
+	}
+}
+
 // createPillTexture pre-renders a pill into an SDL_Texture with the given
 // dimensions and fill colour. Returns nil if the renderer does not support
 // render targets (software fallback).
