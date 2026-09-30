@@ -26,7 +26,7 @@ func TestDetailAction(t *testing.T) {
 		{"installed, signed in, owned", detailActionInput{Installed: true, SignedIn: true, Owned: true}, actionDownloadAgain},
 		{"installed, signed in, owned, update pending", detailActionInput{Installed: true, SignedIn: true, Owned: true, UpdatePending: true}, actionDownloadAgain},
 		// A refund after install: the files stay, re-downloading needs a purchase.
-		{"installed, signed in, no longer owned", detailActionInput{Installed: true, SignedIn: true}, actionBuy},
+		{"installed, signed in, no longer owned", detailActionInput{Installed: true, SignedIn: true}, actionBuyInstalled},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := chooseDetailAction(tc.in); got != tc.want {
@@ -41,10 +41,18 @@ func TestDetailAction_whatAStarts(t *testing.T) {
 	for a, want := range map[detailAction]string{
 		actionDownload: "download", actionDownloadAgain: "download",
 		actionSignIn: "sign-in", actionSignInAgain: "sign-in", actionReauthUpdate: "sign-in",
-		actionBuy: "", actionChecking: "", actionBrowserOnly: "browser-only",
+		actionBuy: "", actionBuyInstalled: "", actionChecking: "", actionBrowserOnly: "browser-only",
 	} {
 		if got := a.onA(); got != want {
 			t.Errorf("%v.onA() = %q, want %q", a, got, want)
 		}
+	}
+}
+
+// A game downloaded free and since made paid: the label says why A does not
+// download it again.
+func TestDetailAction_buyInstalledLabel(t *testing.T) {
+	if got := actionBuyInstalled.Label(); got != "You have a free copy — buy it on itch.io to update" {
+		t.Fatalf("label = %q", got)
 	}
 }

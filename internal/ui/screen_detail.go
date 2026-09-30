@@ -313,7 +313,7 @@ func (s *DetailScreen) actionColor(r *renderer.Renderer, a detailAction) [3]uint
 		return r.Theme.SuccessAction()
 	case actionSignIn, actionSignInAgain, actionReauthUpdate:
 		return r.Theme.Warning()
-	case actionBuy:
+	case actionBuy, actionBuyInstalled:
 		return r.Theme.MainText
 	default:
 		return r.Theme.Muted()
@@ -1118,7 +1118,7 @@ func (s *DetailScreen) drawQR(r *renderer.Renderer, x, y, w, h int32) {
 	}
 	r.DrawTextureAt(s.qrTex, qrX, qrY, qrS, qrS)
 	mu := r.Theme.Muted()
-	if s.action() == actionBuy {
+	if a := s.action(); a == actionBuy || a == actionBuyInstalled {
 		r.DrawSmallTextCentered("Scan to buy", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])
 	} else {
 		r.DrawSmallTextCentered("Scan to open", x, qrY+qrS+4, w, mu[0], mu[1], mu[2])

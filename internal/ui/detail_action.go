@@ -16,6 +16,10 @@ const (
 	actionReauthUpdate // installed paid game, signed out, an update is waiting
 	actionBuy          // signed in but not owned: the QR code opens the store page
 	actionChecking     // signed in, asking itch.io whether it is owned
+	// actionBuyInstalled: installed, signed in, not owned — a game downloaded
+	// while it was free that has since become paid. Like actionBuy, A does
+	// nothing; the label says why there is no "Download again".
+	actionBuyInstalled
 )
 
 type detailActionInput struct {
@@ -51,6 +55,8 @@ func chooseDetailAction(in detailActionInput) detailAction {
 		return actionDownload
 	case in.CheckingOwnership:
 		return actionChecking
+	case in.Installed:
+		return actionBuyInstalled
 	default:
 		return actionBuy
 	}
@@ -75,6 +81,8 @@ func (a detailAction) Label() string {
 		return "Scan the QR code to buy it on itch.io"
 	case actionChecking:
 		return "Checking your purchases"
+	case actionBuyInstalled:
+		return "You have a free copy — buy it on itch.io to update"
 	}
 	return ""
 }
