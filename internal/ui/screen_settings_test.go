@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -92,5 +93,34 @@ func TestMoveCursor_repeatStopsAtEnds(t *testing.T) {
 	s.moveCursor(1, false)
 	if s.cursor != sItemAbout {
 		t.Fatalf("held down at the last row: cursor = %d, want sItemAbout", s.cursor)
+	}
+}
+
+func TestUpdatesRow_hiddenWithoutUpdater(t *testing.T) {
+	s := newTestSettingsScreen(t, nil)
+	s.cursor = sItemContentModeration
+	s.moveCursor(1, false)
+	if s.cursor != sItemAbout {
+		t.Fatalf("without an updater the cursor must skip Updates, got %d", s.cursor)
+	}
+}
+
+func TestUpdatesRow_shownWithUpdater(t *testing.T) {
+	SetAppUpdater(&stubUpdater{})
+	t.Cleanup(func() { SetAppUpdater(nil) })
+	s := newTestSettingsScreen(t, nil)
+	s.cursor = sItemContentModeration
+	s.moveCursor(1, false)
+	if s.cursor != sItemUpdates {
+		t.Fatalf("cursor = %d, want sItemUpdates", s.cursor)
+	}
+}
+
+func TestUpdatesRowAnnotation(t *testing.T) {
+	if got := updatesRowAnnotation(appupdate.Verdict{Kind: appupdate.Available, Latest: &appupdate.Release{Tag: "v1.1.0"}}); got != "v1.1.0 available" {
+		t.Errorf("available: %q", got)
+	}
+	if got := updatesRowAnnotation(appupdate.Verdict{Kind: appupdate.UpToDate, Latest: &appupdate.Release{Tag: "v1.1.0"}}); got != "" {
+		t.Errorf("up to date: %q, want nothing", got)
 	}
 }
