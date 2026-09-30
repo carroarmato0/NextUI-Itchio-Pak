@@ -248,6 +248,36 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func TestArchiveDirAndPakStoreDB(t *testing.T) {
+	t.Setenv("PLATFORM", "tg5040")
+	nx := ForTest(KindNextUI, "")
+	if got := nx.PakStoreDB(); got != "/mnt/SDCARD/.userdata/tg5040/nextui-pak-store/pak-store.db" {
+		t.Errorf("NextUI PakStoreDB = %q", got)
+	}
+	if nx.ArchiveDir() != "" {
+		t.Errorf("NextUI ArchiveDir = %q, want empty", nx.ArchiveDir())
+	}
+
+	t.Setenv("PLATFORM", "")
+	if got := ForTest(KindNextUI, "").PakStoreDB(); got != "" {
+		t.Errorf("NextUI without PLATFORM: PakStoreDB = %q, want empty", got)
+	}
+
+	prefix := t.TempDir()
+	mu := ForTest(KindMuOS, prefix)
+	if got, want := mu.ArchiveDir(), filepath.Join(prefix, "/mnt/mmc", "ARCHIVE"); got != want {
+		t.Errorf("muOS ArchiveDir = %q, want %q", got, want)
+	}
+	if mu.PakStoreDB() != "" {
+		t.Errorf("muOS PakStoreDB = %q, want empty", mu.PakStoreDB())
+	}
+
+	host := ForTest(KindHost, "")
+	if host.ArchiveDir() != "" || host.PakStoreDB() != "" {
+		t.Error("host must expose neither path")
+	}
+}
+
 // h700 is a single PLATFORM across eleven SKUs, so the platform code cannot say
 // which handheld this is — $DEVICE can. The fallbacks matter as much as the
 // table: an unrecognised SKU still has to produce something a bug report can be

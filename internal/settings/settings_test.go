@@ -727,3 +727,25 @@ func TestLoad_legacyKeyMigrationLeavesInventoryAlone(t *testing.T) {
 		t.Errorf("inventory.json changed:\n%s", got)
 	}
 }
+
+func TestUpdateChannel_roundTripAndDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"rom_location":"auto"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := settings.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UpdateChannel != "" {
+		t.Fatalf("old config: UpdateChannel = %q, want empty (not chosen)", cfg.UpdateChannel)
+	}
+	cfg.UpdateChannel = "rc"
+	if err := cfg.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := settings.Load(path)
+	if again.UpdateChannel != "rc" {
+		t.Fatalf("after save: UpdateChannel = %q, want rc", again.UpdateChannel)
+	}
+}

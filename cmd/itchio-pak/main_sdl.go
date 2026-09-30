@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -234,6 +236,32 @@ func runSDL() {
 	})
 	netstate.StartMonitor("/", client.Probe)
 
+	// App updates. The channel is resolved before anything reads it; an rc
+	// build with no choice yet pins "rc", so installing the final release does
+	// not silently drop a tester to Stable (spec §1).
+	running, _ := appupdate.Parse(version)
+	channel, pin := appupdate.ResolveChannel(cfg.UpdateChannel, running)
+	if pin {
+		cfg.UpdateChannel = string(channel)
+		if err := cfg.Save(cfgPath); err != nil {
+			logger.Warn("appupdate: could not pin the rc channel: %v", err)
+		}
+		logger.Info("appupdate: release-candidate build, update channel pinned to rc")
+	}
+	appUpd := appupdate.NewChecker(appupdate.Config{
+		Firmware:   env.Kind(),
+		Running:    version,
+		Channel:    channel,
+		StatePath:  filepath.Join(dataDir, "update_state.json"),
+		StoreDB:    env.PakStoreDB(),
+		ArchiveDir: env.ArchiveDir(),
+		UserAgent:  itchio.BuildUserAgent(itchio.UAInfoFromEnv(version, env), false),
+		Notify: func() {
+			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+		},
+	})
+	ui.SetAppUpdater(appUpd)
+
 	cache := renderer.NewImageCache(50, client.HTTPClient())
 	defer cache.Clear()
 	cache.SetNotify(func() {
@@ -260,6 +288,7 @@ func runSDL() {
 	netstate.OnReconnect(listScreen.RetryAfterReconnect)
 	netstate.OnReconnect(updateSvc.RetryIfOwed)
 	netstate.OnReconnect(cache.Resume)
+	netstate.OnReconnect(appUpd.RetryAfterReconnect)
 
 	go func() {
 		dirs := []string{env.MusicRoot()}
@@ -267,6 +296,9 @@ func runSDL() {
 			if d != "" {
 				dirs = append(dirs, d)
 			}
+		}
+		if d := env.ArchiveDir(); d != "" {
+			dirs = append(dirs, d)
 		}
 		partfile.Sweep(dirs)
 	}()
@@ -280,6 +312,11 @@ func runSDL() {
 	} else {
 		current = listScreen
 	}
+
+	// After the first screen is up; the notice itself waits for a screen
+	// that allows it (ui.noticeAllowed).
+	appUpd.Start()
+	var notice ui.UpdateNotice
 
 	// pendingQuit and pendingAction are set together; only read when pendingQuit is true.
 	var (
@@ -328,7 +365,7 @@ loop:
 		// but then WaitEvent blocks indefinitely because no further event arrives.
 		gotEvent := false
 		var e sdl.Event
-		if current.NeedsRedraw() {
+		if current.NeedsRedraw() || notice.Animating() {
 			e = sdl.WaitEventTimeout(16)
 		} else if newImages {
 			e = sdl.PollEvent()
@@ -429,7 +466,7 @@ loop:
 			} else {
 				drawPowerPendingOverlay(r, pendingAction)
 			}
-		} else if gotEvent || newImages || current.NeedsRedraw() {
+		} else if noticeFrame := notice.Tick(r, current, time.Now()); gotEvent || newImages || current.NeedsRedraw() || noticeFrame {
 			current.Draw(r)
 		}
 	}

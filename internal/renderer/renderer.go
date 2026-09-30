@@ -61,6 +61,11 @@ type Renderer struct {
 	displayFonts  map[int]*ttf.Font        // primary font at custom sizes, see display_text.go
 	descCache     map[string][]descBlock   // parsed game descriptions, see description.go
 
+	// Overlay, when set, draws over whatever the current screen drew, just
+	// before the frame is shown. Used by the app-update notice so no screen
+	// has to know about it. It must not call Present.
+	Overlay func(*Renderer)
+
 	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
 	drawLog   []DrawLogEntry
 	drawLogOn bool
@@ -199,6 +204,9 @@ func (r *Renderer) Clear(red, green, blue uint8) {
 }
 
 func (r *Renderer) Present() {
+	if r.Overlay != nil {
+		r.Overlay(r)
+	}
 	r.Renderer.Present()
 }
 
@@ -716,6 +724,34 @@ func (r *Renderer) drawPillDirect(x, y, w, h int32, red, green, blue uint8) {
 	r.Renderer.FillRect(&pillBodyBuf)
 	drawFilledCircle(r.Renderer, x+radius, y+radius, radius, red, green, blue)
 	drawFilledCircle(r.Renderer, x+w-radius, y+radius, radius, red, green, blue)
+}
+
+// DrawRoundedRect fills a rectangle with corners of the given radius: a card,
+// where DrawPill's half-height radius would turn a two-line box into a
+// capsule. Drawn directly, not cached — it is for short-lived overlays.
+func (r *Renderer) DrawRoundedRect(x, y, w, h, radius int32, red, green, blue uint8) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	radius = min(radius, w/2, h/2)
+	if radius < 1 {
+		r.DrawRect(x, y, w, h, red, green, blue)
+		return
+	}
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	body := sdl.Rect{X: x + radius, Y: y, W: w - radius*2, H: h}
+	r.Renderer.FillRect(&body)
+	sides := [2]sdl.Rect{
+		{X: x, Y: y + radius, W: radius, H: h - radius*2},
+		{X: x + w - radius, Y: y + radius, W: radius, H: h - radius*2},
+	}
+	r.Renderer.FillRects(sides[:])
+	for _, c := range [4][2]int32{
+		{x + radius, y + radius}, {x + w - radius - 1, y + radius},
+		{x + radius, y + h - radius - 1}, {x + w - radius - 1, y + h - radius - 1},
+	} {
+		drawFilledCircle(r.Renderer, c[0], c[1], radius, red, green, blue)
+	}
 }
 
 // createPillTexture pre-renders a pill into an SDL_Texture with the given

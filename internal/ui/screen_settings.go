@@ -3,10 +3,10 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
@@ -42,6 +42,7 @@ const (
 	sItemRefreshCache
 	sItemUpdateInventory
 	sItemContentModeration
+	sItemUpdates
 	sItemAbout
 	sItemCount
 )
@@ -57,6 +58,7 @@ type SettingsScreen struct {
 	prev           Screen
 	onRefreshGames func(Screen) Screen // nil if not available
 	updateSvc      UpdateServicer
+	appUpd         AppUpdater // nil hides the Updates row
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -97,6 +99,7 @@ func NewSettingsScreen(
 		prev:           prev,
 		onRefreshGames: onRefreshGames,
 		updateSvc:      updateSvc,
+		appUpd:         appUpdater(),
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
@@ -178,6 +181,8 @@ func (s *SettingsScreen) rowHidden(item settingsItem) bool {
 		return s.cfg.MusicDownload == "off"
 	case sItemRefreshCache:
 		return s.onRefreshGames == nil
+	case sItemUpdates:
+		return s.appUpd == nil
 	default:
 		return false
 	}
@@ -256,6 +261,9 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	}
 	items = append(items, menuItem{sItemUpdateInventory, "Update Inventory"})
 	items = append(items, menuItem{sItemContentModeration, "Content Moderation >"})
+	if s.appUpd != nil {
+		items = append(items, menuItem{sItemUpdates, "Updates >"})
+	}
 	items = append(items, menuItem{sItemAbout, "About"})
 
 	// Find where the cursor sits in the rendered items slice (theme row may be absent).
@@ -320,33 +328,13 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 		// Update Inventory row: right-aligned timestamp/running annotation.
 		if item.id == sItemUpdateInventory && s.updateSvc != nil {
 			annotation := updateInventoryAnnotation(s.updateSvc)
-			aw, _ := r.SmallTextSize(annotation)
-			ax := r.W - aw - 20
 			warn := s.updateSvc.IsRunning() || netstate.Offline()
-			var aR, aG, aB uint8
-			switch {
-			case isSelected && warn:
-				// Warning is toned against Background, so on the selected row —
-				// filled with an Accent pill — it can be unreadable (orange on
-				// orange). ToneOn adapts the same hue until it clears contrast
-				// against the pill, so "offline"/"checking…" keep reading as a
-				// warning instead of turning into the idle colour.
-				c := r.Theme.ToneOn(r.Theme.Warning(), r.Theme.Accent)
-				aR, aG, aB = c[0], c[1], c[2]
-			case isSelected:
-				// Muted is derived from the background too; de-emphasise
-				// relative to the Accent pill the same way the Account row's
-				// "not signed in" does.
-				c := theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
-				aR, aG, aB = c[0], c[1], c[2]
-			case warn:
-				aR, aG, aB = rgb(r.Theme.Warning())
-			default:
-				aR, aG, aB = rgb(r.Theme.Muted())
+			drawRowAnnotation(r, annotation, y, annotationColor(r, isSelected, r.Theme.Warning(), warn))
+		}
+		if item.id == sItemUpdates && s.appUpd != nil {
+			if a := updatesRowAnnotation(s.appUpd.Verdict()); a != "" {
+				drawRowAnnotation(r, a, y, annotationColor(r, isSelected, r.Theme.SuccessAction(), true))
 			}
-			_, fh := r.TextSize("Ag")
-			_, sh := r.SmallTextSize(annotation)
-			r.DrawSmallText(annotation, ax, y+(fh-sh)/2, aR, aG, aB)
 		}
 	}
 
@@ -479,21 +467,15 @@ func updateInventoryAnnotation(svc UpdateServicer) string {
 	if svc.IsRunning() {
 		return "checking…"
 	}
-	t := svc.LatestCheckedAt()
-	if t.IsZero() {
-		return "never"
+	return lastCheckedLabel(svc.LatestCheckedAt())
+}
+
+// updatesRowAnnotation is "v1.1.0 available", or nothing.
+func updatesRowAnnotation(v appupdate.Verdict) string {
+	if v.Kind == appupdate.Available && v.Latest != nil {
+		return v.Latest.Tag + " available"
 	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "last: just now"
-	case d < time.Hour:
-		return fmt.Sprintf("last: %dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("last: %dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("last: %dd ago", int(d.Hours()/24))
-	}
+	return ""
 }
 
 func musicDownloadLabel(v string) string {
@@ -591,6 +573,8 @@ func (s *SettingsScreen) activate() Screen {
 		}
 	case sItemContentModeration:
 		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
+	case sItemUpdates:
+		return NewUpdatesScreen(s.cfg, s.cfgPath, s.appUpd, s)
 	case sItemAbout:
 		return NewAboutScreen(s)
 	}
