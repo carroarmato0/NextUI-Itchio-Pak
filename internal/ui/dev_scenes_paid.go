@@ -26,6 +26,8 @@ func init() {
 		{"detail-paid-owned", "Paid game, signed in, owned", true, true, false, false, false},
 		{"detail-paid-installed-update", "Installed paid game, signed out, update waiting", false, false, true, true, false},
 		{"detail-paid-installed", "Installed paid game, signed out", false, false, true, false, false},
+		// Downloaded while it was free, since made paid; this account never bought it.
+		{"detail-paid-installed-not-owned", "Installed game that became paid, signed in, not owned", true, false, true, false, false},
 	}
 	for _, st := range states {
 		st := st

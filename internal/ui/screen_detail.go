@@ -569,14 +569,21 @@ func (s *DetailScreen) Draw(r *renderer.Renderer) {
 		alW, _ := r.TextSize(actionLabel)
 		actionEndX := textX + alW
 
-		// Status card occupies the remaining width on the same row.
+		// Status card: the rest of the action row when there is room for it,
+		// otherwise a full-width line of its own under the label.
 		if entry, ok := s.inv.Lookup(s.game.URL); ok && len(entry.Files) > 0 {
-			cardX := actionEndX + 12
-			s.drawFilesCard(r, entry, cardX, r.W-margin-cardX, rowY, rowH)
+			cardY := rowY
+			cardX := actionEndX + filesCardGap
+			if !filesCardInline(actionEndX, margin, usableW) {
+				cardY = rowY + rowH + 4
+				cardX = margin
+				logger.Debug("detail: files card on its own line (action %q is %dpx wide)", actionLabel, alW)
+			}
+			s.drawFilesCard(r, entry, cardX, r.W-margin-cardX, cardY, rowH)
 			r.SetClipRect(0, contentTop, r.W, contentH)
 
 			// Unified naming toggle (below the combined row, if applicable)
-			y = rowY + rowH + 4
+			y = cardY + rowH + 4
 			// Name the update, so the emblem is not the only hint: which file
 			// is new, or which one changed since it was downloaded.
 			if label := updateLabel(s.inv.PendingUpdateFiles(s.game.URL)); label != "" {
