@@ -209,3 +209,32 @@ func TestValidateMuxapp_realRelease(t *testing.T) {
 		t.Fatalf("real release %s: %v, want accepted", path, err)
 	}
 }
+
+// A body larger than the release says stops at size+1 and fails the size
+// check, instead of streaming on until the card is full.
+func TestSaveToArchive_oversizedBodyStopsAtSizePlusOne(t *testing.T) {
+	dir := archiveSetup(t)
+	body := goodMuxapp(t)
+	rel := releaseFor("", body, "v1.1.1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+		junk := make([]byte, 64<<10)
+		for i := 0; i < 64; i++ { // 4 MiB past the end, chunked (no Content-Length)
+			if _, err := w.Write(junk); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	}))
+	defer srv.Close()
+	rel.Asset = srv.URL
+	var written int64
+	_, err := SaveToArchive(context.Background(), srv.Client(), "ua", rel, dir, func(done, _ int64) { written = done })
+	if !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("err = %v, want ErrIntegrity", err)
+	}
+	if written > rel.Size+1 {
+		t.Fatalf("wrote %d bytes for a %d-byte release, want at most size+1", written, rel.Size)
+	}
+	assertNoPart(t, dir, "v1.1.1")
+}

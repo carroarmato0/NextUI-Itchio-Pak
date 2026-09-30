@@ -137,12 +137,16 @@ func fetchAsset(ctx context.Context, hc *http.Client, userAgent, url string, w i
 		return "", 0, &netstate.StatusError{What: "download update", Code: resp.StatusCode}
 	}
 
+	// Read at most one byte past the release's size: an oversized body then
+	// fails SaveToArchive's size check instead of streaming on until the
+	// card is full.
+	body := io.LimitReader(resp.Body, total+1)
 	h := sha256.New()
 	buf := make([]byte, 64<<10)
 	var done, lastLogged int64
 	for {
 		idle.Reset(idleTimeout)
-		n, rerr := resp.Body.Read(buf)
+		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, err := w.Write(buf[:n]); err != nil {
 				return "", done, err
@@ -158,6 +162,9 @@ func fetchAsset(ctx context.Context, hc *http.Client, userAgent, url string, w i
 			}
 		}
 		if rerr == io.EOF {
+			if done > total {
+				logger.Warn("appupdate: download body runs past the release's %d bytes; stopped at %d", total, done)
+			}
 			break
 		}
 		if rerr != nil {
