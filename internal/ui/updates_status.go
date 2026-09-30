@@ -178,7 +178,13 @@ func annotationColor(r *renderer.Renderer, selected bool, tone [3]uint8, emphasi
 
 // drawRowAnnotation right-aligns small text on a settings-style row at y.
 func drawRowAnnotation(r *renderer.Renderer, text string, y int32, c [3]uint8) {
+	drawRowAnnotationAt(r, text, r.W-20, y, c)
+}
+
+// drawRowAnnotationAt is drawRowAnnotation with its right edge at right, for
+// a row that also shows a value at the far right.
+func drawRowAnnotationAt(r *renderer.Renderer, text string, right, y int32, c [3]uint8) {
 	aw, sh := r.SmallTextSize(text)
 	_, fh := r.TextSize("Ag")
-	r.DrawSmallText(text, r.W-aw-20, y+(fh-sh)/2, c[0], c[1], c[2])
+	r.DrawSmallText(text, right-aw, y+(fh-sh)/2, c[0], c[1], c[2])
 }
