@@ -119,8 +119,12 @@ func TestChecker_offlineOwedRunsOnceOnReconnect(t *testing.T) {
 // (netstate's own status is unknown or online, so gateOK lets it through)
 // but whose request fails because the network itself is down mid-flight —
 // e.g. Wi-Fi not associated yet at boot. That failure must be treated like
-// gateOK's own offline skip: owed, not recorded as a failed check, and run
-// again — and only once — on reconnect.
+// gateOK's own offline skip for c.st and the retry budget: owed, cached
+// state untouched, and run again — and only once — on reconnect. LastError
+// is the one exception: it is still recorded (adapted from the original
+// "must be nil" assertion — netstate never moves for a GitHub-only outage,
+// so LastError is the only way the Updates screen can say why "Check now"
+// produced nothing) and a later successful check clears it again.
 func TestChecker_offlineMidCheckOwesUntilReconnect(t *testing.T) {
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	bad.Close() // refuses every connection from here on
@@ -137,8 +141,8 @@ func TestChecker_offlineMidCheckOwesUntilReconnect(t *testing.T) {
 	if v := c.Verdict(); v.Kind != Unknown {
 		t.Fatalf("verdict = %+v, want nothing filled by an offline mid-check failure", v)
 	}
-	if err := c.LastError(); err != nil {
-		t.Fatalf("lastErr = %v, want nil: an offline failure is owed, not recorded as a failed check", err)
+	if err := c.LastError(); err == nil || !netstate.Classify(err).Offline() {
+		t.Fatalf("lastErr = %v, want the offline failure recorded even though it is owed, not a failed check", err)
 	}
 
 	// Reconnect: point the source at the working fake and let the owed
@@ -151,6 +155,9 @@ func TestChecker_offlineMidCheckOwesUntilReconnect(t *testing.T) {
 	}
 	if v := c.Verdict(); v.Kind != Available || v.Latest == nil || v.Latest.Tag != "v1.1.0-rc3" {
 		t.Fatalf("verdict = %+v after reconnect", v)
+	}
+	if err := c.LastError(); err != nil {
+		t.Fatalf("lastErr = %v after the reconnect check succeeded, want nil", err)
 	}
 
 	c.RetryAfterReconnect()
@@ -439,8 +446,12 @@ func TestChecker_reconnectRetryBudget(t *testing.T) {
 	if afterLaunch == 0 {
 		t.Fatal("the launch check must have reached the dropping server")
 	}
-	if netstate.Classify(c.LastError()).Offline() {
-		t.Fatal("an owed failure must not be recorded")
+	// An owed failure is still recorded in LastError: GitHub failures never
+	// touch netstate (see abandonIfOffline), so lastErr is the only thing
+	// that can tell "Check now" why nothing happened during a GitHub-only
+	// outage. Recording it does not affect the owed/retry budget below.
+	if !netstate.Classify(c.LastError()).Offline() {
+		t.Fatal("an owed offline failure must still be recorded in LastError")
 	}
 
 	c.RetryAfterReconnect()
@@ -463,6 +474,49 @@ func TestChecker_reconnectRetryBudget(t *testing.T) {
 	c.wg.Wait()
 	if hits.Load() == afterRetry {
 		t.Fatal("Check now must still run after the reconnect budget is spent")
+	}
+}
+
+// TestChecker_checkNowRecordsUnreachableGitHub: "Check now" against a GitHub
+// that cannot be reached must leave LastError set — netstate never moves for
+// a GitHub-only outage (see abandonIfOffline), so LastError is the only way
+// the Updates screen can say why nothing happened — while still owing a
+// retry (a reconnect afterwards runs one more check) and never touching
+// netstate. A later successful check clears LastError again.
+func TestChecker_checkNowRecordsUnreachableGitHub(t *testing.T) {
+	netstate.ResetForTest()
+	t.Cleanup(netstate.ResetForTest)
+	url, hits := droppingGitHub(t)
+	gh := newFakeGitHub(t, releasesRC3, "")
+	c := newTestChecker(t, firmware.KindMuOS, "v1.1.0-rc2", RC, gh, "")
+	c.src.ReleasesURL = url + "/releases"
+
+	c.CheckNow()
+	c.wg.Wait()
+	if hits.Load() == 0 {
+		t.Fatal("Check now must have reached the dropping server")
+	}
+	if err := c.LastError(); err == nil || !netstate.Classify(err).Offline() {
+		t.Fatalf("LastError = %v, want the unreachable-GitHub failure recorded", err)
+	}
+	if st := netstate.Current(); st.Status != netstate.StatusUnknown {
+		t.Fatalf("netstate = %+v after an unreachable-GitHub check, want untouched (unknown)", st)
+	}
+
+	// Still owed: a reconnect runs the check again.
+	before := hits.Load()
+	c.RetryAfterReconnect()
+	c.wg.Wait()
+	if hits.Load() == before {
+		t.Fatal("the owed check must run on reconnect")
+	}
+
+	// A later successful check clears LastError.
+	c.src.ReleasesURL = gh.srv.URL + "/releases"
+	c.CheckNow()
+	c.wg.Wait()
+	if err := c.LastError(); err != nil {
+		t.Fatalf("LastError = %v after a successful check, want nil", err)
 	}
 }
 

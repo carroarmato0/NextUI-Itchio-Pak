@@ -228,9 +228,11 @@ func (c *Checker) startCheck(why string) {
 // reconnect"). When it is, the check is abandoned right here rather than
 // treated as a failed check: owed is set (before anything else, same
 // owed-then-read ordering as gateOK, so a reconnect racing in cannot be
-// missed) and the caller returns without touching c.st or c.lastErr, so a
-// transient outage never overwrites the last good state or rate-limits the
-// service.
+// missed) and the caller returns without touching c.st, so a transient
+// outage never overwrites the last good state or rate-limits the service.
+// c.lastErr is the one exception — it is recorded on every offline-classified
+// failure, owed or not, because it is the only channel the Updates screen has
+// for saying why (see below); a later successful run() clears it again.
 //
 // GitHub failures are never fed into netstate (see newClient): the app-wide
 // state is itch.io's, and the monitor that settles it probes itch.io. So a
@@ -247,10 +249,14 @@ func (c *Checker) abandonIfOffline(err error, why string) bool {
 	if why == "reconnect" && !c.retrySpent.Swap(true) {
 		logger.Warn("appupdate: reconnect check failed offline too (%s); reconnect retry spent for this launch, not owing it again", netstate.Detail(err))
 	}
+	// Recorded either way (owed or not): netstate stays silent about a
+	// GitHub-only outage (see the doc comment above), so lastErr is the only
+	// thing that can tell the Updates screen why "Check now" produced
+	// nothing. A later successful run() overwrites/clears it as usual.
+	c.mu.Lock()
+	c.lastErr = err
+	c.mu.Unlock()
 	if c.retrySpent.Load() {
-		c.mu.Lock()
-		c.lastErr = err
-		c.mu.Unlock()
 		logger.Info("appupdate: %s check failed offline (%s), not owed: reconnect retry already spent", why, netstate.Detail(err))
 		return true
 	}
