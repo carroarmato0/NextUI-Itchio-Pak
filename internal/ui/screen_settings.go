@@ -356,9 +356,9 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	_, fontH := r.TextSize("Ag")
 	_, smallH := r.SmallTextSize("Ag")
 	rowH := fontH + 14
-	headingH := smallH + 14
+	headingH := smallH + 20
 	if compact(r.W, r.H) {
-		headingH = smallH + 8
+		headingH = smallH + 14
 	}
 
 	// Lay the list out in content coordinates: headings are shorter than rows.
@@ -404,8 +404,13 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 			continue
 		}
 		if row.heading != "" {
-			mu := r.Theme.Muted()
-			r.DrawSmallText(strings.ToUpper(row.heading), 20, top+h-smallH-3, mu[0], mu[1], mu[2])
+			// A full-width band in the header bar's colour, inset a little from
+			// the rows around it, so each section reads as its own block.
+			band := r.Theme.Surface()
+			bandY, bandH := top+3, h-6
+			r.DrawRect(0, bandY, r.W, bandH, band[0], band[1], band[2])
+			tc := r.Theme.MutedOn(band)
+			r.DrawSmallText(strings.ToUpper(row.heading), 20, bandY+(bandH-smallH)/2, tc[0], tc[1], tc[2])
 			continue
 		}
 		s.drawRow(r, row.id, top+4, rowH)
