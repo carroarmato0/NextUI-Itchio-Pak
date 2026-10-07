@@ -98,22 +98,30 @@ func updatesStatus(enabled bool, v appupdate.Verdict, a appupdate.ArchiveStatus,
 		add(archiveFailure(a.Err), true)
 	}
 
-	installState := appupdate.InstallIdle
+	// Running/Failed are shown only under the version they belong to (the
+	// same rule as the ARCHIVE outcome above): a later check can move Latest
+	// on without clearing a stale status for an old tag.
+	gatedState := appupdate.InstallIdle
 	if v.Latest != nil && inst.Tag == v.Latest.Tag {
-		installState = inst.State
+		gatedState = inst.State
 	}
-	switch installState {
+	switch gatedState {
 	case appupdate.InstallRunning:
 		verb := map[appupdate.InstallPhase]string{
 			appupdate.PhaseDownloading: "Downloading", appupdate.PhaseChecking: "Checking", appupdate.PhaseUnpacking: "Unpacking",
 		}[inst.Phase]
 		add(fmt.Sprintf("%s %s…", verb, inst.Tag), false)
-	case appupdate.InstallStaged:
-		add(fmt.Sprintf("%s is ready. Restart to finish installing, or it installs the next time you open Itch-io.", inst.Tag), false)
 	case appupdate.InstallFailed:
 		add(installFailure(inst.Err), true)
 	}
-	if v.FailedInstall != "" && installState == appupdate.InstallIdle {
+	// Staged is not gated on Latest: once a build is staged it stays true —
+	// and worth saying — no matter what a later check finds, otherwise the
+	// status line can say one version is available while "Restart now" (or
+	// "Install <newer>") on the row above acts on a different, unstated one.
+	if inst.State == appupdate.InstallStaged {
+		add(fmt.Sprintf("%s is ready. Restart to finish installing, or it installs the next time you open Itch-io.", inst.Tag), false)
+	}
+	if v.FailedInstall != "" && gatedState == appupdate.InstallIdle && inst.State != appupdate.InstallStaged {
 		add(fmt.Sprintf("%s did not start, so %s was kept.", v.FailedInstall, v.FailedFrom), true)
 	}
 	if override != "" {

@@ -66,6 +66,26 @@ func (s *UpdatesScreen) installRowShown() bool {
 	return v.Kind == appupdate.Available && v.Via == appupdate.ViaInstall && st.State != appupdate.InstallRunning
 }
 
+// installRowStartsOver reports whether the Install row's action is
+// StartInstall rather than RequestRestart: either there is no staged build,
+// or a later check found a release strictly newer than the one already
+// staged (the checker re-stages in that case). rowLabel and activate both
+// call this, so the row's label and what A actually does can never drift
+// apart — the bug that let a stale "Restart now" install an old staged
+// build while the status line talked about a newer one.
+func (s *UpdatesScreen) installRowStartsOver() bool {
+	v, st := s.up.Verdict(), s.up.InstallStatus()
+	if st.State != appupdate.InstallStaged {
+		return true
+	}
+	if v.Latest == nil {
+		return false
+	}
+	staged, stagedOK := appupdate.Parse(st.Tag)
+	latest, latestOK := appupdate.Parse(v.Latest.Tag)
+	return stagedOK && latestOK && appupdate.Compare(latest, staged) > 0
+}
+
 func (s *UpdatesScreen) visibleRows() []updatesRow {
 	rows := []updatesRow{uRowChannel, uRowCheck}
 	if s.archiveRowShown() {
@@ -156,18 +176,22 @@ func (s *UpdatesScreen) rowLabel(row updatesRow) string {
 		if v.Latest != nil {
 			tag = v.Latest.Tag
 		}
-		switch {
-		case st.State == appupdate.InstallStaged:
+		if st.State == appupdate.InstallStaged && !s.installRowStartsOver() {
 			return "Restart now"
-		case v.FailedInstall != "" || st.State == appupdate.InstallFailed:
-			if tag == "" {
-				return "Retry"
-			}
+		}
+		// A stale InstallFailed only counts as "Retry" while it is for the
+		// version Latest still points at; once Latest has moved on it is an
+		// ordinary Install of the new tag (the FailedInstall rollback report
+		// line, not this row, says what happened to the old one).
+		failed := v.FailedInstall != "" || (st.State == appupdate.InstallFailed && v.Latest != nil && st.Tag == v.Latest.Tag)
+		switch {
+		case failed && tag == "":
+			return "Retry"
+		case failed:
 			return "Retry " + tag
+		case tag == "":
+			return "Install"
 		default:
-			if tag == "" {
-				return "Install"
-			}
 			return "Install " + tag
 		}
 	default:
@@ -191,7 +215,7 @@ func (s *UpdatesScreen) activate() Screen {
 		logger.Info("updates: Save to ARCHIVE requested")
 		s.up.StartArchiveSave()
 	case uRowInstall:
-		if s.up.InstallStatus().State == appupdate.InstallStaged {
+		if s.up.InstallStatus().State == appupdate.InstallStaged && !s.installRowStartsOver() {
 			logger.Info("updates: Restart now requested")
 			s.up.RequestRestart()
 			return nil // leave the event loop; main applies the update

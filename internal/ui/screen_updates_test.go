@@ -342,3 +342,58 @@ func TestUpdatesScreen_backCancelsAnInstall(t *testing.T) {
 		t.Fatal("a running install keeps the app awake")
 	}
 }
+
+// Fix round 1: a staged build for one tag must not be hidden behind, or
+// silently conflict with, a later check that moves Latest on to a newer tag
+// — the row must offer to install the newer release instead of restarting
+// into the older staged one, and the status block must still say the staged
+// build (by its own tag) is ready.
+func TestUpdatesScreen_stagedTagOlderThanLatest(t *testing.T) {
+	v := installVerdict() // Latest: v1.1.0-rc5
+	v.Latest = &appupdate.Release{Tag: "v1.1.0-rc6", URL: "https://example.invalid/r6"}
+	u := &stubUpdater{v: v, inst: appupdate.InstallStatus{State: appupdate.InstallStaged, Tag: "v1.1.0-rc5"}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+
+	if got := s.rowLabel(uRowInstall); got != "Install v1.1.0-rc6" {
+		t.Fatalf("label %q, want %q", got, "Install v1.1.0-rc6")
+	}
+	s.cursor = uRowInstall
+	if next := s.activate(); next != s || !u.started || u.restarted {
+		t.Fatalf("activate: next=%v started=%v restarted=%v, want stay on screen with StartInstall only", next, u.started, u.restarted)
+	}
+	view := updatesStatus(true, v, appupdate.ArchiveStatus{}, u.inst, false, nil, time.Time{}, "")
+	if !hasLine(view, "v1.1.0-rc5 is ready. Restart to finish installing, or it installs the next time you open Itch-io.") {
+		t.Fatalf("status lines %v lack the staged rc5 line", view.Lines)
+	}
+}
+
+// A staged build with no Latest at all (e.g. the channel changed) still
+// offers only to restart into it: there is nothing newer to install instead.
+func TestUpdatesScreen_stagedTagWithNoLatest(t *testing.T) {
+	v := installVerdict()
+	v.Latest = nil
+	u := &stubUpdater{v: v, inst: appupdate.InstallStatus{State: appupdate.InstallStaged, Tag: "v1.1.0-rc5"}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+
+	if got := s.rowLabel(uRowInstall); got != "Restart now" {
+		t.Fatalf("label %q, want %q", got, "Restart now")
+	}
+	view := updatesStatus(true, v, appupdate.ArchiveStatus{}, u.inst, false, nil, time.Time{}, "")
+	if !hasLine(view, "v1.1.0-rc5 is ready. Restart to finish installing, or it installs the next time you open Itch-io.") {
+		t.Fatalf("status lines %v lack the staged rc5 line", view.Lines)
+	}
+}
+
+// A stale InstallFailed for an old tag, once Latest has moved past it and
+// with no FailedInstall rollback recorded, is an ordinary Install of the new
+// tag rather than a Retry of the old one.
+func TestUpdatesScreen_failedTagOlderThanLatestIsNotRetry(t *testing.T) {
+	v := installVerdict()
+	v.Latest = &appupdate.Release{Tag: "v1.1.0-rc6", URL: "https://example.invalid/r6"}
+	u := &stubUpdater{v: v, inst: appupdate.InstallStatus{State: appupdate.InstallFailed, Tag: "v1.1.0-rc5", Err: appupdate.ErrIntegrity}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+
+	if got := s.rowLabel(uRowInstall); got != "Install v1.1.0-rc6" {
+		t.Fatalf("label %q, want %q", got, "Install v1.1.0-rc6")
+	}
+}
