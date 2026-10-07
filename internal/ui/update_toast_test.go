@@ -99,6 +99,11 @@ func (u *noticeStubUpdater) MarkNotified(ch appupdate.Channel, tag string) {
 func (u *noticeStubUpdater) StartArchiveSave()                      {}
 func (u *noticeStubUpdater) CancelArchiveSave()                     {}
 func (u *noticeStubUpdater) ArchiveStatus() appupdate.ArchiveStatus { return appupdate.ArchiveStatus{} }
+func (u *noticeStubUpdater) StartInstall()                          {}
+func (u *noticeStubUpdater) CancelInstall()                         {}
+func (u *noticeStubUpdater) InstallStatus() appupdate.InstallStatus { return appupdate.InstallStatus{} }
+func (u *noticeStubUpdater) RequestRestart()                        {}
+func (u *noticeStubUpdater) SourceOverride() string                 { return "" }
 
 func TestNoticeTick_cutShortWhenScreenNoLongerAllowsIt(t *testing.T) {
 	up := &noticeStubUpdater{

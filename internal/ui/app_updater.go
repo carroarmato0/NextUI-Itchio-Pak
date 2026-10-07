@@ -28,6 +28,12 @@ type AppUpdater interface {
 	StartArchiveSave()
 	CancelArchiveSave()
 	ArchiveStatus() appupdate.ArchiveStatus
+	StartInstall()
+	CancelInstall()
+	InstallStatus() appupdate.InstallStatus
+	RequestRestart()
+	// SourceOverride is the test update source in use, "" normally.
+	SourceOverride() string
 }
 
 var (

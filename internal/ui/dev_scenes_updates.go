@@ -19,6 +19,7 @@ type devAppUpdater struct {
 	at       time.Time
 	err      error
 	archive  appupdate.ArchiveStatus
+	inst     appupdate.InstallStatus
 }
 
 func (d *devAppUpdater) Enabled() bool                            { return !d.disabled }
@@ -35,6 +36,11 @@ func (d *devAppUpdater) MarkNotified(appupdate.Channel, string)   {}
 func (d *devAppUpdater) StartArchiveSave()                        {}
 func (d *devAppUpdater) CancelArchiveSave()                       {}
 func (d *devAppUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return d.archive }
+func (d *devAppUpdater) StartInstall()                            {}
+func (d *devAppUpdater) CancelInstall()                           {}
+func (d *devAppUpdater) InstallStatus() appupdate.InstallStatus   { return d.inst }
+func (d *devAppUpdater) RequestRestart()                          {}
+func (d *devAppUpdater) SourceOverride() string                   { return "" }
 
 func devVer(s string) appupdate.Version { v, _ := appupdate.Parse(s); return v }
 
@@ -93,6 +99,27 @@ func init() {
 		}},
 		Scene{Name: "updates-available", Desc: "Updates: available, release-page QR", Build: func(d SceneDeps) Screen {
 			return devUpdates(d, &devAppUpdater{at: time.Now(), v: rcAvail})
+		}},
+		Scene{Name: "updates-install", Desc: "Updates: NextUI, Install row", Build: func(d SceneDeps) Screen {
+			v := rcAvail
+			v.Via = appupdate.ViaInstall
+			s := devUpdates(d, &devAppUpdater{at: time.Now(), v: v})
+			s.(*UpdatesScreen).cursor = uRowInstall
+			return s
+		}},
+		Scene{Name: "updates-installing", Desc: "Updates: NextUI, downloading the update", Build: func(d SceneDeps) Screen {
+			v := rcAvail
+			v.Via = appupdate.ViaInstall
+			return devUpdates(d, &devAppUpdater{at: time.Now(), v: v, inst: appupdate.InstallStatus{
+				State: appupdate.InstallRunning, Tag: v.Latest.Tag, Done: 6 << 20, Total: 14 << 20}})
+		}},
+		Scene{Name: "updates-staged", Desc: "Updates: NextUI, ready to restart", Build: func(d SceneDeps) Screen {
+			v := rcAvail
+			v.Via = appupdate.ViaInstall
+			s := devUpdates(d, &devAppUpdater{at: time.Now(), v: v, inst: appupdate.InstallStatus{
+				State: appupdate.InstallStaged, Tag: v.Latest.Tag}})
+			s.(*UpdatesScreen).cursor = uRowInstall
+			return s
 		}},
 		Scene{Name: "updates-pakstore", Desc: "Updates: available through the Pak Store", Build: func(d SceneDeps) Screen {
 			return devUpdates(d, &devAppUpdater{at: time.Now(), v: storeAvail})

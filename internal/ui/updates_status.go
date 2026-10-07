@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
@@ -29,7 +30,7 @@ type updatesStatusView struct {
 // updatesStatus builds the status block (spec §4, §2a). enabled is the
 // checker's Enabled(): a dev or unparseable build never checks, so it says
 // that and nothing else rather than "Not checked yet" forever.
-func updatesStatus(enabled bool, v appupdate.Verdict, a appupdate.ArchiveStatus, offline bool, lastErr error, rateUntil time.Time) updatesStatusView {
+func updatesStatus(enabled bool, v appupdate.Verdict, a appupdate.ArchiveStatus, inst appupdate.InstallStatus, offline bool, lastErr error, rateUntil time.Time, override string) updatesStatusView {
 	var out updatesStatusView
 	add := func(text string, warn bool) { out.Lines = append(out.Lines, statusLine{text, warn}) }
 
@@ -97,6 +98,28 @@ func updatesStatus(enabled bool, v appupdate.Verdict, a appupdate.ArchiveStatus,
 		add(archiveFailure(a.Err), true)
 	}
 
+	installState := appupdate.InstallIdle
+	if v.Latest != nil && inst.Tag == v.Latest.Tag {
+		installState = inst.State
+	}
+	switch installState {
+	case appupdate.InstallRunning:
+		verb := map[appupdate.InstallPhase]string{
+			appupdate.PhaseDownloading: "Downloading", appupdate.PhaseChecking: "Checking", appupdate.PhaseUnpacking: "Unpacking",
+		}[inst.Phase]
+		add(fmt.Sprintf("%s %s…", verb, inst.Tag), false)
+	case appupdate.InstallStaged:
+		add(fmt.Sprintf("%s is ready. Restart to finish installing, or it installs the next time you open Itch-io.", inst.Tag), false)
+	case appupdate.InstallFailed:
+		add(installFailure(inst.Err), true)
+	}
+	if v.FailedInstall != "" && installState == appupdate.InstallIdle {
+		add(fmt.Sprintf("%s did not start, so %s was kept.", v.FailedInstall, v.FailedFrom), true)
+	}
+	if override != "" {
+		add("Test update source: "+override, true)
+	}
+
 	if v.StoreOffers != "" {
 		older := "this release candidate"
 		if !v.Running.IsRC() {
@@ -123,6 +146,27 @@ func archiveFailure(err error) string {
 		return m.Title
 	}
 	return "Download failed."
+}
+
+// installFailure words a failed in-place install.
+func installFailure(err error) string {
+	var space *appupdate.SpaceError
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "Install cancelled."
+	case errors.As(err, &space):
+		return fmt.Sprintf("Not enough space on the SD card: needs %d MB, %d MB free.", space.Need>>20, space.Have>>20)
+	case errors.Is(err, appupdate.ErrIntegrity):
+		return "The download failed the integrity check."
+	case errors.Is(err, appupdate.ErrDamaged):
+		s := err.Error()
+		return strings.ToUpper(s[:1]) + strings.TrimSuffix(s[1:], ".") + "."
+	default:
+		if m, ok := netstate.Describe(err, "GitHub"); ok {
+			return m.Title
+		}
+		return "The update could not be installed."
+	}
 }
 
 // appUpdateAnnotation is the "Check now" row's right-aligned label.
