@@ -101,7 +101,6 @@ type Checker struct {
 
 	install       InstallStatus
 	cancelInstall context.CancelFunc
-	failedFrom    string
 	restart       atomic.Bool
 }
 
@@ -116,7 +115,15 @@ func NewChecker(cfg Config) *Checker {
 	c.st = LoadState(cfg.StatePath)
 	c.store = c.lookupStore()
 	if cfg.Failed != nil {
-		c.st.FailedInstall, c.failedFrom = cfg.Failed.To, cfg.Failed.From
+		c.st.FailedInstall, c.st.FailedInstallFrom = cfg.Failed.To, cfg.Failed.From
+		c.saveLocked()
+	}
+	// A previously failed install that now runs (the user retried and it
+	// started this time, or any later version did) no longer needs to be
+	// silenced: clear the record so the notice resumes for it.
+	if failed, ok := Parse(c.st.FailedInstall); ok && c.runningOK && Compare(c.running, failed) >= 0 {
+		logger.Info("appupdate: %s now runs, clearing its failed-install record", c.st.FailedInstall)
+		c.st.FailedInstall, c.st.FailedInstallFrom = "", ""
 		c.saveLocked()
 	}
 	if cfg.PakDir != "" {
@@ -406,8 +413,8 @@ func (c *Checker) verdictLocked() Verdict {
 	if v.Via == ViaInstall && c.cfg.PakDir == "" {
 		v.Via = ViaReleasePage
 	}
-	if v.Latest != nil && c.st.FailedInstall != "" && v.Latest.Tag == c.st.FailedInstall {
-		v.FailedInstall, v.FailedFrom = c.st.FailedInstall, c.failedFrom
+	if v.Kind == Available && v.Latest != nil && c.st.FailedInstall != "" && v.Latest.Tag == c.st.FailedInstall {
+		v.FailedInstall, v.FailedFrom = c.st.FailedInstall, c.st.FailedInstallFrom
 	}
 	return v
 }
@@ -578,6 +585,19 @@ func (c *Checker) StartInstall() {
 		logger.Debug("appupdate: install ignored: verdict=%s via=%s state=%d", v.Kind, v.Via, c.install.State)
 		return
 	}
+	if c.install.State == InstallStaged {
+		// Already staged: re-stage only for something newer than what is
+		// sitting there, so a repeat call (or the UI racing a user tap with
+		// a background notify) never wipes a good staged update out from
+		// under RequestRestart.
+		latest, lok := Parse(v.Latest.Tag)
+		staged, sok := Parse(c.install.Tag)
+		if !(lok && sok && Compare(latest, staged) > 0) {
+			c.mu.Unlock()
+			logger.Debug("appupdate: install ignored: %s is already staged", c.install.Tag)
+			return
+		}
+	}
 	r := *v.Latest
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancelInstall = cancel
@@ -640,11 +660,17 @@ func (c *Checker) InstallStatus() InstallStatus {
 // RequestRestart asks main to swap the staged update in and exec it once the
 // event loop has exited.
 func (c *Checker) RequestRestart() {
-	if c.InstallStatus().State != InstallStaged {
+	c.mu.Lock()
+	staged := c.install.State == InstallStaged
+	tag := c.install.Tag
+	if staged {
+		c.restart.Store(true)
+	}
+	c.mu.Unlock()
+	if !staged {
 		return
 	}
-	logger.Info("appupdate: restart requested to finish installing %s", c.InstallStatus().Tag)
-	c.restart.Store(true)
+	logger.Info("appupdate: restart requested to finish installing %s", tag)
 }
 
 func (c *Checker) RestartRequested() bool { return c.restart.Load() }
