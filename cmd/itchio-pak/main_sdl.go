@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+	"unsafe"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
@@ -112,7 +113,7 @@ func runSDL() {
 	// mapping branch.
 	var pads []firmware.Pad
 	for i := 0; i < sdl.NumJoysticks(); i++ {
-		if guid := sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)); sdl.IsGameController(i) {
+		if guid := joystickGUID(i); sdl.IsGameController(i) {
 			logger.Info("input: joystick %d %q guid=%s — SDL recognises it as a controller", i, sdl.JoystickNameForIndex(i), guid)
 			pads = append(pads, firmware.Pad{GUID: guid, Name: sdl.JoystickNameForIndex(i)})
 		}
@@ -125,7 +126,7 @@ func runSDL() {
 		// mapping carrying the wrong one.
 		if !sdl.IsGameController(i) {
 			pad := firmware.Pad{
-				GUID: sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)),
+				GUID: joystickGUID(i),
 				Name: sdl.JoystickNameForIndex(i),
 			}
 			// The pad has to be opened to be counted, and the counts are not
@@ -589,4 +590,11 @@ func logButtonPress(e sdl.Event) {
 		return
 	}
 	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
+}
+
+// joystickGUID is the full GUID of the joystick at device index i. See
+// firmware.GUIDString for why go-sdl2's formatter is not used.
+func joystickGUID(i int) string {
+	guid := sdl.JoystickGetDeviceGUID(i)
+	return firmware.GUIDString(*(*[16]byte)(unsafe.Pointer(&guid)))
 }

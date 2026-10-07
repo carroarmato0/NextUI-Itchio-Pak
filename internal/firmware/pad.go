@@ -1,6 +1,7 @@
 package firmware
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"sort"
@@ -24,6 +25,18 @@ type Pad struct {
 	Name string
 	// Buttons and Hats are what SDL reports for the opened joystick.
 	Buttons, Hats int
+}
+
+// GUIDString formats SDL's 16-byte joystick GUID as the 32-character lowercase
+// hex string SDL_JoystickGetGUIDString produces.
+//
+// go-sdl2's own JoystickGetGUIDString cannot be used: it passes the size of a
+// slice header (24 bytes) as the buffer length, so SDL writes 22 characters and
+// drops the last five bytes — the version field that tells H700's fixed layout
+// from the legacy one. Both then read 1900000001000000010000, and the fixed
+// layout check never matches. https://github.com/veandco/go-sdl2/issues/625
+func GUIDString(guid [16]byte) string {
+	return hex.EncodeToString(guid[:])
 }
 
 // H700FixedLayoutGUID is the GUID NextUI's SDL gives the H700 pad from
