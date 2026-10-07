@@ -390,3 +390,16 @@ func TestControllerMappingH700FixedLayoutIsPositional(t *testing.T) {
 		}
 	}
 }
+
+func TestPakDir(t *testing.T) {
+	executable = func() (string, error) { return "/mnt/SDCARD/Tools/tg5040/Itch-io.pak/itchio", nil }
+	t.Cleanup(func() { executable = os.Executable })
+	t.Setenv("PLATFORM", "tg5040")
+	if got := newNextUI("").PakDir(); got != "/mnt/SDCARD/Tools/tg5040/Itch-io.pak" {
+		t.Errorf("NextUI PakDir = %q", got)
+	}
+	prefix := t.TempDir()
+	if got := (&Env{kind: KindMuOS}).PakDir(); got != "" {
+		t.Errorf("muOS PakDir = %q, want empty (prefix %s)", got, prefix)
+	}
+}
