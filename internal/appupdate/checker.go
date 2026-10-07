@@ -249,9 +249,6 @@ func (c *Checker) maybeCheck(why string) {
 // SetChannel queue a rerun by CAS-losing here instead of racing a separate
 // busy.Load().
 func (c *Checker) startCheck(why string) {
-	if c.cfg.Override != "" {
-		logger.Warn("appupdate: WARNING using update source override %s", c.cfg.Override)
-	}
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -316,6 +313,9 @@ func (c *Checker) abandonIfOffline(err error, why string) bool {
 }
 
 func (c *Checker) run(why string) {
+	if c.cfg.Override != "" {
+		logger.Warn("appupdate: WARNING using update source override %s", c.cfg.Override)
+	}
 	start := time.Now()
 	store := c.lookupStore()
 
