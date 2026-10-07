@@ -93,8 +93,12 @@ func main() {
 	logRomDirs(env)
 
 	// An update staged and left for "the next time you open Itch-io".
-	applyStagedUpdate(env, "staged earlier")
+	applyStagedUpdate(env.PakDir(), env.DataDir(), "staged earlier")
 	appupdate.TakeLauncherLog(env.DataDir())
+	// A pending file surviving to here means launch.sh exec'd us without
+	// seeing a rollback condition; cheap, and gives a startup log line to
+	// match ConfirmStarted's "confirmed" later.
+	appupdate.LogPending(env.DataDir())
 
 	profilingDesc := "off"
 	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {
@@ -175,15 +179,20 @@ func main() {
 	}
 
 	if runSDL() {
-		applyStagedUpdate(env, "restart requested")
+		// Captured before applyStagedUpdate touches the pak folder:
+		// os.Executable() follows renames, so after a swap it would resolve
+		// into .Itch-io.pak.prev instead of the live folder's name.
+		pakDir := env.PakDir()
+		applyStagedUpdate(pakDir, env.DataDir(), "restart requested")
 		// applyStagedUpdate only returns here if it could not get the staged
 		// update running (nothing staged after all, the swap failed, or its
-		// exec failed and the previous version was restored). The user asked
-		// to restart, so relaunch the current version through its own
-		// launch.sh instead of just exiting — no pending file remains at
-		// this point, so it starts normally.
+		// exec failed and the previous version was restored — which itself
+		// removes update_pending.json). Either way no pending file remains at
+		// this point, so relaunching through launch.sh starts normally. The
+		// user asked to restart, so relaunch the current version instead of
+		// just exiting.
 		logger.Error("update: could not restart into the update, relaunching %s", version)
-		if err := appupdate.ExecLauncher(env.PakDir()); err != nil {
+		if err := appupdate.ExecLauncher(pakDir); err != nil {
 			logger.Error("update: relaunch failed too, exiting as %s", version)
 		}
 	}
@@ -237,19 +246,24 @@ func deviceOrUnknown(device string) string {
 
 // applyStagedUpdate swaps a staged update in and execs its launcher. It
 // returns only if there was nothing to apply or applying failed, in which
-// case the current version carries on.
-func applyStagedUpdate(env *firmware.Env, why string) {
-	pakDir := env.PakDir()
+// case the current version carries on. pakDir and dataDir are passed in
+// (rather than re-derived from firmware.Env) so a caller on the restart path
+// can capture pakDir once, before the swap renames anything underneath it.
+func applyStagedUpdate(pakDir, dataDir, why string) {
 	if pakDir == "" {
 		return
 	}
 	appupdate.DiscardIncompleteStaged(pakDir)
-	tag, ok := appupdate.StagedReady(pakDir)
+	// Never apply a stage that is not strictly newer than what is running:
+	// the user may have picked "Later" and had a different version installed
+	// by some other route since (the Pak Store, a side-load) while the stage
+	// survived. StagedNewer discards and logs that case itself.
+	tag, ok := appupdate.StagedNewer(pakDir, version)
 	if !ok {
 		return
 	}
 	logger.Info("update: applying staged %s (%s)", tag, why)
-	if err := appupdate.SwapStaged(pakDir, env.DataDir(), version); err != nil {
+	if err := appupdate.SwapStaged(pakDir, dataDir, version); err != nil {
 		logger.Error("update: could not apply %s, carrying on as %s: %v", tag, version, err)
 		if err := os.RemoveAll(appupdate.StagedDir(pakDir)); err != nil {
 			logger.Error("update: remove %s: %v", appupdate.StagedDir(pakDir), err)
@@ -268,7 +282,7 @@ func applyStagedUpdate(env *firmware.Env, why string) {
 		if err := os.Rename(appupdate.PrevDir(pakDir), pakDir); err != nil {
 			logger.Error("update: rename %s -> %s: %v", appupdate.PrevDir(pakDir), pakDir, err)
 		}
-		pendingPath := filepath.Join(env.DataDir(), "update_pending.json")
+		pendingPath := filepath.Join(dataDir, "update_pending.json")
 		if err := os.Remove(pendingPath); err != nil {
 			logger.Error("update: remove %s: %v", pendingPath, err)
 		}

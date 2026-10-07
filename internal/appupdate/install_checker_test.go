@@ -165,6 +165,24 @@ func TestChecker_failedInstallRecordSurvivesARestart(t *testing.T) {
 	}
 }
 
+// TestChecker_newCheckerIgnoresStagedOlderThanRunning: NewChecker must not
+// report an install that was staged earlier but is no longer newer than what
+// is actually running (the §StagedNewer guard against a silent downgrade).
+func TestChecker_newCheckerIgnoresStagedOlderThanRunning(t *testing.T) {
+	pak := stageSetup(t)
+	os.MkdirAll(StagedDir(pak), 0755)
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\n"), 0644)
+
+	// Running is already past what got staged.
+	c := NewChecker(Config{Firmware: firmware.KindNextUI, Running: "v1.1.0-rc6", Channel: RC, PakDir: pak})
+	if s := c.InstallStatus(); s.State == InstallStaged {
+		t.Fatalf("a staged tag not newer than running must not be reported: status = %+v", s)
+	}
+	if _, err := os.Stat(StagedDir(pak)); !os.IsNotExist(err) {
+		t.Fatal("the stale stage must be discarded")
+	}
+}
+
 // TestChecker_startInstallNoopWhenAlreadyStagedSameTag: a second StartInstall
 // for the same tag that is already staged must not touch it.
 func TestChecker_startInstallNoopWhenAlreadyStagedSameTag(t *testing.T) {

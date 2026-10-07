@@ -36,9 +36,50 @@ func StagedReady(pakDir string) (string, bool) {
 	return tag, tag != ""
 }
 
+// StagedNewer reports the tag of a complete staged update, but only when it
+// is strictly newer than running. A stage can outlive its reason to exist —
+// the user picked "Later" and the Pak Store (or a side-load) later put a
+// different version in the live folder — so a complete stage that is not
+// newer, or either side does not parse (including a "dev" build, which never
+// applies updates), is never applied: it is removed here instead, so the
+// question is not asked again on the next launch.
+func StagedNewer(pakDir, running string) (string, bool) {
+	tag, ok := StagedReady(pakDir)
+	if !ok {
+		return "", false
+	}
+	staged, sok := Parse(tag)
+	runV, rok := Parse(running)
+	if sok && rok && Compare(staged, runV) > 0 {
+		return tag, true
+	}
+	dir := StagedDir(pakDir)
+	if err := os.RemoveAll(dir); err != nil {
+		logger.Warn("appupdate: remove %s: %v", dir, err)
+		return "", false
+	}
+	if !sok || !rok {
+		logger.Info("update: staged %s cannot be compared with %s, discarding", tag, running)
+	} else {
+		logger.Info("update: staged %s is not newer than %s, discarding", tag, running)
+	}
+	return "", false
+}
+
 // DiscardIncompleteStaged removes a staged folder that never got its
-// .complete marker (a crash or power cut while staging).
+// .complete marker (a crash or power cut while staging), along with any zip
+// left beside it: a crash mid-unpack leaves the zip too, and it is no longer
+// a partfile partial (the download finished), so the partfile sweep never
+// sees it and it would otherwise sit there forever.
 func DiscardIncompleteStaged(pakDir string) {
+	zip := StagedZip(pakDir)
+	if _, err := os.Stat(zip); err == nil {
+		if err := os.Remove(zip); err != nil {
+			logger.Warn("appupdate: remove leftover %s: %v", zip, err)
+		} else {
+			logger.Info("appupdate: removed leftover staged zip %s", zip)
+		}
+	}
 	dir := StagedDir(pakDir)
 	if _, err := os.Stat(dir); err != nil {
 		return
@@ -109,14 +150,26 @@ func ConfirmStarted(pakDir, dataDir string) *sync.WaitGroup {
 	var wg sync.WaitGroup
 	path := filepath.Join(dataDir, pendingFile)
 	b, err := os.ReadFile(path)
-	if err == nil {
+	switch {
+	case err == nil:
 		var p Pending
 		_ = json.Unmarshal(b, &p)
 		if err := os.Remove(path); err != nil {
-			logger.Error("appupdate: confirm: remove %s: %v", path, err)
-		} else {
-			logger.Info("update: %s → %s confirmed", p.From, p.To)
+			// A later rollback needs .prev intact: with the pending file
+			// still there, launch.sh would still roll back on a crash, so
+			// the kept versions must not be cleaned up behind it.
+			logger.Error("appupdate: confirm: remove %s: %v; leaving %s and %s alone", path, err, PrevDir(pakDir), FailedDir(pakDir))
+			return &wg
 		}
+		logger.Info("update: %s → %s confirmed", p.From, p.To)
+	case os.IsNotExist(err):
+		// Normal: nothing pending. Proceed to the background cleanup below
+		// as usual.
+	default:
+		// Could not even be read (e.g. something odd sits at that path) —
+		// treat the same as a failed remove: don't touch .prev/.failed.
+		logger.Error("appupdate: confirm: read %s: %v; leaving %s and %s alone", path, err, PrevDir(pakDir), FailedDir(pakDir))
+		return &wg
 	}
 	if pakDir == "" {
 		return &wg
@@ -136,6 +189,23 @@ func ConfirmStarted(pakDir, dataDir string) *sync.WaitGroup {
 		}
 	}()
 	return &wg
+}
+
+// LogPending logs a line if update_pending.json exists at startup: the
+// window between launch.sh's exec and ConfirmStarted, so a log that stops
+// mid-update is not mysterious. It does not touch the file — ConfirmStarted
+// owns removing it once the first frame is up.
+func LogPending(dataDir string) {
+	b, err := os.ReadFile(filepath.Join(dataDir, pendingFile))
+	if err != nil {
+		return
+	}
+	var p Pending
+	if jerr := json.Unmarshal(b, &p); jerr != nil || p.To == "" {
+		logger.Warn("appupdate: %s unreadable: %v", filepath.Join(dataDir, pendingFile), jerr)
+		return
+	}
+	logger.Info("update: pending %s → %s, waiting for the first frame", p.From, p.To)
 }
 
 // TakeFailed reads and deletes update_failed.json, written by launch.sh

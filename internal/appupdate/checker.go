@@ -128,7 +128,7 @@ func NewChecker(cfg Config) *Checker {
 		c.saveLocked()
 	}
 	if cfg.PakDir != "" {
-		if tag, ok := StagedReady(cfg.PakDir); ok {
+		if tag, ok := StagedNewer(cfg.PakDir, cfg.Running); ok {
 			c.install = InstallStatus{State: InstallStaged, Tag: tag}
 			logger.Info("appupdate: %s is staged and installs at the next launch", tag)
 		}
