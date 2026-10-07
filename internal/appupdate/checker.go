@@ -27,6 +27,7 @@ type Config struct {
 	Notify     func()
 	PakDir     string   // firmware.Env.PakDir(); "" disables in-place install
 	Failed     *Pending // appupdate.TakeFailed at start-up, if a rollback happened
+	Override   string   // test update source base URL, "" normally
 }
 
 // ArchiveState is where a Save to ARCHIVE is.
@@ -149,6 +150,9 @@ func (c *Checker) Enabled() bool {
 	return c.runningOK && (c.cfg.Firmware == firmware.KindNextUI || c.cfg.Firmware == firmware.KindMuOS)
 }
 
+// SourceOverride is the test update source in use, "" normally.
+func (c *Checker) SourceOverride() string { return c.cfg.Override }
+
 // managedLocked: NextUI and the Store has (or may have) a row. Caller holds mu.
 func (c *Checker) managedLocked() bool {
 	return c.cfg.Firmware == firmware.KindNextUI && c.store.Status != pakstore.NotInstalled
@@ -245,6 +249,9 @@ func (c *Checker) maybeCheck(why string) {
 // SetChannel queue a rerun by CAS-losing here instead of racing a separate
 // busy.Load().
 func (c *Checker) startCheck(why string) {
+	if c.cfg.Override != "" {
+		logger.Warn("appupdate: WARNING using update source override %s", c.cfg.Override)
+	}
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
