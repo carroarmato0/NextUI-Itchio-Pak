@@ -45,6 +45,9 @@ type State struct {
 	// PakJSON is what pak.json on main says: the Pak Store's own source.
 	PakJSON  *Release           `json:"pakjson,omitempty"`
 	Notified map[Channel]string `json:"notified,omitempty"`
+	// FailedInstall is a version that was installed in place and did not
+	// start; the notice stays quiet for it (NextUI install spec §4.3).
+	FailedInstall string `json:"failed_install,omitempty"`
 }
 
 // LoadState reads path. A missing or corrupt file is an empty state: the worst

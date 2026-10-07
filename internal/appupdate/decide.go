@@ -69,6 +69,10 @@ type Verdict struct {
 	// older than the running build (spec §2a). Shown on the Updates screen
 	// only, never as a notice.
 	StoreOffers string
+	// FailedInstall is Latest.Tag when that version was installed in place
+	// and rolled back; FailedFrom is the version that was kept.
+	FailedInstall string
+	FailedFrom    string
 }
 
 // Inputs is everything Decide looks at.
