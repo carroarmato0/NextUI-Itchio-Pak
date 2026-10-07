@@ -366,6 +366,11 @@ func runSDL() bool {
 
 loop:
 	for current != nil {
+		// Set when this iteration actually draws and presents a frame: the
+		// confirm below must not fire on an iteration that only polled
+		// events (idle WaitEventTimeout/WaitEvent with nothing to redraw).
+		drew := false
+
 		// Upload any images that background goroutines finished fetching.
 		// Returns true if at least one texture was uploaded this call.
 		newImages := cache.ProcessPending(r)
@@ -485,14 +490,19 @@ loop:
 				}
 			} else {
 				drawPowerPendingOverlay(r, pendingAction)
+				drew = true
 			}
 		} else if noticeFrame := notice.Tick(r, current, time.Now()); gotEvent || newImages || current.NeedsRedraw() || noticeFrame {
 			current.Draw(r)
+			drew = true
 		}
 
-		// The first full iteration has drawn a frame and read input: an
-		// update that got this far has started (NextUI install spec §4.1).
-		if !confirmed {
+		// The first iteration that has actually drawn and presented a frame
+		// (input already polled above): an update that got this far has
+		// started (NextUI install spec §4.1). A version that crashed before
+		// ever drawing, or an iteration that only polled idle events, must
+		// not confirm it.
+		if !confirmed && drew {
 			confirmed = true
 			appupdate.ConfirmStarted(env.PakDir(), dataDir)
 		}

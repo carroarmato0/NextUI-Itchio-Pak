@@ -176,6 +176,16 @@ func main() {
 
 	if runSDL() {
 		applyStagedUpdate(env, "restart requested")
+		// applyStagedUpdate only returns here if it could not get the staged
+		// update running (nothing staged after all, the swap failed, or its
+		// exec failed and the previous version was restored). The user asked
+		// to restart, so relaunch the current version through its own
+		// launch.sh instead of just exiting — no pending file remains at
+		// this point, so it starts normally.
+		logger.Error("update: could not restart into the update, relaunching %s", version)
+		if err := appupdate.ExecLauncher(env.PakDir()); err != nil {
+			logger.Error("update: relaunch failed too, exiting as %s", version)
+		}
 	}
 
 	if *memProfile != "" {
