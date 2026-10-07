@@ -30,7 +30,7 @@ const (
 	userEventPowerShutdown   = int32(2) // power: long press
 )
 
-func runSDL() {
+func runSDL() bool {
 	env := firmware.Active()
 
 	// All mutable app state lives in one directory chosen by the firmware, so a
@@ -249,14 +249,28 @@ func runSDL() {
 		}
 		logger.Info("appupdate: release-candidate build, update channel pinned to rc")
 	}
+	statePath := filepath.Join(dataDir, "update_state.json")
+	var src *appupdate.Source
+	override, overridden := appupdate.OverrideBase(dataDir)
+	ua := itchio.BuildUserAgent(itchio.UAInfoFromEnv(version, env), false)
+	if overridden {
+		logger.Warn("appupdate: test update source %s in use (remove %s/update_source_override to stop)", override, dataDir)
+		src = appupdate.NewOverrideSource(ua, override)
+		statePath = filepath.Join(dataDir, "update_state.override.json")
+	}
+	failed, _ := appupdate.TakeFailed(dataDir)
 	appUpd := appupdate.NewChecker(appupdate.Config{
 		Firmware:   env.Kind(),
 		Running:    version,
 		Channel:    channel,
-		StatePath:  filepath.Join(dataDir, "update_state.json"),
+		StatePath:  statePath,
 		StoreDB:    env.PakStoreDB(),
 		ArchiveDir: env.ArchiveDir(),
-		UserAgent:  itchio.BuildUserAgent(itchio.UAInfoFromEnv(version, env), false),
+		PakDir:     env.PakDir(),
+		Failed:     failed,
+		Override:   override,
+		UserAgent:  ua,
+		Source:     src,
 		Notify: func() {
 			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 		},
@@ -301,6 +315,9 @@ func runSDL() {
 		if d := env.ArchiveDir(); d != "" {
 			dirs = append(dirs, d)
 		}
+		if d := env.PakDir(); d != "" {
+			dirs = append(dirs, filepath.Dir(d))
+		}
 		partfile.Sweep(dirs)
 	}()
 
@@ -344,6 +361,8 @@ func runSDL() {
 			}()
 		}
 	}
+
+	confirmed := false
 
 loop:
 	for current != nil {
@@ -470,7 +489,16 @@ loop:
 		} else if noticeFrame := notice.Tick(r, current, time.Now()); gotEvent || newImages || current.NeedsRedraw() || noticeFrame {
 			current.Draw(r)
 		}
+
+		// The first full iteration has drawn a frame and read input: an
+		// update that got this far has started (NextUI install spec §4.1).
+		if !confirmed {
+			confirmed = true
+			appupdate.ConfirmStarted(env.PakDir(), dataDir)
+		}
 	}
+
+	return appUpd.RestartRequested()
 }
 
 func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {

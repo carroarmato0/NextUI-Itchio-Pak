@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
@@ -90,6 +91,11 @@ func main() {
 	// log line of its own; this is the one place that records what it resolved.
 	logger.Info("ld_libs:    %s", os.Getenv("LD_LIBRARY_PATH"))
 	logRomDirs(env)
+
+	// An update staged and left for "the next time you open Itch-io".
+	applyStagedUpdate(env, "staged earlier")
+	appupdate.TakeLauncherLog(env.DataDir())
+
 	profilingDesc := "off"
 	if *cpuProfile != "" || *memProfile != "" || *pprofAddr != "" {
 		var parts []string
@@ -168,7 +174,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	runSDL()
+	if runSDL() {
+		applyStagedUpdate(env, "restart requested")
+	}
 
 	if *memProfile != "" {
 		f, err := os.Create(*memProfile)
@@ -215,4 +223,44 @@ func deviceOrUnknown(device string) string {
 		return "unknown"
 	}
 	return device
+}
+
+// applyStagedUpdate swaps a staged update in and execs its launcher. It
+// returns only if there was nothing to apply or applying failed, in which
+// case the current version carries on.
+func applyStagedUpdate(env *firmware.Env, why string) {
+	pakDir := env.PakDir()
+	if pakDir == "" {
+		return
+	}
+	appupdate.DiscardIncompleteStaged(pakDir)
+	tag, ok := appupdate.StagedReady(pakDir)
+	if !ok {
+		return
+	}
+	logger.Info("update: applying staged %s (%s)", tag, why)
+	if err := appupdate.SwapStaged(pakDir, env.DataDir(), version); err != nil {
+		logger.Error("update: could not apply %s, carrying on as %s: %v", tag, version, err)
+		if err := os.RemoveAll(appupdate.StagedDir(pakDir)); err != nil {
+			logger.Error("update: remove %s: %v", appupdate.StagedDir(pakDir), err)
+		}
+		return
+	}
+	// logger writes straight to the file (no buffer), so nothing is lost
+	// when exec replaces this process.
+	if err := appupdate.ExecLauncher(pakDir); err != nil {
+		// The new version is in place but did not start: its launcher was not
+		// run, so nothing will roll back. Put the old one back by hand.
+		logger.Error("update: exec failed, restoring %s", version)
+		if err := os.Rename(pakDir, appupdate.FailedDir(pakDir)); err != nil {
+			logger.Error("update: rename %s -> %s: %v", pakDir, appupdate.FailedDir(pakDir), err)
+		}
+		if err := os.Rename(appupdate.PrevDir(pakDir), pakDir); err != nil {
+			logger.Error("update: rename %s -> %s: %v", appupdate.PrevDir(pakDir), pakDir, err)
+		}
+		pendingPath := filepath.Join(env.DataDir(), "update_pending.json")
+		if err := os.Remove(pendingPath); err != nil {
+			logger.Error("update: remove %s: %v", pendingPath, err)
+		}
+	}
 }
