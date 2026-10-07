@@ -27,6 +27,10 @@ const (
 // AssetName is the muOS asset of a release.
 func AssetName(tag string) string { return "Itch-io.muOS." + tag + ".muxapp" }
 
+// NextUIAssetName is the NextUI pak zip of a release: the files of
+// Itch-io.pak at the zip's root.
+func NextUIAssetName(tag string) string { return "Itch-io.NextUI." + tag + ".pak.zip" }
+
 // Source fetches release information from GitHub.
 type Source struct {
 	HTTP        *http.Client
@@ -192,10 +196,13 @@ func toRelease(r ghRelease) *Release {
 	if rel.URL == "" {
 		rel.URL = releasePage + r.Tag
 	}
-	want := AssetName(r.Tag)
+	want, wantNUI := AssetName(r.Tag), NextUIAssetName(r.Tag)
 	for _, a := range r.Assets {
-		if a.Name == want {
+		switch a.Name {
+		case want:
 			rel.Asset, rel.Digest, rel.Size = a.URL, a.Digest, a.Size
+		case wantNUI:
+			rel.NextUIAsset, rel.NextUIDigest, rel.NextUISize = a.URL, a.Digest, a.Size
 		}
 	}
 	return rel

@@ -1,6 +1,7 @@
 package appupdate
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
@@ -78,6 +79,45 @@ func TestDecide_neverOffersADowngrade(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func nuiRel(tag string) *Release {
+	r := rel(tag)
+	r.NextUIAsset = "https://example.invalid/" + NextUIAssetName(tag)
+	r.NextUIDigest = "sha256:" + strings.Repeat("ab", 32)
+	r.NextUISize = 14741523
+	return r
+}
+
+func TestDecide_viaInstall(t *testing.T) {
+	cases := []struct {
+		name string
+		in   Inputs
+		via  Via
+	}{
+		{"rc to newer rc, Store-managed", Inputs{firmware.KindNextUI, v("v1.1.0-rc4"), RC, managed("v1.0.25"), nuiRel("v1.1.0-rc5"), rel("v1.0.25")}, ViaInstall},
+		{"not managed", Inputs{firmware.KindNextUI, v("v1.0.25"), Stable, notStore, nuiRel("v1.0.26"), nil}, ViaInstall},
+		{"Store has not caught up with the final", Inputs{firmware.KindNextUI, v("v1.1.0-rc4"), RC, managed("v1.0.25"), nuiRel("v1.1.0"), rel("v1.0.25")}, ViaInstall},
+		{"Store will offer it: never install", Inputs{firmware.KindNextUI, v("v1.0.25"), Stable, managed("v1.0.25"), nuiRel("v1.0.26"), rel("v1.0.26")}, ViaPakStore},
+		{"no NextUI asset", Inputs{firmware.KindNextUI, v("v1.1.0-rc4"), RC, notStore, rel("v1.1.0-rc5"), nil}, ViaReleasePage},
+		{"muOS ignores the NextUI asset", Inputs{firmware.KindMuOS, v("v1.1.0-rc4"), RC, notStore, nuiRel("v1.1.0-rc5"), nil}, ViaReleasePage},
+	}
+	for _, c := range cases {
+		if got := Decide(c.in); got.Kind != Available || got.Via != c.via {
+			t.Errorf("%s: got %s via %s, want available via %s", c.name, got.Kind, got.Via, c.via)
+		}
+	}
+}
+
+func TestHasNextUIAsset(t *testing.T) {
+	r := nuiRel("v1.1.0-rc5")
+	if !r.HasNextUIAsset() {
+		t.Fatal("complete asset not recognised")
+	}
+	r.NextUIDigest = "md5:00"
+	if r.HasNextUIAsset() {
+		t.Fatal("a non-sha256 digest must not count")
 	}
 }
 

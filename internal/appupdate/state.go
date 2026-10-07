@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
@@ -17,6 +18,15 @@ type Release struct {
 	Asset  string `json:"asset,omitempty"`  // muOS .muxapp download URL
 	Digest string `json:"digest,omitempty"` // "sha256:<hex>"
 	Size   int64  `json:"size,omitempty"`
+	// The NextUI pak zip, installed in place (NextUI install spec §1).
+	NextUIAsset  string `json:"nextui_asset,omitempty"`
+	NextUIDigest string `json:"nextui_digest,omitempty"`
+	NextUISize   int64  `json:"nextui_size,omitempty"`
+}
+
+// HasNextUIAsset: the release can be installed in place on NextUI.
+func (r *Release) HasNextUIAsset() bool {
+	return r != nil && r.NextUIAsset != "" && r.NextUISize > 0 && strings.HasPrefix(r.NextUIDigest, "sha256:")
 }
 
 // ETag keys in State.ETag, one per source.

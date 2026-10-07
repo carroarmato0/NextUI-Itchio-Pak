@@ -37,6 +37,9 @@ const (
 	ViaPakStore
 	// ViaArchive: muOS, and the release has a .muxapp with a digest.
 	ViaArchive
+	// ViaInstall: NextUI, no Store route, and the release has a pak zip
+	// with a digest: install it in place.
+	ViaInstall
 )
 
 func (v Via) String() string {
@@ -45,6 +48,8 @@ func (v Via) String() string {
 		return "pak-store"
 	case ViaArchive:
 		return "archive"
+	case ViaInstall:
+		return "install"
 	default:
 		return "release-page"
 	}
@@ -109,7 +114,7 @@ func via(in Inputs, latest Version) Via {
 			// so point at the release page instead.
 			if in.PakJSON != nil {
 				if pj, ok := Parse(in.PakJSON.Tag); ok && Compare(pj, latest) < 0 {
-					return ViaReleasePage
+					break
 				}
 			}
 			if in.Store.Status == pakstore.Unknown || StoreCompare(in.Store.Version, in.Latest.Tag) == -1 {
@@ -120,6 +125,9 @@ func via(in Inputs, latest Version) Via {
 		if in.Latest.Asset != "" && in.Latest.Size > 0 && strings.HasPrefix(in.Latest.Digest, "sha256:") {
 			return ViaArchive
 		}
+	}
+	if in.Firmware == firmware.KindNextUI && in.Latest.HasNextUIAsset() {
+		return ViaInstall
 	}
 	return ViaReleasePage
 }
