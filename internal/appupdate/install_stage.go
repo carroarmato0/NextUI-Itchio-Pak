@@ -224,6 +224,7 @@ func StageNextUI(ctx context.Context, hc *http.Client, userAgent string, rel Rel
 		}
 	}()
 	if err := os.RemoveAll(staged); err != nil {
+		logger.Error("appupdate: remove old %s before staging %s: %v", staged, rel.Tag, err)
 		return err
 	}
 	_ = os.Remove(zipPath)
