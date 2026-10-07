@@ -61,7 +61,7 @@ if [ -z "${IN_CONTAINER:-}" ]; then
         # POSIX sh rather than bash. launch_test.sh runs under dash too (it
         # execs launch.sh directly), so it belongs in the same POSIX-sh gate
         # it exists to protect.
-        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh "$SCRIPT_DIR/launch_test.sh" || exit 1
+        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh "$SCRIPT_DIR/launch_test.sh" "$SCRIPT_DIR/update-fixture.sh" || exit 1
         echo "ok   - device launch scripts are clean"
     else
         echo "note: skipping shellcheck (not installed)" >&2
