@@ -3,13 +3,22 @@ package appupdate
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"debug/elf"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 )
 
 // withEntryLimit lowers unpackEntryLimit for the duration of a test, so an
@@ -255,5 +264,112 @@ func TestUnpack_cleansUpOnFailure(t *testing.T) {
 	}
 	if _, statErr := os.Stat(dir); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Fatalf("dir %s should not exist after a failed unpack, stat err = %v", dir, statErr)
+	}
+}
+
+func stageSetup(t *testing.T) string {
+	t.Helper()
+	partfile.SetJournal(filepath.Join(t.TempDir(), "partials.json"))
+	t.Cleanup(func() { partfile.SetJournal("") })
+	pak := filepath.Join(t.TempDir(), "Tools", "tg5040", "Itch-io.pak")
+	if err := os.MkdirAll(pak, 0755); err != nil {
+		t.Fatal(err)
+	}
+	return pak
+}
+
+func nuiReleaseFor(url string, body []byte, tag string) Release {
+	sum := sha256.Sum256(body)
+	return Release{Tag: tag, NextUIAsset: url, NextUIDigest: "sha256:" + hex.EncodeToString(sum[:]), NextUISize: int64(len(body))}
+}
+
+func assertNothingStaged(t *testing.T, pak string) {
+	t.Helper()
+	for _, p := range []string{StagedDir(pak), StagedZip(pak), partfile.PathFor(StagedZip(pak))} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s must not survive", p)
+		}
+	}
+}
+
+func TestStageNextUI_ok(t *testing.T) {
+	pak := stageSetup(t)
+	body := pakZip(t, goodPak(t, "v1.1.0-rc5")...)
+	srv := serve(t, body)
+	var phases []InstallPhase
+	err := StageNextUI(context.Background(), srv.Client(), "test", nuiReleaseFor(srv.URL, body, "v1.1.0-rc5"), pak,
+		func(p InstallPhase) { phases = append(phases, p) }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(StagedDir(pak), completeMarker)); err != nil {
+		t.Fatal("no .complete marker")
+	}
+	if _, err := os.Stat(StagedZip(pak)); !os.IsNotExist(err) {
+		t.Fatal("the zip must be deleted after unpacking")
+	}
+	if len(phases) != 3 || phases[0] != PhaseDownloading || phases[2] != PhaseUnpacking {
+		t.Fatalf("phases = %v", phases)
+	}
+}
+
+func TestStageNextUI_replacesAnOldStagedFolder(t *testing.T) {
+	pak := stageSetup(t)
+	os.MkdirAll(StagedDir(pak), 0755)
+	os.WriteFile(filepath.Join(StagedDir(pak), "stale"), []byte("x"), 0644)
+	body := pakZip(t, goodPak(t, "v1.1.0-rc5")...)
+	srv := serve(t, body)
+	if err := StageNextUI(context.Background(), srv.Client(), "test", nuiReleaseFor(srv.URL, body, "v1.1.0-rc5"), pak, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(StagedDir(pak), "stale")); !os.IsNotExist(err) {
+		t.Fatal("a leftover staged folder must be replaced, not merged into")
+	}
+}
+
+func TestStageNextUI_digestMismatch(t *testing.T) {
+	pak := stageSetup(t)
+	body := pakZip(t, goodPak(t, "v1.1.0-rc5")...)
+	srv := serve(t, body)
+	rel := nuiReleaseFor(srv.URL, body, "v1.1.0-rc5")
+	rel.NextUIDigest = "sha256:" + strings.Repeat("00", 32)
+	if err := StageNextUI(context.Background(), srv.Client(), "test", rel, pak, nil, nil); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("err = %v, want ErrIntegrity", err)
+	}
+	assertNothingStaged(t, pak)
+}
+
+func TestStageNextUI_damagedPakLeavesNothing(t *testing.T) {
+	pak := stageSetup(t)
+	body := pakZip(t, goodPak(t, "v1.1.0-rc4")...) // version disagrees with the tag
+	srv := serve(t, body)
+	if err := StageNextUI(context.Background(), srv.Client(), "test", nuiReleaseFor(srv.URL, body, "v1.1.0-rc5"), pak, nil, nil); !errors.Is(err, ErrDamaged) {
+		t.Fatalf("err = %v, want ErrDamaged", err)
+	}
+	assertNothingStaged(t, pak)
+}
+
+func TestStageNextUI_cancel(t *testing.T) {
+	pak := stageSetup(t)
+	body := pakZip(t, goodPak(t, "v1.1.0-rc5")...)
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+		w.Write(body[:10])
+		w.(http.Flusher).Flush()
+		cancel()
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	if err := StageNextUI(ctx, srv.Client(), "test", nuiReleaseFor(srv.URL, body, "v1.1.0-rc5"), pak, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	assertNothingStaged(t, pak)
+}
+
+func TestStageNextUI_notInstallable(t *testing.T) {
+	pak := stageSetup(t)
+	if err := StageNextUI(context.Background(), http.DefaultClient, "test", Release{Tag: "v1.1.0-rc5"}, pak, nil, nil); err == nil {
+		t.Fatal("a release without a NextUI asset must be refused")
 	}
 }

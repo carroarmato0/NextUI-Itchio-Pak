@@ -2,18 +2,23 @@ package appupdate
 
 import (
 	"archive/zip"
+	"context"
 	"debug/elf"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 )
 
 // ErrDamaged: the downloaded pak is not something that may be installed.
@@ -184,5 +189,96 @@ func CheckStaged(dir, tag string) error {
 		return damaged("launch.sh does not parse: %s", strings.TrimSpace(string(out)))
 	}
 	logger.Info("appupdate: staged pak %s passed every check", tag)
+	return nil
+}
+
+// InstallPhase is what StageNextUI is doing, for the progress row.
+type InstallPhase int
+
+const (
+	PhaseDownloading InstallPhase = iota
+	PhaseChecking
+	PhaseUnpacking
+)
+
+// unpackFactor: the unpacked pak is about 1.8× the zip; leave margin.
+const unpackFactor = 5 // in halves: 2.5×
+
+// StageNextUI downloads rel's NextUI pak zip next to pakDir, verifies it,
+// unpacks it into StagedDir(pakDir) and checks it, then writes .complete.
+// On any failure or cancel nothing is left behind.
+func StageNextUI(ctx context.Context, hc *http.Client, userAgent string, rel Release, pakDir string,
+	phase func(InstallPhase), progress func(done, total int64)) (err error) {
+	if !rel.HasNextUIAsset() || pakDir == "" {
+		return fmt.Errorf("%s has no installable NextUI asset", rel.Tag)
+	}
+	if phase == nil {
+		phase = func(InstallPhase) {}
+	}
+	staged, zipPath := StagedDir(pakDir), StagedZip(pakDir)
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(staged)
+			_ = os.Remove(zipPath)
+			logger.Info("appupdate: staging %s abandoned, removed %s", rel.Tag, staged)
+		}
+	}()
+	if err := os.RemoveAll(staged); err != nil {
+		return err
+	}
+	_ = os.Remove(zipPath)
+
+	need := rel.NextUISize + rel.NextUISize*unpackFactor/2
+	if free, ok := freeBytes(filepath.Dir(pakDir)); ok && free < need {
+		logger.Warn("appupdate: not enough space beside %s: need %d, have %d", pakDir, need, free)
+		return &SpaceError{Need: need, Have: free}
+	}
+
+	start := time.Now()
+	phase(PhaseDownloading)
+	logger.Info("appupdate: install: downloading %s (%d bytes) to %s", NextUIAssetName(rel.Tag), rel.NextUISize, zipPath)
+	pf, err := partfile.Create(zipPath)
+	if err != nil {
+		logger.Error("appupdate: create partial for %s: %v", zipPath, err)
+		return err
+	}
+	defer pf.Abort() // no-op after Commit
+	sum, done, err := fetchAsset(ctx, hc, userAgent, rel.NextUIAsset, pf, rel.NextUISize, progress)
+	if err != nil {
+		logger.Error("appupdate: install download failed after %d bytes: %s", done, netstate.Detail(err))
+		return err
+	}
+
+	phase(PhaseChecking)
+	if done != rel.NextUISize {
+		logger.Error("appupdate: %s is %d bytes, release says %d", zipPath, done, rel.NextUISize)
+		return ErrIntegrity
+	}
+	if want := strings.TrimPrefix(rel.NextUIDigest, "sha256:"); !strings.EqualFold(sum, want) {
+		logger.Error("appupdate: verify mismatch: got sha256:%s want sha256:%s", sum, want)
+		return ErrIntegrity
+	}
+	logger.Info("appupdate: verify ok for %s", rel.Tag)
+	if err := pf.Commit(); err != nil {
+		return err
+	}
+
+	phase(PhaseUnpacking)
+	if _, _, err := UnpackPak(zipPath, staged); err != nil {
+		logger.Error("appupdate: unpack %s: %v", rel.Tag, err)
+		return err
+	}
+	if err := CheckStaged(staged, rel.Tag); err != nil {
+		logger.Error("appupdate: staged %s rejected: %v", rel.Tag, err)
+		return err
+	}
+	if err := os.Remove(zipPath); err != nil {
+		logger.Warn("appupdate: remove %s: %v", zipPath, err)
+	}
+	if err := os.WriteFile(filepath.Join(staged, completeMarker), []byte(rel.Tag+"\n"), 0644); err != nil {
+		logger.Error("appupdate: write %s marker: %v", completeMarker, err)
+		return err
+	}
+	logger.Info("appupdate: staged %s in %s in %v", rel.Tag, staged, time.Since(start).Round(time.Millisecond))
 	return nil
 }
