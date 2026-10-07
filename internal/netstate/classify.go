@@ -127,7 +127,10 @@ func Classify(err error) Reason {
 	if errors.As(err, &ue) && ue.Err == io.EOF {
 		return ReasonUnreachable
 	}
+	// EPIPE is a reset that lands while the request is still being written:
+	// which of the two the client sees is a race, not a different failure.
 	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) ||
 		errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
 		return ReasonUnreachable

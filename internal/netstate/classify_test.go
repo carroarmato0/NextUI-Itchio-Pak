@@ -36,6 +36,9 @@ func TestClassify(t *testing.T) {
 		{"host unreachable", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}, ReasonNoNetwork},
 		{"refused", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, ReasonUnreachable},
 		{"reset", &net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}, ReasonUnreachable},
+		// The peer reset the connection while the request was still being
+		// written: the same drop as a reset, seen from the write side.
+		{"broken pipe", &url.Error{Op: "Get", Err: &net.OpError{Op: "write", Err: os.NewSyscallError("write", syscall.EPIPE)}}, ReasonUnreachable},
 		// io.EOF directly inside a *url.Error: the connection closed before
 		// any response arrived. That is the network.
 		{"eof, no response", &url.Error{Op: "Get", Err: io.EOF}, ReasonUnreachable},
