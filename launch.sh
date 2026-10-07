@@ -103,6 +103,8 @@ mkdir -p "$HOME"
 # The binary loads assets/font.ttf relative to the working directory, so a
 # failed cd would start it with no fonts rather than not at all.
 cd "$PAK_DIR" || exit 1
+# Absolute from here on: the rollback below renames folders by full path.
+PAK_DIR="$(pwd)"
 # Optional profiling flags written by ./scripts/debug.sh profile commands.
 # Absent in normal operation; present only during a profiling session.
 # Word-splitting is intentional — the file contains space-separated flags.
@@ -110,5 +112,45 @@ PROFILE_FLAGS=""
 if [ -f "$PAK_DIR/.profile-flags" ]; then
     PROFILE_FLAGS="$(cat "$PAK_DIR/.profile-flags")"
 fi
+# An in-place update is confirmed by the new binary deleting
+# update_pending.json once its first frame is up. Until then this launcher —
+# always the *new* version's — waits for the binary instead of exec'ing it,
+# and puts the previous version back if the binary exits without confirming.
+# See internal/appupdate/install_apply.go and the NextUI install spec §4.
+PENDING="$HOME/update_pending.json"
+if [ ! -f "$PENDING" ]; then
+    # shellcheck disable=SC2086
+    exec "$PAK_DIR/itchio" $PROFILE_FLAGS "$@"
+fi
+
 # shellcheck disable=SC2086
-exec "$PAK_DIR/itchio" $PROFILE_FLAGS "$@"
+"$PAK_DIR/itchio" $PROFILE_FLAGS "$@"
+STATUS=$?
+[ -f "$PENDING" ] || exit "$STATUS"
+
+ULOG="$HOME/update_launcher.log"
+TOOLS_DIR="$(dirname "$PAK_DIR")"
+LIVE="$(basename "$PAK_DIR")"
+PREV="$TOOLS_DIR/.$LIVE.prev"
+FAILED="$TOOLS_DIR/.$LIVE.failed"
+if [ ! -d "$PREV" ]; then
+    echo "$(date '+%F %T') update did not confirm (exit $STATUS) and there is no $PREV: nothing to restore" >> "$ULOG"
+    mv -f "$PENDING" "$HOME/update_pending.orphan.json"
+    exit "$STATUS"
+fi
+echo "$(date '+%F %T') update did not confirm (exit $STATUS): rollback to $PREV" >> "$ULOG"
+rm -rf "$FAILED"
+if ! mv "$PAK_DIR" "$FAILED"; then
+    echo "$(date '+%F %T') rollback: rename $PAK_DIR failed" >> "$ULOG"
+    mv -f "$PENDING" "$HOME/update_pending.orphan.json"
+    exit "$STATUS"
+fi
+if ! mv "$PREV" "$PAK_DIR"; then
+    echo "$(date '+%F %T') rollback: rename $PREV failed, putting the new version back" >> "$ULOG"
+    mv "$FAILED" "$PAK_DIR"
+    mv -f "$PENDING" "$HOME/update_pending.orphan.json"
+    exit "$STATUS"
+fi
+mv -f "$PENDING" "$HOME/update_failed.json"
+echo "$(date '+%F %T') rollback: done, starting the restored version" >> "$ULOG"
+exec /bin/sh "$PAK_DIR/launch.sh" "$@"
