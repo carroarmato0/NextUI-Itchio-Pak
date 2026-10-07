@@ -23,13 +23,31 @@ func damaged(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrDamaged, fmt.Sprintf(format, args...))
 }
 
+// unpackEntryLimit bounds any single extracted file, both by its declared
+// size (the pre-pass below) and by what actually comes out of the
+// decompressor (extractOne): a zip's declared UncompressedSize64 is just a
+// header field and need not match the real stream, so only checking the
+// declared size would let a mismatched entry extract past the limit
+// unnoticed. It is a var, not the maxEntrySize const, so a test can lower it
+// instead of generating a multi-hundred-MB entry.
+var unpackEntryLimit uint64 = maxEntrySize
+
 // UnpackPak extracts a NextUI pak zip into dir, which must not exist yet.
 // Entries are checked with the same rules as a .muxapp: no absolute paths,
 // "..", backslashes, links or special files, and bounded counts and sizes.
-func UnpackPak(zipPath, dir string) (int, int64, error) {
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return 0, 0, damaged("not a zip: %v", err)
+// If dir already exists, or anything below fails after dir was created,
+// UnpackPak removes dir again so a failed unpack never leaves a partial
+// staged folder behind.
+func UnpackPak(zipPath, dir string) (files int, written int64, err error) {
+	if _, statErr := os.Stat(dir); statErr == nil {
+		return 0, 0, fmt.Errorf("%s already exists", dir)
+	} else if !errors.Is(statErr, fs.ErrNotExist) {
+		return 0, 0, statErr
+	}
+
+	zr, zerr := zip.OpenReader(zipPath)
+	if zerr != nil {
+		return 0, 0, damaged("not a zip: %v", zerr)
 	}
 	defer zr.Close()
 	if len(zr.File) == 0 || len(zr.File) > maxEntries {
@@ -41,7 +59,7 @@ func UnpackPak(zipPath, dir string) (int, int64, error) {
 		switch {
 		case n == "" || strings.HasPrefix(n, "/") || strings.Contains(n, "\\"):
 			return 0, 0, damaged("unsafe entry %q", n)
-		case f.UncompressedSize64 > maxEntrySize:
+		case f.UncompressedSize64 > unpackEntryLimit:
 			return 0, 0, damaged("entry %q is too large", n)
 		}
 		for _, seg := range strings.Split(n, "/") {
@@ -58,25 +76,40 @@ func UnpackPak(zipPath, dir string) (int, int64, error) {
 		return 0, 0, damaged("%d bytes uncompressed", total)
 	}
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err = os.MkdirAll(dir, 0755); err != nil {
 		return 0, 0, err
 	}
-	files, written := 0, int64(0)
+	// From here dir exists and is ours: on any failure below, remove it
+	// again rather than leave a half-unpacked folder behind.
+	defer func() {
+		if err == nil {
+			return
+		}
+		if rmErr := os.RemoveAll(dir); rmErr != nil {
+			logger.Error("appupdate: clean up %s after failed unpack: %v", dir, rmErr)
+			return
+		}
+		logger.Warn("appupdate: removed %s after a failed unpack: %v", dir, err)
+	}()
+
 	for _, f := range zr.File {
 		dest := filepath.Join(dir, filepath.FromSlash(f.Name))
 		if f.Mode().IsDir() {
-			if err := os.MkdirAll(dest, 0755); err != nil {
+			if mkErr := os.MkdirAll(dest, 0755); mkErr != nil {
+				err = mkErr
 				return files, written, err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		if mkErr := os.MkdirAll(filepath.Dir(dest), 0755); mkErr != nil {
+			err = mkErr
 			return files, written, err
 		}
-		n, err := extractOne(f, dest)
+		n, exErr := extractOne(f, dest)
 		written += n
-		if err != nil {
-			logger.Error("appupdate: unpack %s: %v", f.Name, err)
+		if exErr != nil {
+			logger.Error("appupdate: unpack %s: %v", f.Name, exErr)
+			err = exErr
 			return files, written, err
 		}
 		files++
@@ -99,12 +132,18 @@ func extractOne(f *zip.File, dest string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	n, err := io.Copy(out, io.LimitReader(rc, maxEntrySize+1))
+	n, err := io.Copy(out, io.LimitReader(rc, int64(unpackEntryLimit)+1))
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return n, err
+	}
+	// io.Copy stops silently, with a nil error, once the LimitReader above
+	// is exhausted — so a stream that decompresses to more than declared
+	// would otherwise extract truncated and still get reported as success.
+	if uint64(n) > unpackEntryLimit {
+		return n, damaged("entry %q decompresses past its declared size", f.Name)
 	}
 	// vfat ignores modes; other filesystems honour the umask, so set it.
 	return n, os.Chmod(dest, mode)

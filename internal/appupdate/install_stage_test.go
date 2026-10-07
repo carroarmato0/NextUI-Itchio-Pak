@@ -12,6 +12,15 @@ import (
 	"testing"
 )
 
+// withEntryLimit lowers unpackEntryLimit for the duration of a test, so an
+// oversized entry can be exercised without a multi-hundred-MB zip.
+func withEntryLimit(t *testing.T, n uint64) {
+	t.Helper()
+	old := unpackEntryLimit
+	unpackEntryLimit = n
+	t.Cleanup(func() { unpackEntryLimit = old })
+}
+
 // fakeELF is a 64-byte ELF header for machine, enough for debug/elf.
 func fakeELF(t *testing.T, machine elf.Machine) []byte {
 	t.Helper()
@@ -163,5 +172,88 @@ func TestCheckStaged_rejects(t *testing.T) {
 		if err := CheckStaged(dir, "v1.1.0-rc5"); !errors.Is(err, ErrDamaged) {
 			t.Errorf("%s: err = %v, want ErrDamaged", name, err)
 		}
+	}
+}
+
+// TestExtractOne_rejectsOversizedActualContent exercises extractOne in
+// isolation: a real zip entry whose actual decompressed body (11 bytes)
+// exceeds a lowered unpackEntryLimit (4). Before the fix, io.Copy would
+// stop silently at the LimitReader's bound and extractOne would report
+// success having written a truncated file; it must now report ErrDamaged
+// instead.
+func TestExtractOne_rejectsOversizedActualContent(t *testing.T) {
+	withEntryLimit(t, 4)
+
+	zr, err := zip.OpenReader(writeZip(t, pakZip(t, zent{name: "big", body: []byte("hello world")})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+
+	dest := filepath.Join(t.TempDir(), "big")
+	n, err := extractOne(zr.File[0], dest)
+	if !errors.Is(err, ErrDamaged) {
+		t.Fatalf("err = %v, want ErrDamaged", err)
+	}
+	if uint64(n) <= unpackEntryLimit {
+		t.Fatalf("n = %d, want more than %d to prove the limit doesn't just silently truncate", n, unpackEntryLimit)
+	}
+}
+
+// TestUnpack_rejectsOversizedEntry runs the same oversized entry through the
+// full UnpackPak pipeline (caught here by the declared-size pre-pass, since
+// a zip built by the standard library always declares the real size) and
+// checks that the staged dir is not left behind.
+func TestUnpack_rejectsOversizedEntry(t *testing.T) {
+	withEntryLimit(t, 4)
+
+	dir := filepath.Join(t.TempDir(), "staged")
+	_, _, err := UnpackPak(writeZip(t, pakZip(t, zent{name: "big", body: []byte("hello world")})), dir)
+	if !errors.Is(err, ErrDamaged) {
+		t.Fatalf("err = %v, want ErrDamaged", err)
+	}
+	if _, statErr := os.Stat(dir); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("dir %s should not exist after a rejected oversized entry, stat err = %v", dir, statErr)
+	}
+}
+
+// TestUnpack_rejectsExistingDir covers the "dir must not exist yet"
+// precondition: UnpackPak must refuse to run at all, and must not touch
+// whatever is already there.
+func TestUnpack_rejectsExistingDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "staged")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, "keepme")
+	if err := os.WriteFile(marker, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := UnpackPak(writeZip(t, pakZip(t, goodPak(t, "v1.1.0-rc5")...)), dir)
+	if err == nil || errors.Is(err, ErrDamaged) {
+		t.Fatalf("err = %v, want a plain already-exists error, not ErrDamaged", err)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Fatalf("existing dir's contents were touched: %v", statErr)
+	}
+}
+
+// TestUnpack_cleansUpOnFailure forces a failure partway through extraction
+// (the second entry's parent path is already a plain file, so MkdirAll must
+// fail) and checks that the partially-unpacked dir is removed, not left
+// behind half-made.
+func TestUnpack_cleansUpOnFailure(t *testing.T) {
+	ents := []zent{
+		{name: "a", body: []byte("file")},
+		{name: "a/b", body: []byte("x")},
+	}
+	dir := filepath.Join(t.TempDir(), "staged")
+	_, _, err := UnpackPak(writeZip(t, pakZip(t, ents...)), dir)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if _, statErr := os.Stat(dir); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("dir %s should not exist after a failed unpack, stat err = %v", dir, statErr)
 	}
 }
