@@ -24,7 +24,7 @@ check() { # desc  haystack  needle
 VERSION="$(grep '"version"' "$PAK_JSON" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
 
 # What the compare link should start at. A stable release compares against the
-# previous *stable* one, skipping the rc entries that stay in the changelog for
+# previous *stable* one, skipping any rc entries still in the changelog for
 # the on-device history — comparing v1.0.23 against v1.0.23-rc5 would show two
 # commits and hide the release. A pre-release compares against whatever came
 # immediately before it, rc or not, since that is what its testers last had.

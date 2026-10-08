@@ -191,7 +191,10 @@ merging `dev` and bumping the version in `pak.json`.
 
 Keep `pak.json`'s changelog entry short: it is shown on the device. Longer notes
 for the GitHub release page go in `docs/release-notes/<version>.md`, which
-replaces the generated notes when present.
+replaces the generated notes when present. A release candidate needs a short
+entry while it is being published; when the final release is cut, remove the rc
+entries so the on-device history lists releases only — the rc notes live on on
+their GitHub pre-release pages.
 
 ### Testing an app update on a device
 
