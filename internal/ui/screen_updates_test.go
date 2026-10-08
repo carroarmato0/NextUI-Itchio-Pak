@@ -5,6 +5,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,10 +19,15 @@ import (
 
 // stubUpdater is a minimal AppUpdater; the Settings tests (Task 12) use it too.
 type stubUpdater struct {
-	disabled  bool
-	v         appupdate.Verdict
-	archive   appupdate.ArchiveStatus
-	cancelled int
+	disabled         bool
+	v                appupdate.Verdict
+	archive          appupdate.ArchiveStatus
+	cancelled        int
+	inst             appupdate.InstallStatus
+	started          bool
+	installCancelled bool
+	restarted        bool
+	override         string
 }
 
 func (s *stubUpdater) Enabled() bool                            { return !s.disabled }
@@ -35,9 +41,18 @@ func (s *stubUpdater) LastError() error                         { return nil }
 func (s *stubUpdater) RateLimitedUntil() time.Time              { return time.Time{} }
 func (s *stubUpdater) PendingNotice() (appupdate.Verdict, bool) { return s.v, false }
 func (s *stubUpdater) MarkNotified(appupdate.Channel, string)   {}
-func (s *stubUpdater) StartArchiveSave()                        {}
-func (s *stubUpdater) CancelArchiveSave()                       { s.cancelled++ }
-func (s *stubUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return s.archive }
+func (s *stubUpdater) PendingRollbackNotice() (appupdate.Pending, bool) {
+	return appupdate.Pending{}, false
+}
+func (s *stubUpdater) MarkRollbackNotified()                  {}
+func (s *stubUpdater) StartArchiveSave()                      {}
+func (s *stubUpdater) CancelArchiveSave()                     { s.cancelled++ }
+func (s *stubUpdater) ArchiveStatus() appupdate.ArchiveStatus { return s.archive }
+func (s *stubUpdater) StartInstall()                          { s.started = true }
+func (s *stubUpdater) CancelInstall()                         { s.installCancelled = true }
+func (s *stubUpdater) InstallStatus() appupdate.InstallStatus { return s.inst }
+func (s *stubUpdater) RequestRestart()                        { s.restarted = true }
+func (s *stubUpdater) SourceOverride() string                 { return s.override }
 
 // stubScreen is a minimal Screen distinct from *UpdatesScreen, so a test can
 // tell "stayed on Updates" apart from "left to prev" unambiguously.
@@ -199,7 +214,7 @@ func TestUpdatesStatus(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			view := updatesStatus(true, c.v, c.a, c.offline, c.err, time.Time{})
+			view := updatesStatus(true, c.v, c.a, appupdate.InstallStatus{}, c.offline, c.err, time.Time{}, "")
 			var texts []string
 			for _, l := range view.Lines {
 				texts = append(texts, l.Text)
@@ -224,7 +239,7 @@ func TestUpdatesStatus_archiveLineOnlyForItsVersion(t *testing.T) {
 			"latest nil":    {Kind: appupdate.Available, Via: appupdate.ViaArchive},
 		} {
 			a := appupdate.ArchiveStatus{State: st, Tag: "v1.1.0-rc2", Err: appupdate.ErrIntegrity}
-			for _, l := range updatesStatus(true, v, a, false, nil, time.Time{}).Lines {
+			for _, l := range updatesStatus(true, v, a, appupdate.InstallStatus{}, false, nil, time.Time{}, "").Lines {
 				if strings.Contains(l.Text, "Download") || strings.Contains(l.Text, "ARCHIVE") {
 					t.Fatalf("state %d, %s: line %q shown for an outcome saved for v1.1.0-rc2", st, name, l.Text)
 				}
@@ -240,9 +255,149 @@ func TestUpdatesStatus_disabledBuild(t *testing.T) {
 		{Channel: appupdate.Off},
 		{Kind: appupdate.Available, Channel: appupdate.RC, Latest: &appupdate.Release{Tag: "v1.1.0", URL: "https://example.invalid/"}, StoreOffers: "v1.0.25"},
 	} {
-		view := updatesStatus(false, v, appupdate.ArchiveStatus{}, true, errors.New("boom"), time.Now().Add(time.Hour))
+		view := updatesStatus(false, v, appupdate.ArchiveStatus{}, appupdate.InstallStatus{}, true, errors.New("boom"), time.Now().Add(time.Hour), "")
 		if len(view.Lines) != 1 || view.Lines[0].Text != "Update checks need a release build." || view.QR != "" {
 			t.Fatalf("verdict %+v: view = %+v, want exactly the release-build line", v, view)
 		}
+	}
+}
+
+func installVerdict() appupdate.Verdict {
+	v, _ := appupdate.Parse("v1.1.0-rc4")
+	return appupdate.Verdict{Kind: appupdate.Available, Channel: appupdate.RC, Running: v,
+		Latest: &appupdate.Release{Tag: "v1.1.0-rc5", URL: "https://example.invalid/r"}, Via: appupdate.ViaInstall}
+}
+
+func TestUpdatesStatus_install(t *testing.T) {
+	v := installVerdict()
+	cases := []struct {
+		name string
+		v    appupdate.Verdict
+		inst appupdate.InstallStatus
+		want string
+	}{
+		{"available", v, appupdate.InstallStatus{}, "v1.1.0-rc5 is available."},
+		{"downloading", v, appupdate.InstallStatus{State: appupdate.InstallRunning, Tag: "v1.1.0-rc5"}, "Downloading v1.1.0-rc5…"},
+		{"checking", v, appupdate.InstallStatus{State: appupdate.InstallRunning, Phase: appupdate.PhaseChecking, Tag: "v1.1.0-rc5"}, "Checking v1.1.0-rc5…"},
+		{"unpacking", v, appupdate.InstallStatus{State: appupdate.InstallRunning, Phase: appupdate.PhaseUnpacking, Tag: "v1.1.0-rc5"}, "Unpacking v1.1.0-rc5…"},
+		{"staged", v, appupdate.InstallStatus{State: appupdate.InstallStaged, Tag: "v1.1.0-rc5"}, "v1.1.0-rc5 is ready. Restart to finish installing, or it installs the next time you open Itch-io."},
+		{"space", v, appupdate.InstallStatus{State: appupdate.InstallFailed, Tag: "v1.1.0-rc5", Err: &appupdate.SpaceError{Need: 34 << 20, Have: 12 << 20}}, "Not enough space on the SD card: needs 34 MB, 12 MB free."},
+		{"damaged", v, appupdate.InstallStatus{State: appupdate.InstallFailed, Tag: "v1.1.0-rc5", Err: fmt.Errorf("%w: pak.json says x", appupdate.ErrDamaged)}, "The update is damaged: pak.json says x."},
+		{"integrity", v, appupdate.InstallStatus{State: appupdate.InstallFailed, Tag: "v1.1.0-rc5", Err: appupdate.ErrIntegrity}, "The download failed the integrity check."},
+	}
+	for _, c := range cases {
+		view := updatesStatus(true, c.v, appupdate.ArchiveStatus{}, c.inst, false, nil, time.Time{}, "")
+		if !hasLine(view, c.want) {
+			t.Errorf("%s: lines %v lack %q", c.name, view.Lines, c.want)
+		}
+	}
+	failed := v
+	failed.FailedInstall, failed.FailedFrom = "v1.1.0-rc5", "v1.1.0-rc4"
+	if view := updatesStatus(true, failed, appupdate.ArchiveStatus{}, appupdate.InstallStatus{}, false, nil, time.Time{}, ""); !hasLine(view, "v1.1.0-rc5 did not start, so v1.1.0-rc4 was kept.") {
+		t.Errorf("failed: lines %v", view.Lines)
+	}
+	if view := updatesStatus(true, v, appupdate.ArchiveStatus{}, appupdate.InstallStatus{}, false, nil, time.Time{}, "http://127.0.0.1:8765/"); !hasLine(view, "Test update source: http://127.0.0.1:8765/") {
+		t.Errorf("override: lines %v", view.Lines)
+	}
+}
+
+func hasLine(v updatesStatusView, text string) bool {
+	for _, l := range v.Lines {
+		if l.Text == text {
+			return true
+		}
+	}
+	return false
+}
+
+func TestUpdatesScreen_installRows(t *testing.T) {
+	u := &stubUpdater{v: installVerdict()}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+	rows := s.visibleRows()
+	if rows[len(rows)-1] != uRowInstall || s.rowLabel(uRowInstall) != "Install v1.1.0-rc5" {
+		t.Fatalf("rows %v, label %q", rows, s.rowLabel(uRowInstall))
+	}
+	s.cursor = uRowInstall
+	s.activate()
+	if !u.started {
+		t.Fatal("A on Install must start the install")
+	}
+	u.inst = appupdate.InstallStatus{State: appupdate.InstallStaged, Tag: "v1.1.0-rc5"}
+	if s.rowLabel(uRowInstall) != "Restart now" {
+		t.Fatalf("staged label %q", s.rowLabel(uRowInstall))
+	}
+	if next := s.activate(); next != nil || !u.restarted {
+		t.Fatal("Restart now must request a restart and leave the event loop (nil screen)")
+	}
+	u.v.FailedInstall = "v1.1.0-rc5"
+	u.inst = appupdate.InstallStatus{}
+	if s.rowLabel(uRowInstall) != "Retry v1.1.0-rc5" {
+		t.Fatalf("failed label %q", s.rowLabel(uRowInstall))
+	}
+}
+
+func TestUpdatesScreen_backCancelsAnInstall(t *testing.T) {
+	u := &stubUpdater{v: installVerdict(), inst: appupdate.InstallStatus{State: appupdate.InstallRunning}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+	if next := s.cancelOrBack(); next != s || !u.installCancelled {
+		t.Fatal("B while installing must cancel and stay")
+	}
+	if !s.IsBusy() {
+		t.Fatal("a running install keeps the app awake")
+	}
+}
+
+// Fix round 1: a staged build for one tag must not be hidden behind, or
+// silently conflict with, a later check that moves Latest on to a newer tag
+// — the row must offer to install the newer release instead of restarting
+// into the older staged one, and the status block must still say the staged
+// build (by its own tag) is ready.
+func TestUpdatesScreen_stagedTagOlderThanLatest(t *testing.T) {
+	v := installVerdict() // Latest: v1.1.0-rc5
+	v.Latest = &appupdate.Release{Tag: "v1.1.0-rc6", URL: "https://example.invalid/r6"}
+	u := &stubUpdater{v: v, inst: appupdate.InstallStatus{State: appupdate.InstallStaged, Tag: "v1.1.0-rc5"}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+
+	if got := s.rowLabel(uRowInstall); got != "Install v1.1.0-rc6" {
+		t.Fatalf("label %q, want %q", got, "Install v1.1.0-rc6")
+	}
+	s.cursor = uRowInstall
+	if next := s.activate(); next != s || !u.started || u.restarted {
+		t.Fatalf("activate: next=%v started=%v restarted=%v, want stay on screen with StartInstall only", next, u.started, u.restarted)
+	}
+	view := updatesStatus(true, v, appupdate.ArchiveStatus{}, u.inst, false, nil, time.Time{}, "")
+	if !hasLine(view, "v1.1.0-rc5 is ready. Restart to finish installing, or it installs the next time you open Itch-io.") {
+		t.Fatalf("status lines %v lack the staged rc5 line", view.Lines)
+	}
+}
+
+// A staged build with no Latest at all (e.g. the channel changed) still
+// offers only to restart into it: there is nothing newer to install instead.
+func TestUpdatesScreen_stagedTagWithNoLatest(t *testing.T) {
+	v := installVerdict()
+	v.Latest = nil
+	u := &stubUpdater{v: v, inst: appupdate.InstallStatus{State: appupdate.InstallStaged, Tag: "v1.1.0-rc5"}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+
+	if got := s.rowLabel(uRowInstall); got != "Restart now" {
+		t.Fatalf("label %q, want %q", got, "Restart now")
+	}
+	view := updatesStatus(true, v, appupdate.ArchiveStatus{}, u.inst, false, nil, time.Time{}, "")
+	if !hasLine(view, "v1.1.0-rc5 is ready. Restart to finish installing, or it installs the next time you open Itch-io.") {
+		t.Fatalf("status lines %v lack the staged rc5 line", view.Lines)
+	}
+}
+
+// A stale InstallFailed for an old tag, once Latest has moved past it and
+// with no FailedInstall rollback recorded, is an ordinary Install of the new
+// tag rather than a Retry of the old one.
+func TestUpdatesScreen_failedTagOlderThanLatestIsNotRetry(t *testing.T) {
+	v := installVerdict()
+	v.Latest = &appupdate.Release{Tag: "v1.1.0-rc6", URL: "https://example.invalid/r6"}
+	u := &stubUpdater{v: v, inst: appupdate.InstallStatus{State: appupdate.InstallFailed, Tag: "v1.1.0-rc5", Err: appupdate.ErrIntegrity}}
+	s := NewUpdatesScreen(&settings.Config{}, "", u, nil)
+
+	if got := s.rowLabel(uRowInstall); got != "Install v1.1.0-rc6" {
+		t.Fatalf("label %q, want %q", got, "Install v1.1.0-rc6")
 	}
 }

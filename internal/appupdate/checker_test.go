@@ -307,6 +307,26 @@ func TestChecker_notificationRulePersists(t *testing.T) {
 	}
 }
 
+func TestChecker_pendingRollbackNotice(t *testing.T) {
+	gh := newFakeGitHub(t, releasesRC3, "")
+	c := newTestChecker(t, firmware.KindMuOS, "v1.1.0-rc3", Off, gh, "")
+	if _, ok := c.PendingRollbackNotice(); ok {
+		t.Fatal("no rollback notice without Config.Failed")
+	}
+
+	failed := &Pending{From: "v1.1.0-rc3", To: "v1.1.0-rc4", At: time.Now()}
+	c2 := NewChecker(Config{Firmware: firmware.KindMuOS, Running: "v1.1.0-rc3", Channel: Off,
+		StatePath: filepath.Join(t.TempDir(), "update_state.json"), Failed: failed})
+	p, ok := c2.PendingRollbackNotice()
+	if !ok || p.From != "v1.1.0-rc3" || p.To != "v1.1.0-rc4" {
+		t.Fatalf("PendingRollbackNotice = %+v, %v, want From/To from Config.Failed (channel Off must not suppress it)", p, ok)
+	}
+	c2.MarkRollbackNotified()
+	if _, ok := c2.PendingRollbackNotice(); ok {
+		t.Fatal("must not return true again after MarkRollbackNotified")
+	}
+}
+
 func TestChecker_archiveSave(t *testing.T) {
 	partfile.SetJournal(filepath.Join(t.TempDir(), "partials.json"))
 	t.Cleanup(func() { partfile.SetJournal("") })

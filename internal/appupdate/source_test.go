@@ -218,3 +218,17 @@ func TestReleases_malformedIsNotOffline(t *testing.T) {
 		}
 	}
 }
+
+func TestToRelease_fillsNextUIAsset(t *testing.T) {
+	r := toRelease(ghRelease{Tag: "v1.1.0-rc5", Assets: []ghAsset{
+		{Name: "Itch-io.NextUI.v1.1.0-rc5.pak.zip", URL: "https://x/pak.zip", Size: 10, Digest: "sha256:aa"},
+		{Name: "Itch-io.NextUI.v1.1.0-rc5.pakz", URL: "https://x/pakz", Size: 50, Digest: "sha256:bb"},
+		{Name: "Itch-io.muOS.v1.1.0-rc5.muxapp", URL: "https://x/mux", Size: 9, Digest: "sha256:cc"},
+	}})
+	if r.NextUIAsset != "https://x/pak.zip" || r.NextUISize != 10 || r.NextUIDigest != "sha256:aa" {
+		t.Fatalf("NextUI asset = %q %d %q", r.NextUIAsset, r.NextUISize, r.NextUIDigest)
+	}
+	if r.Asset != "https://x/mux" {
+		t.Fatalf("muOS asset = %q", r.Asset)
+	}
+}

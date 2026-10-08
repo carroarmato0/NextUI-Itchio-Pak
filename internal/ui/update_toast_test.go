@@ -24,6 +24,20 @@ func TestNoticeText(t *testing.T) {
 	}
 }
 
+func TestRollbackNoticeText(t *testing.T) {
+	p := appupdate.Pending{From: "v1.1.0-rc3", To: "v1.1.0-rc4"}
+	if title, sub := rollbackNoticeText(p, false); title != "Update to v1.1.0-rc4 didn't start" || sub != "Kept v1.1.0-rc3 · Settings → App updates" {
+		t.Errorf("wide = %q / %q", title, sub)
+	}
+	if title, sub := rollbackNoticeText(p, true); title != "Update failed" || sub != "" {
+		t.Errorf("narrow = %q / %q", title, sub)
+	}
+	p.From = ""
+	if title, sub := rollbackNoticeText(p, false); title != "Update to v1.1.0-rc4 didn't start" || sub != "Settings → App updates" {
+		t.Errorf("empty From = %q / %q", title, sub)
+	}
+}
+
 func TestNoticeShown(t *testing.T) {
 	cases := map[time.Duration]float64{
 		-time.Millisecond:          0,
@@ -78,6 +92,10 @@ type noticeStubUpdater struct {
 	notifiedN   int
 	notifiedCh  appupdate.Channel
 	notifiedTag string
+
+	rollback          appupdate.Pending
+	rollbackPending   bool
+	rollbackNotifiedN int
 }
 
 func (u *noticeStubUpdater) Enabled() bool                            { return true }
@@ -96,9 +114,21 @@ func (u *noticeStubUpdater) MarkNotified(ch appupdate.Channel, tag string) {
 	u.notifiedTag = tag
 	u.pending = false
 }
+func (u *noticeStubUpdater) PendingRollbackNotice() (appupdate.Pending, bool) {
+	return u.rollback, u.rollbackPending
+}
+func (u *noticeStubUpdater) MarkRollbackNotified() {
+	u.rollbackNotifiedN++
+	u.rollbackPending = false
+}
 func (u *noticeStubUpdater) StartArchiveSave()                      {}
 func (u *noticeStubUpdater) CancelArchiveSave()                     {}
 func (u *noticeStubUpdater) ArchiveStatus() appupdate.ArchiveStatus { return appupdate.ArchiveStatus{} }
+func (u *noticeStubUpdater) StartInstall()                          {}
+func (u *noticeStubUpdater) CancelInstall()                         {}
+func (u *noticeStubUpdater) InstallStatus() appupdate.InstallStatus { return appupdate.InstallStatus{} }
+func (u *noticeStubUpdater) RequestRestart()                        {}
+func (u *noticeStubUpdater) SourceOverride() string                 { return "" }
 
 func TestNoticeTick_cutShortWhenScreenNoLongerAllowsIt(t *testing.T) {
 	up := &noticeStubUpdater{
@@ -159,5 +189,57 @@ func TestNoticeTick_normalFinish(t *testing.T) {
 	}
 	if n.Animating() {
 		t.Fatal("should stay inactive")
+	}
+}
+
+// TestNoticeTick_rollbackPrecedesAvailable: when both a rollback and an
+// available notice are pending, the rollback one shows first, is marked via
+// MarkRollbackNotified (not MarkNotified), and the available notice may
+// follow on a later Tick once the rollback notice has finished (spec
+// "Precedence").
+func TestNoticeTick_rollbackPrecedesAvailable(t *testing.T) {
+	up := &noticeStubUpdater{
+		v:               appupdate.Verdict{Kind: appupdate.Available, Latest: &appupdate.Release{Tag: "v1.1.0"}},
+		pending:         true,
+		rollback:        appupdate.Pending{From: "v1.1.0-rc3", To: "v1.1.0-rc4"},
+		rollbackPending: true,
+	}
+	SetAppUpdater(up)
+	t.Cleanup(func() { SetAppUpdater(nil) })
+
+	r := &renderer.Renderer{}
+	var n UpdateNotice
+	t0 := time.Now()
+
+	if !n.Tick(r, &AboutScreen{}, t0) {
+		t.Fatal("expected a redraw when the notice starts")
+	}
+	if !n.Animating() || r.Overlay == nil {
+		t.Fatal("notice should be active with an overlay set")
+	}
+	if up.rollbackNotifiedN != 0 || up.notifiedN != 0 {
+		t.Fatal("nothing marked yet while the notice is still showing")
+	}
+
+	if !n.Tick(r, &AboutScreen{}, t0.Add(noticeTotal)) {
+		t.Fatal("expected a redraw on the rollback notice's normal finish")
+	}
+	if n.Animating() || r.Overlay != nil {
+		t.Fatal("rollback notice should have ended")
+	}
+	if up.rollbackNotifiedN != 1 {
+		t.Fatalf("MarkRollbackNotified called %d times, want 1", up.rollbackNotifiedN)
+	}
+	if up.notifiedN != 0 {
+		t.Fatalf("MarkNotified must not be called for the rollback notice, got %d calls", up.notifiedN)
+	}
+
+	// The rollback notice is done (rollbackPending now false); the pending
+	// available notice may follow on a later Tick.
+	if !n.Tick(r, &AboutScreen{}, t0.Add(noticeTotal+time.Millisecond)) {
+		t.Fatal("expected a redraw for the available notice that follows")
+	}
+	if !n.Animating() || r.Overlay == nil {
+		t.Fatal("the available notice should now be active")
 	}
 }

@@ -25,6 +25,9 @@ type Config struct {
 	UserAgent  string // itchio.BuildUserAgent(info, false)
 	Source     *Source
 	Notify     func()
+	PakDir     string   // firmware.Env.PakDir(); "" disables in-place install
+	Failed     *Pending // appupdate.TakeFailed at start-up, if a rollback happened
+	Override   string   // test update source base URL, "" normally
 }
 
 // ArchiveState is where a Save to ARCHIVE is.
@@ -43,6 +46,25 @@ type ArchiveStatus struct {
 	Tag         string // the release being (or last) saved; set when it starts
 	Done, Total int64
 	Path        string
+	Err         error
+}
+
+// InstallState is where an in-place install is.
+type InstallState int
+
+const (
+	InstallIdle InstallState = iota
+	InstallRunning
+	InstallStaged
+	InstallFailed
+)
+
+// InstallStatus is a snapshot of the in-place install.
+type InstallStatus struct {
+	State       InstallState
+	Phase       InstallPhase
+	Tag         string
+	Done, Total int64
 	Err         error
 }
 
@@ -77,6 +99,15 @@ type Checker struct {
 	lastErr       error
 	archive       ArchiveStatus
 	cancelArchive context.CancelFunc
+
+	install       InstallStatus
+	cancelInstall context.CancelFunc
+	restart       atomic.Bool
+
+	// rollbackNotified: the rollback notice (cfg.Failed) has been shown.
+	// Memory only — this launch performed the rollback, so the notice is
+	// for it alone and must never return on a later launch.
+	rollbackNotified atomic.Bool
 }
 
 // NewChecker loads the saved state and reads the Store database (one small
@@ -89,6 +120,24 @@ func NewChecker(cfg Config) *Checker {
 	}
 	c.st = LoadState(cfg.StatePath)
 	c.store = c.lookupStore()
+	if cfg.Failed != nil {
+		c.st.FailedInstall, c.st.FailedInstallFrom = cfg.Failed.To, cfg.Failed.From
+		c.saveLocked()
+	}
+	// A previously failed install that now runs (the user retried and it
+	// started this time, or any later version did) no longer needs to be
+	// silenced: clear the record so the notice resumes for it.
+	if failed, ok := Parse(c.st.FailedInstall); ok && c.runningOK && Compare(c.running, failed) >= 0 {
+		logger.Info("appupdate: %s now runs, clearing its failed-install record", c.st.FailedInstall)
+		c.st.FailedInstall, c.st.FailedInstallFrom = "", ""
+		c.saveLocked()
+	}
+	if cfg.PakDir != "" {
+		if tag, ok := StagedNewer(cfg.PakDir, cfg.Running); ok {
+			c.install = InstallStatus{State: InstallStaged, Tag: tag}
+			logger.Info("appupdate: %s is staged and installs at the next launch", tag)
+		}
+	}
 	logger.Info("appupdate: running=%s parsed=%v firmware=%s channel=%s store=%s",
 		cfg.Running, c.runningOK, cfg.Firmware, c.channel, c.store)
 	return c
@@ -105,6 +154,9 @@ func (c *Checker) lookupStore() pakstore.Result {
 func (c *Checker) Enabled() bool {
 	return c.runningOK && (c.cfg.Firmware == firmware.KindNextUI || c.cfg.Firmware == firmware.KindMuOS)
 }
+
+// SourceOverride is the test update source in use, "" normally.
+func (c *Checker) SourceOverride() string { return c.cfg.Override }
 
 // managedLocked: NextUI and the Store has (or may have) a row. Caller holds mu.
 func (c *Checker) managedLocked() bool {
@@ -266,6 +318,9 @@ func (c *Checker) abandonIfOffline(err error, why string) bool {
 }
 
 func (c *Checker) run(why string) {
+	if c.cfg.Override != "" {
+		logger.Warn("appupdate: WARNING using update source override %s", c.cfg.Override)
+	}
 	start := time.Now()
 	store := c.lookupStore()
 
@@ -365,8 +420,15 @@ func (c *Checker) verdictLocked() Verdict {
 	if c.managedLocked() && c.channel == Stable {
 		latest = c.st.PakJSON
 	}
-	return Decide(Inputs{Firmware: c.cfg.Firmware, Running: c.running, Channel: c.channel,
+	v := Decide(Inputs{Firmware: c.cfg.Firmware, Running: c.running, Channel: c.channel,
 		Store: c.store, Latest: latest, PakJSON: c.st.PakJSON})
+	if v.Via == ViaInstall && c.cfg.PakDir == "" {
+		v.Via = ViaReleasePage
+	}
+	if v.Kind == Available && v.Latest != nil && c.st.FailedInstall != "" && v.Latest.Tag == c.st.FailedInstall {
+		v.FailedInstall, v.FailedFrom = c.st.FailedInstall, c.st.FailedInstallFrom
+	}
+	return v
 }
 
 // Verdict is the current answer, from the last successful check.
@@ -439,7 +501,29 @@ func (c *Checker) PendingNotice() (Verdict, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v := c.verdictLocked()
+	if v.FailedInstall != "" {
+		return v, false
+	}
 	return v, ShouldNotify(v, c.st.Notified[v.Channel])
+}
+
+// PendingRollbackNotice reports whether the rollback notice is due: true only
+// when launch.sh rolled back a failed install for this process (Config.Failed
+// was non-nil at construction) and the notice has not already been marked
+// shown. Independent of the network and of the update channel. cfg.Failed is
+// never mutated after NewChecker, so reading it needs no lock.
+func (c *Checker) PendingRollbackNotice() (Pending, bool) {
+	if c.cfg.Failed == nil || c.rollbackNotified.Load() {
+		return Pending{}, false
+	}
+	return *c.cfg.Failed, true
+}
+
+// MarkRollbackNotified records that the rollback notice has been shown.
+// Memory only (no state file): this launch is the only one that performed
+// the rollback, so the record must not survive a restart.
+func (c *Checker) MarkRollbackNotified() {
+	c.rollbackNotified.Store(true)
 }
 
 // MarkNotified records that the user has been told about tag on ch: when the
@@ -522,6 +606,105 @@ func (c *Checker) ArchiveStatus() ArchiveStatus {
 	defer c.mu.Unlock()
 	return c.archive
 }
+
+// StartInstall stages the current ViaInstall release beside the live pak.
+func (c *Checker) StartInstall() {
+	c.mu.Lock()
+	v := c.verdictLocked()
+	if v.Kind != Available || v.Via != ViaInstall || c.install.State == InstallRunning {
+		c.mu.Unlock()
+		logger.Debug("appupdate: install ignored: verdict=%s via=%s state=%d", v.Kind, v.Via, c.install.State)
+		return
+	}
+	if c.install.State == InstallStaged {
+		// Already staged: re-stage only for something newer than what is
+		// sitting there, so a repeat call (or the UI racing a user tap with
+		// a background notify) never wipes a good staged update out from
+		// under RequestRestart.
+		latest, lok := Parse(v.Latest.Tag)
+		staged, sok := Parse(c.install.Tag)
+		if !(lok && sok && Compare(latest, staged) > 0) {
+			c.mu.Unlock()
+			logger.Debug("appupdate: install ignored: %s is already staged", c.install.Tag)
+			return
+		}
+	}
+	r := *v.Latest
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancelInstall = cancel
+	c.install = InstallStatus{State: InstallRunning, Phase: PhaseDownloading, Tag: r.Tag, Total: r.NextUISize}
+	c.mu.Unlock()
+
+	logger.Info("appupdate: install start %s → %s asset=%s size=%d", c.cfg.Running, r.Tag, NextUIAssetName(r.Tag), r.NextUISize)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer cancel()
+		err := StageNextUI(ctx, c.dl, c.cfg.UserAgent, r, c.cfg.PakDir, c.cfg.Running,
+			func(p InstallPhase) {
+				c.mu.Lock()
+				c.install.Phase = p
+				c.mu.Unlock()
+				c.notify()
+			},
+			func(done, _ int64) {
+				c.mu.Lock()
+				c.install.Done = done
+				c.mu.Unlock()
+			})
+		c.mu.Lock()
+		if err != nil {
+			c.install.State, c.install.Err = InstallFailed, err
+		} else {
+			c.install.State = InstallStaged
+		}
+		c.cancelInstall = nil
+		c.mu.Unlock()
+		switch {
+		case err == nil:
+			logger.Info("appupdate: install staged %s", r.Tag)
+		case errors.Is(err, context.Canceled):
+			logger.Info("appupdate: install cancelled for %s", r.Tag)
+		default:
+			logger.Warn("appupdate: install failed for %s: %s", r.Tag, netstate.Detail(err))
+		}
+		c.notify()
+	}()
+}
+
+// CancelInstall stops a running install; nothing is left behind.
+func (c *Checker) CancelInstall() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cancelInstall != nil {
+		logger.Info("appupdate: install cancel requested")
+		c.cancelInstall()
+	}
+}
+
+func (c *Checker) InstallStatus() InstallStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.install
+}
+
+// RequestRestart asks main to swap the staged update in and exec it once the
+// event loop has exited.
+func (c *Checker) RequestRestart() {
+	c.mu.Lock()
+	staged := c.install.State == InstallStaged
+	tag := c.install.Tag
+	if staged {
+		c.restart.Store(true)
+	}
+	c.mu.Unlock()
+	if !staged {
+		return
+	}
+	logger.Info("appupdate: restart requested to finish installing %s", tag)
+}
+
+func (c *Checker) RestartRequested() bool { return c.restart.Load() }
 
 func (c *Checker) notify() {
 	if c.cfg.Notify != nil {

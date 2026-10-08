@@ -20,6 +20,7 @@ const (
 	uRowChannel updatesRow = iota
 	uRowCheck
 	uRowArchive // muOS and ViaArchive only
+	uRowInstall // NextUI and ViaInstall only
 )
 
 // UpdatesScreen is Settings → App updates (spec §4).
@@ -47,7 +48,8 @@ func NewUpdatesScreen(cfg *settings.Config, cfgPath string, up AppUpdater, prev 
 // download is in flight, so the main loop waits for it (or the user cancels)
 // before sleep/shutdown, as it does for game downloads.
 func (s *UpdatesScreen) IsBusy() bool {
-	return s.up.ArchiveStatus().State == appupdate.ArchiveRunning
+	return s.up.ArchiveStatus().State == appupdate.ArchiveRunning ||
+		s.up.InstallStatus().State == appupdate.InstallRunning
 }
 
 func (s *UpdatesScreen) archiveRowShown() bool {
@@ -56,10 +58,41 @@ func (s *UpdatesScreen) archiveRowShown() bool {
 		s.up.ArchiveStatus().State != appupdate.ArchiveRunning
 }
 
+func (s *UpdatesScreen) installRowShown() bool {
+	v, st := s.up.Verdict(), s.up.InstallStatus()
+	if st.State == appupdate.InstallStaged {
+		return true
+	}
+	return v.Kind == appupdate.Available && v.Via == appupdate.ViaInstall && st.State != appupdate.InstallRunning
+}
+
+// installRowStartsOver reports whether the Install row's action is
+// StartInstall rather than RequestRestart: either there is no staged build,
+// or a later check found a release strictly newer than the one already
+// staged (the checker re-stages in that case). rowLabel and activate both
+// call this, so the row's label and what A actually does can never drift
+// apart — the bug that let a stale "Restart now" install an old staged
+// build while the status line talked about a newer one.
+func (s *UpdatesScreen) installRowStartsOver() bool {
+	v, st := s.up.Verdict(), s.up.InstallStatus()
+	if st.State != appupdate.InstallStaged {
+		return true
+	}
+	if v.Latest == nil {
+		return false
+	}
+	staged, stagedOK := appupdate.Parse(st.Tag)
+	latest, latestOK := appupdate.Parse(v.Latest.Tag)
+	return stagedOK && latestOK && appupdate.Compare(latest, staged) > 0
+}
+
 func (s *UpdatesScreen) visibleRows() []updatesRow {
 	rows := []updatesRow{uRowChannel, uRowCheck}
 	if s.archiveRowShown() {
 		rows = append(rows, uRowArchive)
+	}
+	if s.installRowShown() {
+		rows = append(rows, uRowInstall)
 	}
 	return rows
 }
@@ -89,6 +122,9 @@ func (s *UpdatesScreen) moveCursor(dir int, wrap bool) {
 // clampCursor moves off a row that is no longer shown.
 func (s *UpdatesScreen) clampCursor() {
 	if s.cursor == uRowArchive && !s.archiveRowShown() {
+		s.cursor = uRowCheck
+	}
+	if s.cursor == uRowInstall && !s.installRowShown() {
 		s.cursor = uRowCheck
 	}
 }
@@ -122,7 +158,8 @@ func (s *UpdatesScreen) processAutoRepeat() {
 }
 
 func (s *UpdatesScreen) NeedsRedraw() bool {
-	return s.heldDir != 0 || s.up.IsRunning() || s.up.ArchiveStatus().State == appupdate.ArchiveRunning
+	return s.heldDir != 0 || s.up.IsRunning() || s.up.ArchiveStatus().State == appupdate.ArchiveRunning ||
+		s.up.InstallStatus().State == appupdate.InstallRunning
 }
 
 func (s *UpdatesScreen) HasPendingAnimation() bool { return false }
@@ -133,6 +170,30 @@ func (s *UpdatesScreen) rowLabel(row updatesRow) string {
 		return "Channel: " + s.up.Channel().Label()
 	case uRowCheck:
 		return "Check now"
+	case uRowInstall:
+		v, st := s.up.Verdict(), s.up.InstallStatus()
+		tag := ""
+		if v.Latest != nil {
+			tag = v.Latest.Tag
+		}
+		if st.State == appupdate.InstallStaged && !s.installRowStartsOver() {
+			return "Restart now"
+		}
+		// A stale InstallFailed only counts as "Retry" while it is for the
+		// version Latest still points at; once Latest has moved on it is an
+		// ordinary Install of the new tag (the FailedInstall rollback report
+		// line, not this row, says what happened to the old one).
+		failed := v.FailedInstall != "" || (st.State == appupdate.InstallFailed && v.Latest != nil && st.Tag == v.Latest.Tag)
+		switch {
+		case failed && tag == "":
+			return "Retry"
+		case failed:
+			return "Retry " + tag
+		case tag == "":
+			return "Install"
+		default:
+			return "Install " + tag
+		}
 	default:
 		return "Save to ARCHIVE"
 	}
@@ -153,6 +214,14 @@ func (s *UpdatesScreen) activate() Screen {
 	case uRowArchive:
 		logger.Info("updates: Save to ARCHIVE requested")
 		s.up.StartArchiveSave()
+	case uRowInstall:
+		if s.up.InstallStatus().State == appupdate.InstallStaged && !s.installRowStartsOver() {
+			logger.Info("updates: Restart now requested")
+			s.up.RequestRestart()
+			return nil // leave the event loop; main applies the update
+		}
+		logger.Info("updates: Install requested")
+		s.up.StartInstall()
 	}
 	return s
 }
@@ -171,6 +240,10 @@ func (s *UpdatesScreen) back() Screen {
 // leaves normally. Routing all four buttons through this single method is
 // what keeps them from diverging again.
 func (s *UpdatesScreen) cancelOrBack() Screen {
+	if s.up.InstallStatus().State == appupdate.InstallRunning {
+		s.up.CancelInstall()
+		return s
+	}
 	if s.up.ArchiveStatus().State == appupdate.ArchiveRunning {
 		s.up.CancelArchiveSave()
 		return s
@@ -235,6 +308,7 @@ func (s *UpdatesScreen) Draw(r *renderer.Renderer) {
 	s.clampCursor()
 	v := s.up.Verdict()
 	a := s.up.ArchiveStatus()
+	inst := s.up.InstallStatus()
 	// Seeing it here counts as being told (spec §2).
 	if v.Kind == appupdate.Available && v.Latest != nil {
 		s.up.MarkNotified(v.Channel, v.Latest.Tag)
@@ -267,7 +341,7 @@ func (s *UpdatesScreen) Draw(r *renderer.Renderer) {
 		y += rowH
 	}
 
-	view := updatesStatus(s.up.Enabled(), v, a, netstate.Offline(), s.up.LastError(), s.up.RateLimitedUntil())
+	view := updatesStatus(s.up.Enabled(), v, a, inst, netstate.Offline(), s.up.LastError(), s.up.RateLimitedUntil(), s.up.SourceOverride())
 	y += 10
 	statusTop := y
 	textW := r.W - 40
@@ -287,13 +361,18 @@ func (s *UpdatesScreen) Draw(r *renderer.Renderer) {
 		y += r.DrawWrappedText(ln.Text, 20, y, textW, lineH, c[0], c[1], c[2]) + 6
 	}
 
-	if a.State == appupdate.ArchiveRunning {
+	installDownloading := inst.State == appupdate.InstallRunning && inst.Phase == appupdate.PhaseDownloading
+	if a.State == appupdate.ArchiveRunning || installDownloading {
+		done, total := a.Done, a.Total
+		if installDownloading {
+			done, total = inst.Done, inst.Total
+		}
 		track, ok := r.Theme.ProgressTrack(), r.Theme.Success()
 		r.DrawRect(20, y, textW, 20, track[0], track[1], track[2])
-		if a.Total > 0 {
-			r.DrawRect(20, y, int32(float64(textW)*float64(a.Done)/float64(a.Total)), 20, ok[0], ok[1], ok[2])
+		if total > 0 {
+			r.DrawRect(20, y, int32(float64(textW)*float64(done)/float64(total)), 20, ok[0], ok[1], ok[2])
 			mu := r.Theme.Muted()
-			r.DrawSmallText(fmt.Sprintf("%d%%  (%s / %s)", a.Done*100/a.Total, humanBytes(a.Done), humanBytes(a.Total)),
+			r.DrawSmallText(fmt.Sprintf("%d%%  (%s / %s)", done*100/total, humanBytes(done), humanBytes(total)),
 				20, y+26, mu[0], mu[1], mu[2])
 		}
 		y += 26 + smallH + 6
@@ -316,8 +395,11 @@ func (s *UpdatesScreen) Draw(r *renderer.Renderer) {
 
 	ftrY := r.DrawFooterBar(footerH)
 	back := renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"}
-	if a.State == appupdate.ArchiveRunning {
+	switch {
+	case a.State == appupdate.ArchiveRunning || inst.State == appupdate.InstallRunning:
 		back.Text = "Cancel"
+	case inst.State == appupdate.InstallStaged:
+		back.Text = "Later"
 	}
 	r.DrawFooterHints([]renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"}, back,

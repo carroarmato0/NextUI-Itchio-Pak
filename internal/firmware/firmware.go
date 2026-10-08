@@ -294,6 +294,24 @@ func (e *Env) LogPath() string { return e.logPath }
 // Manager finds .muxapp files. "" where there is no Archive Manager.
 func (e *Env) ArchiveDir() string { return e.archiveDir }
 
+// executable is os.Executable; tests replace it.
+var executable = os.Executable
+
+// PakDir is the pak folder this binary runs from, which an in-place update
+// replaces. NextUI only: "" elsewhere, and in-place install is then never
+// offered.
+func (e *Env) PakDir() string {
+	if e.kind != KindNextUI {
+		return ""
+	}
+	exe, err := executable()
+	if err != nil {
+		logger.Warn("firmware: cannot resolve the executable: %v", err)
+		return ""
+	}
+	return filepath.Dir(exe)
+}
+
 // PakStoreDB is the Pak Store's install database for this platform. "" off
 // NextUI or without PLATFORM. The file need not exist.
 func (e *Env) PakStoreDB() string { return e.pakStoreDB }

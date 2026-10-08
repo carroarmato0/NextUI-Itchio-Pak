@@ -25,9 +25,20 @@ type AppUpdater interface {
 	RateLimitedUntil() time.Time
 	PendingNotice() (appupdate.Verdict, bool)
 	MarkNotified(ch appupdate.Channel, tag string)
+	// PendingRollbackNotice/MarkRollbackNotified: the "update didn't start,
+	// kept the previous version" notice shown once on the launch that rolled
+	// back (see internal/appupdate.Checker.PendingRollbackNotice).
+	PendingRollbackNotice() (appupdate.Pending, bool)
+	MarkRollbackNotified()
 	StartArchiveSave()
 	CancelArchiveSave()
 	ArchiveStatus() appupdate.ArchiveStatus
+	StartInstall()
+	CancelInstall()
+	InstallStatus() appupdate.InstallStatus
+	RequestRestart()
+	// SourceOverride is the test update source in use, "" normally.
+	SourceOverride() string
 }
 
 var (

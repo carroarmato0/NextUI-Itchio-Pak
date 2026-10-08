@@ -180,5 +180,77 @@ case "$OUT" in
     *)                fail "unset \$SYSTEM_PATH still selects the bundled lib dir (got: $OUT)" ;;
 esac
 
+# --- In-place update rollback ------------------------------------------------
+#
+# run_update <case> sets up Tools/tg5040/Itch-io.pak (new) and .Itch-io.pak.prev
+# (old), each with a stub itchio, and runs the new launch.sh. launch.sh derives
+# $HOME as $SHARED_USERDATA_PATH/Itch-io, so the pending file is seeded there.
+# The stubs record which version ran in $HOME/ran.
+#   confirm - the new stub deletes the pending file (it started)
+#   crash   - the new stub exits 1 without confirming
+#   noprev  - like crash, but there is no .prev to restore
+run_update() {
+    _case="$1"
+    _root="$TMP/upd-$_case"
+    rm -rf "$_root"
+    _tools="$_root/Tools/tg5040"
+    _home="$_root/shared/Itch-io"
+    mkdir -p "$_tools/Itch-io.pak/assets" "$_home"
+    cp launch.sh "$_tools/Itch-io.pak/launch.sh"
+    if [ "$_case" = confirm ]; then
+        # shellcheck disable=SC2016
+        printf '#!/bin/sh\necho new >> "$HOME/ran"\nrm -f "$HOME/update_pending.json"\n' > "$_tools/Itch-io.pak/itchio"
+    else
+        # shellcheck disable=SC2016
+        printf '#!/bin/sh\necho new >> "$HOME/ran"\nexit 1\n' > "$_tools/Itch-io.pak/itchio"
+    fi
+    chmod +x "$_tools/Itch-io.pak/itchio"
+    if [ "$_case" != noprev ]; then
+        mkdir -p "$_tools/.Itch-io.pak.prev/assets"
+        cp launch.sh "$_tools/.Itch-io.pak.prev/launch.sh"
+        # shellcheck disable=SC2016
+        printf '#!/bin/sh\necho old >> "$HOME/ran"\n' > "$_tools/.Itch-io.pak.prev/itchio"
+        chmod +x "$_tools/.Itch-io.pak.prev/itchio"
+    fi
+    printf '{"from":"v1.1.0-rc5","to":"v1.1.0-rc6"}' > "$_home/update_pending.json"
+    SHARED_USERDATA_PATH="$_root/shared" PLATFORM=tg5040 \
+        sh "$_tools/Itch-io.pak/launch.sh" >/dev/null 2>&1 || true
+}
+
+run_update confirm
+H="$TMP/upd-confirm/shared/Itch-io"; T="$TMP/upd-confirm/Tools/tg5040"
+# shellcheck disable=SC2015 # ok/fail always return 0; this is the assertion
+# idiom used throughout this block, not the if-then-else footgun SC2015 warns
+# about.
+[ "$(cat "$H/ran")" = "new" ] && ok "update confirmed: only the new version ran" || fail "update confirmed: ran '$(cat "$H/ran")'"
+# shellcheck disable=SC2015
+[ -d "$T/.Itch-io.pak.prev" ] && ok "update confirmed: .prev left for the app to remove" || fail "update confirmed: .prev vanished"
+# shellcheck disable=SC2015
+[ ! -f "$H/update_failed.json" ] && ok "update confirmed: no failure recorded" || fail "update confirmed: failure recorded"
+
+run_update crash
+H="$TMP/upd-crash/shared/Itch-io"; T="$TMP/upd-crash/Tools/tg5040"
+# shellcheck disable=SC2015
+[ "$(tr '\n' ' ' < "$H/ran")" = "new old " ] && ok "rollback when the binary does not confirm: new, then old ran" || fail "rollback: ran '$(tr '\n' ' ' < "$H/ran")'"
+# shellcheck disable=SC2015
+grep -q 'echo old' "$T/Itch-io.pak/itchio" && ok "rollback: the old version is live again" || fail "rollback: live folder is not the old version"
+# shellcheck disable=SC2015
+[ -d "$T/.Itch-io.pak.failed" ] && ok "rollback: the failed version is kept as .failed" || fail "rollback: no .failed"
+# shellcheck disable=SC2015
+[ ! -f "$H/update_pending.json" ] && [ -f "$H/update_failed.json" ] && ok "rollback: pending moved to update_failed.json" || fail "rollback: pending/failed files wrong"
+# shellcheck disable=SC2015
+grep -q rollback "$H/update_launcher.log" && ok "rollback: launcher logged it" || fail "rollback: no launcher log"
+
+# The restored launcher must not roll back again: old exits 0 without a
+# pending file, and nothing else runs.
+# shellcheck disable=SC2015
+[ "$(wc -l < "$H/ran" | tr -d ' ')" = 2 ] && ok "no loop after rollback" || fail "no loop after rollback: ran $(wc -l < "$H/ran") times"
+
+run_update noprev
+H="$TMP/upd-noprev/shared/Itch-io"
+# shellcheck disable=SC2015
+[ ! -f "$H/update_pending.json" ] && [ -f "$H/update_pending.orphan.json" ] && [ ! -f "$H/update_failed.json" ] \
+    && ok "no .prev: pending set aside, nothing restored" || fail "no .prev: pending/orphan/failed files wrong"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
