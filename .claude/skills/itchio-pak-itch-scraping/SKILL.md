@@ -15,6 +15,40 @@ GET https://itch.io/games/made-with-gb-studio.xml?page=N
 - Cover image URL is embedded in the `<description>` HTML — parse with regex or XML
 - Author derived from subdomain: `https://{author}.itch.io/{game}`
 
+## Game details: data.json first, the page for the rest (1.1.0+)
+
+`GET https://{author}.itch.io/{game}/data.json` — public, no sign-in, added to
+by itch.io for this app. `FetchGameData` / `applyGameData` take from it:
+`id` (GameID), `tags`, `screenshots` (347x500, as the page), and pricing —
+`price` absent = free, `"$0.00"` = name-your-own-price, else paid (plus
+`original_price` and `sale` during a sale) — and `suggested_price`, which
+replaced the old `/purchase` page scrape. 404 = removed; a renamed game
+redirects and `links.self` is its new address.
+
+`FetchGameDetail` fetches data.json and the page in parallel. The page is
+still needed for the description, bundle names, browser-only detection and
+the CSRF token of the web download flow. If data.json fails, the page's own
+scraped values are kept, so a data.json outage degrades nothing.
+
+## Update checks (internal/inventory/updater.go, 1.1.0+)
+
+Never start the web download flow — no `download_url` POST (itch.io, issue #4).
+1. `data.json` for every installed game: 404 → removed; gives the ID and pricing.
+2. Signed in: one `owned-keys?game_ids=…` for all installed paid games, then
+   `GET /games/{id}/uploads` (with the key for paid). Each upload is recorded by
+   its **display name** when set (the same name the public page shows) plus a
+   fingerprint (build ID, else md5, else updated_at+size), so a same-name
+   re-upload is detected. `type: html` uploads are skipped.
+3. Signed out, paid-not-owned, or the API refused: the public page's upload
+   list (`FetchPageUploadNames`, a plain GET) — display names, no fingerprints.
+4. The first check from a different source (page ↔ API) only records a
+   baseline (`Entry.UpstreamSource`): the API lists uploads the page hides, so
+   comparing across sources would invent updates. Files match by upload ID
+   when both sides have one, else by name. A re-download clears `Changed`.
+
+The background checker reads the token from `Client.AuthToken()`, set at
+startup and on every sign-in/out — never from cfg, which the UI goroutine owns.
+
 ## Free Game Download Flow (5 steps)
 
 ```
@@ -42,6 +76,18 @@ GET https://itch.io/games/made-with-gb-studio.xml?page=N
 ```
 
 HTTP client needs: cookie jar (session persists across requests), redirect following.
+
+## Signing in: QR device grant (internal/itchio/oauth.go)
+
+The token used below comes from QR sign-in, not a typed API key (1.1.0+).
+`POST /oauth/device` (client_id, scope, PKCE S256) → show a QR of
+`verification_uri_complete` + `user_code` → `POST /oauth/device/poll` every
+`interval`s, after each answer (429 = slow down, double it) → on `approved`,
+`POST /oauth/token` (code, code_verifier, redirect_uri=urn:itchio:poll,
+device_info). 404 at the start = client not approved for QR login. Scope is
+`profile:me profile:owned game:view:uploads` — never `itch`. Tokens do not
+expire; a 401/403 from /profile means revoked (ErrTokenRejected). Never log
+the device code, verifier, approval code or token.
 
 ## Authenticated Download Flow (API v2, key in the header)
 

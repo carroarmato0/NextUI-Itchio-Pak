@@ -56,6 +56,12 @@ firmware they are for.
 Open the Pak Store on your device, find **Itch-io**, and press **A** to install.
 The Pak Store downloads and installs `Itch-io.pak.zip` automatically.
 
+Updates come through the Pak Store too. Itch-io tells you when one is out (a
+small notice, and **Settings → App updates**) and points you to the Store to
+install it. For an update the Store does not offer — a release candidate, or an
+install the Store does not manage — **Settings → App updates → Install** puts it
+in place for you. See [App updates](features.md#app-updates).
+
 ## NextUI — manual install, one device
 
 Use this if you want to install without the Pak Store and prefer to place files
@@ -95,6 +101,10 @@ are preparing an SD card that will be used across multiple device types.
 Updating works the same way: install the new `.muxapp` over the old one. Your
 settings, inventory and caches live in the application's own `data/` folder and
 survive both an update and a muOS system update.
+
+You do not have to fetch the file yourself: when a new version is out, **Settings
+→ App updates → Save to ARCHIVE** downloads and checks it and puts it in
+`ARCHIVE/`, ready for Archive Manager. See [App updates](features.md#app-updates).
 
 ---
 

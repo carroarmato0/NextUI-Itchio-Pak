@@ -2,7 +2,6 @@ package inventory_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -32,12 +31,16 @@ func TestUpdateService_RepairsMissingCoverArt(t *testing.T) {
 	pngData := minimalPNG()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/cover.png" {
+		switch r.URL.Path {
+		case "/cover.png":
 			w.Header().Set("Content-Type", "image/png")
 			w.Write(pngData)
-			return
+		case "/game/data.json":
+			// data.json succeeds; the page's own upload listing 404s.
+			w.Write([]byte(`{"id":1}`))
+		default:
+			http.NotFound(w, r)
 		}
-		http.NotFound(w, r)
 	}))
 	defer srv.Close()
 
@@ -49,7 +52,8 @@ func TestUpdateService_RepairsMissingCoverArt(t *testing.T) {
 
 	invPath := filepath.Join(dir, "inventory.json")
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
-	// Use srv.URL+"/game" as gameURL; FetchUploads will 404 but cover art runs first.
+	// Use srv.URL+"/game" as gameURL; FetchUploads (the page) will 404 but
+	// cover art repair does not depend on it.
 	gameURL := srv.URL + "/game"
 	inv.Add(gameURL,
 		inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
@@ -96,7 +100,7 @@ func TestUpdateService_SkipsCoverArtIfPresent(t *testing.T) {
 
 	invPath := filepath.Join(dir, "inventory.json")
 	inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
-	// IsFree: false → checkPaidGame; no FetchUploads call, avoids file-listing HTTP traffic.
+	// IsFree: false; the check reads data.json and the page, never the download flow.
 	gameURL := srv.URL + "/game"
 	inv.Add(gameURL,
 		inventory.Entry{Title: "G", IsFree: false, CoverURL: srv.URL + "/cover.png"},
@@ -115,87 +119,55 @@ func TestUpdateService_SkipsCoverArtIfPresent(t *testing.T) {
 	}
 }
 
-// freeGameServer builds an httptest.Server that mimics a free itch.io game page
-// with the given upload filenames. Pass status 404 to simulate a removed game.
+// freeGameServer builds an httptest.Server that mimics a free itch.io game:
+// its data.json and its public page listing the given upload filenames. Pass
+// status 404 to simulate a removed game.
+//
+// It fails the test on any request to download_url: update checks must never
+// start the web download flow (itch.io asked for this, issue #4).
 func freeGameServer(t *testing.T, status int, filenames []string) *httptest.Server {
 	t.Helper()
-	var srv *httptest.Server
-	mux := http.NewServeMux()
-
-	if status != http.StatusOK {
-		mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "not found", status)
-		})
-		srv = httptest.NewServer(mux)
-		return srv
-	}
-
-	var srvURL string
-
-	// GET /game — game page with CSRF token
-	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="TESTCSRF"/></head></html>`))
-	})
-
-	// POST /game/download_url — returns signed URL (last path segment is the key)
-	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		data, _ := json.Marshal(map[string]string{"url": srvURL + "/dl/TESTKEY"})
-		w.Write(data)
-	})
-
-	// GET /dl/TESTKEY — signed download page with upload list
-	mux.HandleFunc("/dl/TESTKEY", func(w http.ResponseWriter, r *http.Request) {
-		var body bytes.Buffer
-		body.WriteString(`<html><head><meta name="csrf_token" value="DLCSRF"/></head><body>`)
-		for i, fn := range filenames {
-			body.WriteString(`<div class="upload"><div class="info_column"><div class="upload_name">`)
-			body.WriteString(`<strong class="name" title="` + fn + `">` + fn + `</strong>`)
-			body.WriteString(`</div></div><div class="actions">`)
-			body.WriteString(fmt.Sprintf(`<a class="button download_btn" href="javascript:void(0);" data-upload_id="%d">Download</a>`, 100+i))
-			body.WriteString(`</div></div>`)
-		}
-		body.WriteString(`</body></html>`)
-		w.Write(body.Bytes())
-	})
-
-	srv = httptest.NewServer(mux)
-	srvURL = srv.URL
-	return srv
+	return gameServer(t, status, func() []string { return filenames })
 }
 
 // freeGameServerDynamic is like freeGameServer but reads filenames from the
 // pointed-to slice at request time, so callers can mutate it between runs.
 func freeGameServerDynamic(t *testing.T, filenames *[]string) *httptest.Server {
 	t.Helper()
-	var srvURL string
-	mux := http.NewServeMux()
+	return gameServer(t, http.StatusOK, func() []string { return *filenames })
+}
 
-	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html><head><meta name="csrf_token" value="TESTCSRF"/></head></html>`))
-	})
+func gameServer(t *testing.T, status int, filenames func() []string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
 	mux.HandleFunc("/game/download_url", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		data, _ := json.Marshal(map[string]string{"url": srvURL + "/dl/TESTKEY"})
-		w.Write(data)
+		t.Errorf("update check POSTed to download_url")
+		http.Error(w, "forbidden in update checks", http.StatusTeapot)
 	})
-	mux.HandleFunc("/dl/TESTKEY", func(w http.ResponseWriter, r *http.Request) {
-		var body bytes.Buffer
-		body.WriteString(`<html><head><meta name="csrf_token" value="DLCSRF"/></head><body>`)
-		for i, fn := range *filenames {
-			body.WriteString(`<div class="upload"><div class="info_column"><div class="upload_name">`)
-			body.WriteString(`<strong class="name" title="` + fn + `">` + fn + `</strong>`)
-			body.WriteString(`</div></div><div class="actions">`)
-			body.WriteString(fmt.Sprintf(`<a class="button download_btn" href="javascript:void(0);" data-upload_id="%d">Download</a>`, 100+i))
-			body.WriteString(`</div></div>`)
+	mux.HandleFunc("/game/data.json", func(w http.ResponseWriter, r *http.Request) {
+		if status != http.StatusOK {
+			http.Error(w, "not found", status)
+			return
 		}
-		body.WriteString(`</body></html>`)
+		w.Write([]byte(`{"id":42,"title":"G"}`))
+	})
+	mux.HandleFunc("/game", func(w http.ResponseWriter, r *http.Request) {
+		if status != http.StatusOK {
+			http.Error(w, "not found", status)
+			return
+		}
+		var body bytes.Buffer
+		body.WriteString(`<html><body><div class="uploads">`)
+		for i, fn := range filenames() {
+			body.WriteString(fmt.Sprintf(`<div class="upload"><a class="button download_btn" data-upload_id="%d">Download</a>`, 100+i))
+			body.WriteString(`<div class="info_column"><div class="upload_name">`)
+			body.WriteString(`<strong class="name" title="` + fn + `">` + fn + `</strong>`)
+			body.WriteString(`</div></div></div>`)
+		}
+		body.WriteString(`</div></body></html>`)
 		w.Write(body.Bytes())
 	})
-
-	srv := httptest.NewServer(mux)
-	srvURL = srv.URL
-	return srv
+	return httptest.NewServer(mux)
 }
 
 func TestUpdateService_Marks404AsRemoved(t *testing.T) {
@@ -493,5 +465,65 @@ func TestIsGameRemoved_SentinelUnwraps(t *testing.T) {
 	}
 	if errors.Is(fmt.Errorf("HTTP 404 plain text"), itchio.ErrGameRemoved) {
 		t.Error("plain string error should NOT match ErrGameRemoved")
+	}
+}
+
+// A game whose data.json fails — removed (404) or a transient server error —
+// still has its missing cover healed: the cover lives on the CDN and outlives
+// the page. Only an offline failure skips the repair.
+func TestUpdateService_RepairsCoverArtWhenDataJSONFails(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+	}{
+		{"removed", http.StatusNotFound},
+		{"transient", http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pngData := minimalPNG()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/cover.png":
+					w.Header().Set("Content-Type", "image/png")
+					w.Write(pngData)
+				case "/game/data.json":
+					w.WriteHeader(tc.status)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+
+			dir := t.TempDir()
+			romPath := filepath.Join(dir, "game.gb")
+			if err := os.WriteFile(romPath, []byte("ROM"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			invPath := filepath.Join(dir, "inventory.json")
+			inv := &inventory.Inventory{Entries: make(map[string]*inventory.Entry)}
+			gameURL := srv.URL + "/game"
+			inv.Add(gameURL,
+				inventory.Entry{Title: "G", IsFree: true, CoverURL: srv.URL + "/cover.png"},
+				inventory.DownloadedFile{Filename: "game.gb", DestPath: romPath, DownloadedAt: time.Now()})
+			if err := inv.Save(invPath); err != nil {
+				t.Fatal(err)
+			}
+
+			svc := inventory.NewUpdateService(inv, invPath, itchio.NewClientWithBase(srv.URL), nil)
+			done := make(chan struct{})
+			svc.Start(func() { close(done) })
+			<-done
+			svc.Stop()
+
+			artPath := inventory.CoverArtPath(srv.URL+"/cover.png", romPath)
+			if _, err := os.Stat(artPath); err != nil {
+				t.Errorf("cover art not repaired at %s: %v", artPath, err)
+			}
+			if tc.status == http.StatusNotFound {
+				if !inv.IsRemoved(gameURL) {
+					t.Error("game not marked removed")
+				}
+			}
+		})
 	}
 }

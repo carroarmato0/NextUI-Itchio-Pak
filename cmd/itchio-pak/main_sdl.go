@@ -6,11 +6,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
+	"unsafe"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/power"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -25,25 +30,34 @@ const (
 	userEventPowerShutdown   = int32(2) // power: long press
 )
 
-func runSDL() {
+func runSDL() bool {
 	env := firmware.Active()
 
 	// All mutable app state lives in one directory chosen by the firmware, so a
 	// launcher can put it somewhere that survives a firmware update.
 	dataDir := env.DataDir()
+
 	cfgPath := filepath.Join(dataDir, "config.json")
 	cachePath := filepath.Join(dataDir, "games_cache.json")
 	ownedCachePath := filepath.Join(dataDir, "owned_cache.json")
 	cfg, _ := settings.Load(cfgPath)
 
-	// Apply log level and register the API key for redaction before anything
+	// Apply log level and register the sign-in token for redaction before anything
 	// else is logged. LOG_LEVEL env var overrides the config value so the
 	// dev-screenshot script can force debug logging without editing config.
 	logger.SetLevel(logger.LevelFromString(cfg.LogLevel))
 	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
 		logger.SetLevel(logger.LevelFromString(envLevel))
 	}
-	logger.RegisterSecret(cfg.APIKey, "[API-KEY]")
+	logger.RegisterSecret(cfg.AuthToken, "[TOKEN]")
+
+	// Before any download can start: delete partial files a crash or power cut
+	// left behind last time. After the log level is set, so Recover's lines
+	// (a summary and one per file) honour the configured level.
+	partfile.SetJournal(filepath.Join(dataDir, "partials.json"))
+	if n := partfile.Recover(); n > 0 {
+		logger.Info("partfile: removed %d leftover partial download(s)", n)
+	}
 
 	// Before the first request: every client shares this User-Agent.
 	itchio.ConfigureUserAgent(itchio.UAInfoFromEnv(version, env), cfg.ShareDeviceInfo)
@@ -99,7 +113,7 @@ func runSDL() {
 	// mapping branch.
 	var pads []firmware.Pad
 	for i := 0; i < sdl.NumJoysticks(); i++ {
-		if guid := sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)); sdl.IsGameController(i) {
+		if guid := joystickGUID(i); sdl.IsGameController(i) {
 			logger.Info("input: joystick %d %q guid=%s — SDL recognises it as a controller", i, sdl.JoystickNameForIndex(i), guid)
 			pads = append(pads, firmware.Pad{GUID: guid, Name: sdl.JoystickNameForIndex(i)})
 		}
@@ -112,7 +126,7 @@ func runSDL() {
 		// mapping carrying the wrong one.
 		if !sdl.IsGameController(i) {
 			pad := firmware.Pad{
-				GUID: sdl.JoystickGetGUIDString(sdl.JoystickGetDeviceGUID(i)),
+				GUID: joystickGUID(i),
 				Name: sdl.JoystickNameForIndex(i),
 			}
 			// The pad has to be opened to be counted, and the counts are not
@@ -214,6 +228,54 @@ func runSDL() {
 	}
 
 	client := itchio.NewClient()
+	// The update checker runs in the background and reads the token from the
+	// client, not from cfg, which the UI goroutine owns.
+	client.SetAuthToken(cfg.AuthToken)
+
+	netstate.SetNotify(func() {
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	})
+	netstate.StartMonitor("/", client.Probe)
+
+	// App updates. The channel is resolved before anything reads it; an rc
+	// build with no choice yet pins "rc", so installing the final release does
+	// not silently drop a tester to Stable (spec §1).
+	running, _ := appupdate.Parse(version)
+	channel, pin := appupdate.ResolveChannel(cfg.UpdateChannel, running)
+	if pin {
+		cfg.UpdateChannel = string(channel)
+		if err := cfg.Save(cfgPath); err != nil {
+			logger.Warn("appupdate: could not pin the rc channel: %v", err)
+		}
+		logger.Info("appupdate: release-candidate build, update channel pinned to rc")
+	}
+	statePath := filepath.Join(dataDir, "update_state.json")
+	var src *appupdate.Source
+	override, overridden := appupdate.OverrideBase(dataDir)
+	ua := itchio.BuildUserAgent(itchio.UAInfoFromEnv(version, env), false)
+	if overridden {
+		logger.Warn("appupdate: test update source %s in use (remove %s/update_source_override to stop)", override, dataDir)
+		src = appupdate.NewOverrideSource(ua, override)
+		statePath = filepath.Join(dataDir, "update_state.override.json")
+	}
+	failed, _ := appupdate.TakeFailed(dataDir)
+	appUpd := appupdate.NewChecker(appupdate.Config{
+		Firmware:   env.Kind(),
+		Running:    version,
+		Channel:    channel,
+		StatePath:  statePath,
+		StoreDB:    env.PakStoreDB(),
+		ArchiveDir: env.ArchiveDir(),
+		PakDir:     env.PakDir(),
+		Failed:     failed,
+		Override:   override,
+		UserAgent:  ua,
+		Source:     src,
+		Notify: func() {
+			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+		},
+	})
+	ui.SetAppUpdater(appUpd)
 
 	cache := renderer.NewImageCache(50, client.HTTPClient())
 	defer cache.Clear()
@@ -237,13 +299,42 @@ func runSDL() {
 	powerMgr.Start()
 
 	listScreen := ui.NewListScreen(client, cfg, cfgPath, cache, cachePath, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle, ownedCachePath)
+
+	netstate.OnReconnect(listScreen.RetryAfterReconnect)
+	netstate.OnReconnect(updateSvc.RetryIfOwed)
+	netstate.OnReconnect(cache.Resume)
+	netstate.OnReconnect(appUpd.RetryAfterReconnect)
+
+	go func() {
+		dirs := []string{env.MusicRoot()}
+		for _, d := range env.ROMDirs() {
+			if d != "" {
+				dirs = append(dirs, d)
+			}
+		}
+		if d := env.ArchiveDir(); d != "" {
+			dirs = append(dirs, d)
+		}
+		if d := env.PakDir(); d != "" {
+			dirs = append(dirs, filepath.Dir(d))
+		}
+		partfile.Sweep(dirs)
+	}()
+
 	var current ui.Screen
 	if devScreen := os.Getenv("DEV_START_SCREEN"); devScreen != "" {
 		logger.Info("dev: DEV_START_SCREEN=%q", devScreen)
 		current = ui.NewDevStartScreen(devScreen, listScreen, client, cfg, cfgPath, cache, inv, inventoryPath, updateSvc, nextUITheme, defaultTheme, themeAvailable, paletteName, onThemeToggle)
+	} else if ui.NeedsAccountPrompt(cfg) {
+		current = ui.NewAccountPromptScreen(client, cfg, cfgPath, listScreen)
 	} else {
 		current = listScreen
 	}
+
+	// After the first screen is up; the notice itself waits for a screen
+	// that allows it (ui.noticeAllowed).
+	appUpd.Start()
+	var notice ui.UpdateNotice
 
 	// pendingQuit and pendingAction are set together; only read when pendingQuit is true.
 	var (
@@ -271,6 +362,15 @@ func runSDL() {
 		}
 	}
 
+	confirmed := false
+	// Set once current.Draw has actually run and presented a frame. Declared
+	// outside the loop (not reset per iteration) so it stays true from the
+	// iteration that sets it onward; the confirm below only ever fires once,
+	// on that same iteration. drawPowerPendingOverlay does NOT set this: a
+	// power key pressed before the screen itself has drawn once must not
+	// confirm an update that has only shown the sleep/shutdown overlay.
+	drew := false
+
 loop:
 	for current != nil {
 		// Upload any images that background goroutines finished fetching.
@@ -292,7 +392,7 @@ loop:
 		// but then WaitEvent blocks indefinitely because no further event arrives.
 		gotEvent := false
 		var e sdl.Event
-		if current.NeedsRedraw() {
+		if current.NeedsRedraw() || notice.Animating() {
 			e = sdl.WaitEventTimeout(16)
 		} else if newImages {
 			e = sdl.PollEvent()
@@ -393,10 +493,23 @@ loop:
 			} else {
 				drawPowerPendingOverlay(r, pendingAction)
 			}
-		} else if gotEvent || newImages || current.NeedsRedraw() {
+		} else if noticeFrame := notice.Tick(r, current, time.Now()); gotEvent || newImages || current.NeedsRedraw() || noticeFrame {
 			current.Draw(r)
+			drew = true
+		}
+
+		// The first iteration in which current.Draw has actually run and
+		// presented a frame (input already polled above): an update that got
+		// this far has started (NextUI install spec §4.1). A version that
+		// crashed before ever drawing its own screen — including one that
+		// only ever showed the power-pending overlay — must not confirm it.
+		if !confirmed && drew {
+			confirmed = true
+			appupdate.ConfirmStarted(env.PakDir(), dataDir)
 		}
 	}
+
+	return appUpd.RestartRequested()
 }
 
 func drawPowerPendingOverlay(r *renderer.Renderer, action power.Action) {
@@ -516,4 +629,11 @@ func logButtonPress(e sdl.Event) {
 		return
 	}
 	logger.Debug("input: button down SDL_%s (raw %d)", name, ev.Button)
+}
+
+// joystickGUID is the full GUID of the joystick at device index i. See
+// firmware.GUIDString for why go-sdl2's formatter is not used.
+func joystickGUID(i int) string {
+	guid := sdl.JoystickGetDeviceGUID(i)
+	return firmware.GUIDString(*(*[16]byte)(unsafe.Pointer(&guid)))
 }

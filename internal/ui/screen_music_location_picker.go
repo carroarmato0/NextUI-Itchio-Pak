@@ -112,7 +112,12 @@ func (s *MusicLocationPickerScreen) Draw(r *renderer.Renderer) {
 	} else {
 		r.DrawRect(0, confirmY, r.W, confirmH, okBGd[0], okBGd[1], okBGd[2])
 	}
-	r.DrawText("[ ✓  Save here ]", 12, confirmY+5, ok[0], ok[1], ok[2])
+	// On the selected row the text sits on SuccessBG; tone it for that fill.
+	okTx := ok
+	if s.cursor == 0 {
+		okTx = r.Theme.SuccessPillText()
+	}
+	r.DrawText("[ ✓  Save here ]", 12, confirmY+5, okTx[0], okTx[1], okTx[2])
 	r.DrawRect(0, confirmY+confirmH, r.W, 1, okSep[0], okSep[1], okSep[2])
 
 	listTop := confirmY + confirmH + 2

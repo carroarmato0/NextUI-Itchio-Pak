@@ -29,7 +29,7 @@ var AllPlatforms = []FeedPlatform{
 	{
 		Code:      "GBA",
 		Name:      "Game Boy Advance",
-		FeedSlugs: []string{"tag-gba"},
+		FeedSlugs: []string{"tag-gameboy-advance"}, // tag-gba is an alias that redirects here
 	},
 	{
 		Code:      "NES",

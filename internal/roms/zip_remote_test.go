@@ -263,3 +263,34 @@ func TestInspectRemoteZIP_MacOSMetaDirExcluded(t *testing.T) {
 		t.Errorf("p8.png name = %q, want %q", p8png[0].Name, "moss_moss.p8.png")
 	}
 }
+
+// "Ninja's Way": a Game Boy Color ROM with two READMEs. .md is also the Mega
+// Drive extension, but a Markdown file is not a Mega Drive ROM; only an entry
+// with the "SEGA " header at 0x100 is.
+func TestInspectRemoteZIP_ReadmeMarkdownIsNotAMegaDriveROM(t *testing.T) {
+	sega := make([]byte, 0x200)
+	copy(sega[0x100:], "SEGA GENESIS    ")
+	files := map[string]string{
+		"NINJAS WAY/NINJAS WAY.gbc": "gbc",
+		"NINJAS WAY/README.md":      "# Ninja's Way\n\nPress START.\n",
+		"README.md":                 "# About\n",
+		"extras/sonic-hack.md":      string(sega),
+	}
+	data := buildTestZIP(t, files)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, "game.zip", time.Time{}, bytes.NewReader(data))
+	}))
+	defer srv.Close()
+
+	manifest, err := roms.InspectRemoteZIP(http.DefaultClient, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("InspectRemoteZIP: %v", err)
+	}
+	if got := manifest.ROMCount(); got != 2 {
+		t.Fatalf("ROMCount = %d, want 2 (the .gbc and the real Mega Drive image, not the READMEs)", got)
+	}
+	byExt := manifest.ROMsByExt()
+	if len(byExt[".md"]) != 1 || byExt[".md"][0].Name != "sonic-hack.md" {
+		t.Fatalf(".md ROMs = %+v, want only sonic-hack.md", byExt[".md"])
+	}
+}

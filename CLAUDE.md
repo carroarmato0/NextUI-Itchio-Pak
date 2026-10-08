@@ -96,6 +96,8 @@ startup and the framebuffer survives a relaunch.
 cmd/itchio-pak/    Entry point (main.go, main_sdl.go, main_headless.go); builds to `itchio`
 internal/firmware/ Firmware detection + all firmware-specific paths and capabilities
 internal/itchio/   HTTP client, RSS feed, scraper, download flows
+internal/appupdate/ App-update checks (GitHub), channels, verdict, NextUI in-place install + rollback, muOS Save to ARCHIVE
+internal/pakstore/ Read-only reader for the Pak Store's SQLite install database
 internal/ui/       Screen definitions (screen_*.go)
 internal/renderer/ SDL2 drawing layer + LRU image cache
 internal/roms/     ROM type detection, destination folder logic
@@ -115,6 +117,13 @@ testdata/          HTML/RSS fixtures for offline unit tests
 it directly. Branch features from `dev` and merge them back there. Pre-releases
 for testers are tagged `vX.Y.Z-rcN` and cut from `dev` with
 `release-github.sh --prerelease`; full releases come off `main`.
+
+**Larger releases get a release branch.** A release made of several features
+(1.1.0: QR sign-in, paid gating, data.json, API update checks) is built on
+`release/X.Y.0`, branched from `dev`: each feature is a `feature/X.Y-<name>`
+branch merged back into it, and its release candidates are cut from it. When
+it ships it merges into `dev`, `dev` into `main`, and `main` back into `dev`.
+Fixes that land on `dev` meanwhile are merged forward into the release branch.
 
 **Not every merge to `main` is a release.** Changes that ship nothing to a
 device — documentation, skills, build and debug tooling — can merge to `main`

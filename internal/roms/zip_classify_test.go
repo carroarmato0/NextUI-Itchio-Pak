@@ -18,7 +18,10 @@ func TestClassifyEntry(t *testing.T) {
 		{"game.gba", roms.KindROM},
 		{"game.nes", roms.KindROM},
 		{"game.NES", roms.KindROM},
-		{"game.md", roms.KindROM},
+		// .md is ambiguous (Mega Drive or Markdown): the extension alone is not
+		// enough, the entry's header decides (see manifestFromZipReader).
+		{"game.md", roms.KindOther},
+		{"README.md", roms.KindOther},
 		{"game.gen", roms.KindROM},
 		{"game.smd", roms.KindROM},
 		{"track01.mp3", roms.KindMusic},

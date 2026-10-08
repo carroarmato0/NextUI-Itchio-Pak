@@ -24,10 +24,10 @@ type gifAnim struct {
 	frames     [][]uint8       // RGBA pixel data per frame; freed after GPU upload
 	delays     []time.Duration // per-frame display duration
 	w, h       int32
-	pitch      int        // w * 4
-	cur        int        // current frame index
-	nextAt     time.Time  // wall-clock time to advance to cur+1
-	frameCount int        // total stored frames; stays valid after frames is freed
+	pitch      int       // w * 4
+	cur        int       // current frame index
+	nextAt     time.Time // wall-clock time to advance to cur+1
+	frameCount int       // total stored frames; stays valid after frames is freed
 }
 
 // advance moves to the next frame if now is strictly after nextAt.

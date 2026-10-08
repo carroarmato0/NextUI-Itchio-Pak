@@ -61,8 +61,17 @@ for geom in $GEOMETRIES; do
         renders="$(grep -cE '^    [a-z].*\.png ' "$log")"
         printf 'ok   - palette audit %s: %s renders, %s\n' "$geom" "$renders" "${summary:-no findings}"
     else
-        printf 'FAIL - palette audit %s found unreadable text:\n' "$geom"
-        grep -E '^\s+FAIL' "$log" | sed 's/^ */  /'
+        findings="$(grep -E '^\s+FAIL' "$log" | sed 's/^ */  /')"
+        if [ -n "$findings" ]; then
+            printf 'FAIL - palette audit %s found unreadable text:\n' "$geom"
+            printf '%s\n' "$findings"
+        else
+            # devshot failed without an audit finding: a panic, a build error,
+            # a scene that could not be set up. Show why before the log is
+            # removed — a bare FAIL with nothing under it is unexplainable.
+            printf 'FAIL - palette audit %s: devshot failed without reporting unreadable text; its last lines:\n' "$geom"
+            grep -vE 'image cache \(transient\)' "$log" | tail -n 25 | sed 's/^/  | /'
+        fi
         printf '  (renders in %s/%s)\n' "$OUT_DIR" "$geom"
         STATUS=1
     fi

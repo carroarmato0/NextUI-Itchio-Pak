@@ -20,6 +20,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -99,7 +100,7 @@ func (s *ZIPDownloadScreen) run() {
 	// the inspect step (which may have run minutes ago) does not cause a 403.
 	cdnURL := s.plan.CDNURL
 	if s.plan.Upload.ViaAPI() {
-		fresh, rerr := s.client.ResolveAuthURL(s.cfg.APIKey, s.plan.Upload.UploadID, s.plan.Upload.Session)
+		fresh, rerr := s.client.ResolveAuthURL(s.cfg.AuthToken, s.plan.Upload.UploadID, s.plan.Upload.Session)
 		if rerr != nil {
 			logger.Warn("zip-download: re-resolve auth URL failed (%v), using cached URL", rerr)
 		} else {
@@ -941,19 +942,28 @@ func fileMD5(path string) (string, error) {
 
 // extractEntry copies the content returned by open() to dest on disk.
 // Used for both ZIP and 7z entries.
+//
+// dest is often the ROM already installed (an update), so the entry is written
+// to a partial file and renamed over dest only once it is complete and synced:
+// a corrupt entry, a full card or a power cut mid-copy leaves the old file
+// intact rather than half-overwritten.
 func extractEntry(open func() (io.ReadCloser, error), dest string) error {
 	rc, err := open()
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
-	out, err := os.Create(dest)
+	out, err := partfile.Create(dest)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, rc)
-	return err
+	defer out.Abort() // no-op after Commit
+	n, err := io.Copy(out, rc)
+	if err != nil {
+		logger.Warn("extract: %s failed after %d bytes, installed file kept: %v", filepath.Base(dest), n, err)
+		return err
+	}
+	return out.Commit()
 }
 
 // extractZIPEntry is a convenience wrapper around extractEntry for zip.File.
@@ -1103,7 +1113,7 @@ func (s *ZIPDownloadScreen) Draw(r *renderer.Renderer) {
 		y := contentTop + 8
 		r.DrawText("Extraction failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
+		r.DrawWrappedText(problemText(s.err), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

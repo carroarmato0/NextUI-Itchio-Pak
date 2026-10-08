@@ -200,9 +200,12 @@ func devList(d SceneDeps) *ListScreen {
 
 // devDetail builds a detail screen with its data already loaded, skipping the
 // network fetch a real navigation would perform.
-func devDetail(d SceneDeps) *DetailScreen {
+func devDetail(d SceneDeps) *DetailScreen { return devDetailFor(d, d.Games[0]) }
+
+// devDetailFor is devDetail for a particular game.
+func devDetailFor(d SceneDeps, game itchio.Game) *DetailScreen {
 	list := devList(d)
-	s := NewDetailScreen(d.Client, d.Cfg, d.CfgPath, d.Cache, d.Games[0],
+	s := NewDetailScreen(d.Client, d.Cfg, d.CfgPath, d.Cache, game,
 		d.Inv, d.InvPath, list, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {})
 	s.detail = d.Detail
 	s.loading = false
@@ -252,8 +255,7 @@ var devScenes = []Scene{
 		return s
 	}},
 	{"settings", "Settings menu", func(d SceneDeps) Screen {
-		return NewSettingsScreen(d.Client, d.Cfg, d.CfgPath, d.Inv, d.InvPath, d.Cache,
-			devList(d), nil, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {}, nil)
+		return devSettings(d)
 	}},
 	{"about", "About screen", func(d SceneDeps) Screen {
 		return NewAboutScreen(devList(d))
@@ -317,4 +319,9 @@ type DevScrollable interface {
 func (s *DetailScreen) DevSetScroll(y int32) { s.scrollY = y }
 func (s *DetailScreen) DevScrollExtent() (int32, int32) {
 	return s.contentHeight, s.viewportH
+}
+
+func devSettings(d SceneDeps) *SettingsScreen {
+	return NewSettingsScreen(d.Client, d.Cfg, d.CfgPath, d.Inv, d.InvPath, d.Cache,
+		devList(d), nil, nil, d.Theme, d.Theme, true, "Dev Palette", func(bool) {}, nil)
 }

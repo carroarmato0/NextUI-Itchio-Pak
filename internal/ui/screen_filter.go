@@ -301,7 +301,7 @@ func (s *FilterScreen) handleButton(btn uint8) Screen {
 		return s.prev
 	case sdl.CONTROLLER_BUTTON_BACK: // SELECT — apply
 		return s.applyAndClose()
-	case btnX: // Y — clear all
+	case btnY: // physical Y — clear all, as the footer says
 		s.clearAll()
 	}
 	return s

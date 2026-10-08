@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/veandco/go-sdl2/sdl"
 	"golang.org/x/image/draw"
 )
@@ -46,7 +47,7 @@ func (e *cacheEntry) destroyTextures() {
 // rawImage holds decoded pixel data ready to be uploaded to a GPU texture.
 type rawImage struct {
 	url   string
-	pix   []uint8  // frame 0 pixel data (or only frame for static images)
+	pix   []uint8 // frame 0 pixel data (or only frame for static images)
 	w, h  int32
 	pitch int
 	anim  *gifAnim // non-nil when source is an animated GIF
@@ -62,7 +63,7 @@ type ImageCache struct {
 	client   *http.Client
 	readyCh  chan rawImage // pixel data ready for main-thread texture upload
 	sem      chan struct{} // concurrency limiter for background fetches
-	notify   func()       // optional: called when an image lands in readyCh
+	notify   func()        // optional: called when an image lands in readyCh
 }
 
 // SetNotify registers a callback invoked once each time a decoded image is
@@ -70,6 +71,16 @@ type ImageCache struct {
 // block in WaitEvent() instead of polling with a short timeout.
 // Safe to call before any fetches start; not safe to change while fetches run.
 func (c *ImageCache) SetNotify(fn func()) { c.notify = fn }
+
+// Resume asks for a redraw once the connection is back, so the screen calls
+// Get again and fetches the covers it skipped. Registered with
+// netstate.OnReconnect.
+func (c *ImageCache) Resume() {
+	logger.Info("image cache: connection back, resuming cover fetches")
+	if c.notify != nil {
+		c.notify()
+	}
+}
 
 const maxConcurrentFetches = 2
 
@@ -124,6 +135,12 @@ func (c *ImageCache) Get(r *Renderer, url string) *sdl.Texture {
 		c.mu.Unlock()
 		return nil
 	}
+	if netstate.Offline() {
+		// Every request would fail and be forgotten, and Get runs on every
+		// redraw: offline, that was a doomed request per cover per frame.
+		c.mu.Unlock()
+		return nil
+	}
 	if _, pending := c.fetching[url]; !pending {
 		c.fetching[url] = struct{}{}
 		logger.Debug("image cache: queuing fetch %s", url)
@@ -156,8 +173,12 @@ func (c *ImageCache) Peek(r *Renderer, url string) *sdl.Texture {
 
 // Warm schedules a background fetch for url if it is not already cached or
 // in-flight. Returns immediately with no texture. Use alongside Peek to control
-// exactly when fetches are initiated.
+// exactly when fetches are initiated. Offline it queues nothing, like Get;
+// Resume's redraw calls it again once the connection is back.
 func (c *ImageCache) Warm(url string) {
+	if netstate.Offline() {
+		return
+	}
 	c.mu.Lock()
 	_, cached := c.items[url]
 	_, fetching := c.fetching[url]

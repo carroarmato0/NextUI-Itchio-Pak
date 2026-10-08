@@ -103,7 +103,6 @@ func (s *CacheRefreshScreen) HasPendingAnimation() bool { return false }
 func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 	bad := r.Theme.Error()
 	badTx := r.Theme.ErrorText()
-	ht := r.Theme.HintText
 	mu := r.Theme.Muted()
 	ok := r.Theme.Success()
 	bg := r.Theme.Background
@@ -135,20 +134,12 @@ func (s *CacheRefreshScreen) Draw(r *renderer.Renderer) {
 		r.DrawTextCentered(fmt.Sprintf("%d games cached.", s.total), 0, mid+4, r.W, mt[0], mt[1], mt[2])
 
 	case refreshCacheError:
-		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
-			const cfMsg = "Visit itch.io in a browser on the same WiFi, then retry the refresh."
-			cfLines := r.WrapText(cfMsg, r.W-40)
-			cfH := int32(len(cfLines)) * (fontH + 4)
-			startY := mid - (fontH+10+cfH)/2
-			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, startY, r.W, bad[0], bad[1], bad[2])
-			r.DrawWrappedText(cfMsg, 20, startY+fontH+10, r.W-40, fontH+4, ht[0], ht[1], ht[2])
-		} else {
-			errLines := r.WrapText(s.err.Error(), r.W-40)
-			errH := int32(len(errLines)) * (fontH + 4)
-			startY := mid - (fontH+10+errH)/2
-			r.DrawTextCentered("Refresh failed:", 0, startY, r.W, bad[0], bad[1], bad[2])
-			r.DrawWrappedText(s.err.Error(), 20, startY+fontH+10, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
-		}
+		msg := problemText(s.err)
+		errLines := r.WrapText(msg, r.W-40)
+		errH := int32(len(errLines)) * (fontH + 4)
+		startY := mid - (fontH+10+errH)/2
+		r.DrawTextCentered("Refresh failed:", 0, startY, r.W, bad[0], bad[1], bad[2])
+		r.DrawWrappedText(msg, 20, startY+fontH+10, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 
 	case refreshCacheCancelled:
 		r.DrawTextCentered("Cancelled.", 0, mid, r.W, mu[0], mu[1], mu[2])

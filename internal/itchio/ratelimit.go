@@ -124,7 +124,25 @@ func (t *rateLimitTransport) waitTurn(ctx context.Context, host string) error {
 		return &RateLimitedError{Host: host, Until: until}
 	}
 	logger.Debug("ratelimit: waiting %s for %s cooldown", wait.Round(time.Millisecond), host)
+	if h, ok := ctx.Value(cooldownHooksKey{}).(cooldownHooks); ok {
+		h.pause()
+		defer h.resume()
+	}
 	return t.sleep(ctx, wait)
+}
+
+// cooldownHooks lets a request's owner stop its own clocks while the limiter
+// holds the request back: a download's idle timeout measures a silent
+// connection, and a request that has not been sent yet has no connection.
+type cooldownHooks struct{ pause, resume func() }
+
+type cooldownHooksKey struct{}
+
+// withCooldownHooks returns ctx carrying pause and resume, which waitTurn runs
+// before and after each cooldown wait (never when the host is not cooling
+// down).
+func withCooldownHooks(ctx context.Context, pause, resume func()) context.Context {
+	return context.WithValue(ctx, cooldownHooksKey{}, cooldownHooks{pause, resume})
 }
 
 func (t *rateLimitTransport) recordOK(host string) {

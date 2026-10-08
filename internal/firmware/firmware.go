@@ -104,6 +104,11 @@ type Env struct {
 	// artwork under different names than it displays.
 	catalogueByDir map[string]string
 
+	// archiveDir is where muOS's Archive Manager looks for .muxapp files.
+	archiveDir string
+	// pakStoreDB is the NextUI Pak Store's install database.
+	pakStoreDB string
+
 	dataDir string
 	logPath string
 
@@ -284,6 +289,32 @@ func (e *Env) DataDir() string { return e.dataDir }
 
 // LogPath is the full path of the runtime log file.
 func (e *Env) LogPath() string { return e.logPath }
+
+// ArchiveDir is ARCHIVE/ at the root of the card muOS calls SD1, where Archive
+// Manager finds .muxapp files. "" where there is no Archive Manager.
+func (e *Env) ArchiveDir() string { return e.archiveDir }
+
+// executable is os.Executable; tests replace it.
+var executable = os.Executable
+
+// PakDir is the pak folder this binary runs from, which an in-place update
+// replaces. NextUI only: "" elsewhere, and in-place install is then never
+// offered.
+func (e *Env) PakDir() string {
+	if e.kind != KindNextUI {
+		return ""
+	}
+	exe, err := executable()
+	if err != nil {
+		logger.Warn("firmware: cannot resolve the executable: %v", err)
+		return ""
+	}
+	return filepath.Dir(exe)
+}
+
+// PakStoreDB is the Pak Store's install database for this platform. "" off
+// NextUI or without PLATFORM. The file need not exist.
+func (e *Env) PakStoreDB() string { return e.pakStoreDB }
 
 // StatesDir returns the directory holding save states for an emulator core, or
 // "" when this firmware cannot locate them.

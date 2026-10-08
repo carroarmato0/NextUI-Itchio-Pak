@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"golang.org/x/net/html"
 )
@@ -34,9 +35,9 @@ type GameDetail struct {
 	Uploads        []Upload
 	GameID         string
 	CSRFToken      string
-	PageTags       []string // itch.io tag labels scraped from the game page
-	BundleNames    []string // names of bundles that include this game (from public page)
-	BrowserOnly    bool     // true when page has HTML5 embed but no downloadable or paid files
+	PageTags       []string     // itch.io tag labels scraped from the game page
+	BundleNames    []string     // names of bundles that include this game (from public page)
+	BrowserOnly    bool         // true when page has HTML5 embed but no downloadable or paid files
 	Pricing        PricingModel // how the developer charges; see PricingModel
 	SuggestedPrice string       // developer's suggested amount as itch.io displays it (e.g. "$2.00"); empty when unknown or not applicable
 }
@@ -48,10 +49,12 @@ type Upload struct {
 	NeedsFormat bool   // true if extension unknown; user must choose GB, GBC, or ZIP
 
 	// Set only for uploads listed through the API; update checks use them.
-	Size      int64
-	MD5       string
-	BuildID   int64 // 0 when the upload is not a butler build
-	UpdatedAt time.Time
+	DisplayName string // the name itch.io shows, when the uploader set one
+	Type        string // "default", "html" (played in a browser), "soundtrack"...
+	Size        int64
+	MD5         string
+	BuildID     int64 // 0 when the upload is not a butler build
+	UpdatedAt   time.Time
 }
 
 var (
@@ -71,7 +74,58 @@ var (
 	dollarsRegex = regexp.MustCompile(`class="[^"]*\bdollars\b[^"]*"`)
 )
 
+// FetchGameDetail reads a game page and its data.json. data.json supplies the
+// game ID, tags, screenshots, pricing and suggested price; the page supplies
+// what only it has (description, bundle names, browser-only, the CSRF token
+// for the web download flow). If data.json cannot be read, the page's own
+// values are kept, so a data.json outage degrades nothing.
 func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
+	type dataResult struct {
+		d   *GameData
+		err error
+	}
+	dataCh := make(chan dataResult, 1)
+	go func() {
+		d, err := c.FetchGameData(gameURL)
+		dataCh <- dataResult{d, err}
+	}()
+	detail, err := c.fetchGamePage(gameURL)
+	if err != nil {
+		return nil, err
+	}
+	if r := <-dataCh; r.err != nil {
+		logger.Warn("game: data.json unavailable for %s, using the page scrape: %v", gameURL, r.err)
+	} else {
+		applyGameData(detail, r.d)
+	}
+	return detail, nil
+}
+
+// applyGameData overrides the page-scraped fields data.json covers.
+func applyGameData(detail *GameDetail, d *GameData) {
+	if d.ID != 0 {
+		detail.GameID = strconv.FormatInt(d.ID, 10)
+	}
+	if len(d.Tags) > 0 {
+		detail.PageTags = d.Tags
+	}
+	if len(d.Screenshots) > 0 {
+		detail.ScreenshotURLs = d.Screenshots
+	}
+	// A browser-only game has no buy section on the page; data.json cannot
+	// tell that apart, so the page's verdict stands for it.
+	if !detail.BrowserOnly {
+		detail.Pricing = d.Pricing()
+	}
+	if detail.Pricing == PricingNameYourOwnPrice {
+		detail.SuggestedPrice = d.SuggestedPrice
+	}
+	logger.Info("game: from data.json id=%s pricing=%d suggested=%q tags=%d screenshots=%d",
+		detail.GameID, detail.Pricing, detail.SuggestedPrice, len(detail.PageTags), len(detail.ScreenshotURLs))
+}
+
+// fetchGamePage scrapes the game page itself.
+func (c *Client) fetchGamePage(gameURL string) (*GameDetail, error) {
 	logger.Debug("game: fetching detail %s", gameURL)
 	resp, err := c.http.Get(gameURL)
 	if err != nil {
@@ -84,7 +138,7 @@ func (c *Client) FetchGameDetail(gameURL string) (*GameDetail, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("game: detail page HTTP %d for %s", resp.StatusCode, gameURL)
-		return nil, fmt.Errorf("fetch game detail: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch game detail", Code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -265,32 +319,44 @@ func extractDescription(pageHTML string) string {
 				return
 			case "p":
 				buf.WriteString("<p>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</p>")
 				return
 			case "h1", "h2", "h3", "h4", "h5", "h6":
 				buf.WriteString("<h2>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</h2>")
 				return
 			case "strong", "b", "em", "i":
 				buf.WriteString("<b>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</b>")
 				return
 			case "ul":
 				buf.WriteString("<ul>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</ul>")
 				return
 			case "ol":
 				buf.WriteString("<ol>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</ol>")
 				return
 			case "li":
 				buf.WriteString("<li>")
-				for c := n.FirstChild; c != nil; c = c.NextSibling { walk(c) }
+				for c := n.FirstChild; c != nil; c = c.NextSibling {
+					walk(c)
+				}
 				buf.WriteString("</li>")
 				return
 			case "tr":
@@ -333,7 +399,7 @@ func (c *Client) ParseDownloadPage(pageURL string) (*DownloadPageResult, error) 
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("download-page: HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch download page: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch download page", Code: resp.StatusCode}
 	}
 
 	rawHTML, err := io.ReadAll(resp.Body)

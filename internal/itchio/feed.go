@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 const (
@@ -28,8 +29,8 @@ type Game struct {
 	CoverURL    string    `json:"cover_url"`
 	Price       float64   `json:"price"`
 	IsFree      bool      `json:"is_free"`
-	Tags        []string  `json:"tags,omitempty"`   // extracted from [Tag] brackets in the RSS title
-	PublishedAt time.Time `json:"published_at"`     // parsed from <pubDate> in RSS feed
+	Tags        []string  `json:"tags,omitempty"`     // extracted from [Tag] brackets in the RSS title
+	PublishedAt time.Time `json:"published_at"`       // parsed from <pubDate> in RSS feed
 	Platform    string    `json:"platform,omitempty"` // NextUI system code set by FetchAllGames, e.g. "GB"
 }
 
@@ -182,7 +183,7 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
-		logger.Error("feed: HTTP 403 from %s (Cloudflare bot-protection)", url)
+		logger.Error("feed: HTTP 403 from %s", url)
 		return nil, ErrCloudflareBlocked
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
@@ -191,7 +192,7 @@ func (c *Client) fetchGamesFromURLOnce(url string) ([]Game, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("feed: HTTP %d from %s", resp.StatusCode, url)
-		return nil, fmt.Errorf("fetch feed: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch feed", Code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -234,11 +235,10 @@ const PerPage = 36 // itch.io XML feeds return 36 items per page
 // FetchGames fetches one page of the GB Studio feed. It is used as a quick
 // live-feed preview when no local cache exists yet; the full multi-platform
 // catalogue is built by FetchAllGames.
-func (c *Client) FetchGames(page int, query string) ([]Game, error) {
+// FetchGames reads one page of the GB Studio feed. (itch.io's browse pages
+// take no search parameter; searching happens on the cached game list.)
+func (c *Client) FetchGames(page int) ([]Game, error) {
 	url := fmt.Sprintf("%s/games/made-with-gb-studio.xml?page=%d", c.base, page)
-	if query != "" {
-		url += "&q=" + query
-	}
 	return c.FetchGamesFromURL(url)
 }
 
@@ -415,7 +415,7 @@ func (c *Client) FetchTotalGames() (int, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
-		logger.Error("feed: total-games HTTP 403 (Cloudflare bot-protection)")
+		logger.Error("feed: total-games HTTP 403")
 		return 0, fmt.Errorf("fetch total games: %w", ErrCloudflareBlocked)
 	}
 	if resp.StatusCode != http.StatusOK {

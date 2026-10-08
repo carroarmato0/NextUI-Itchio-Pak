@@ -52,13 +52,16 @@ if [ -z "${IN_CONTAINER:-}" ]; then
     echo "==> launch_test.sh"
     "$SCRIPT_DIR/launch_test.sh" || exit 1
 
+    echo "==> build_date_test.sh"
+    "$SCRIPT_DIR/build_date_test.sh" || exit 1
+
     echo "==> shellcheck (device launchers)"
     if command -v shellcheck >/dev/null 2>&1; then
         # muOS runs mux_launch.sh with its own /bin/sh, so it is checked as
         # POSIX sh rather than bash. launch_test.sh runs under dash too (it
         # execs launch.sh directly), so it belongs in the same POSIX-sh gate
         # it exists to protect.
-        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh "$SCRIPT_DIR/launch_test.sh" || exit 1
+        shellcheck -s sh packaging/muos/mux_launch.sh launch.sh "$SCRIPT_DIR/launch_test.sh" "$SCRIPT_DIR/update-fixture.sh" || exit 1
         echo "ok   - device launch scripts are clean"
     else
         echo "note: skipping shellcheck (not installed)" >&2
@@ -116,6 +119,9 @@ set -e
 # having been compiled at all.
 echo "==> go test ./internal/ui (non-headless)"
 go test ./internal/ui/ || exit 1
+
+echo "==> go test ./internal/renderer (non-headless)"
+go test ./internal/renderer/ || exit 1
 
 if [ -n "$COVER" ] && [ $EXIT_CODE -eq 0 ]; then
     go tool cover -html=coverage.out -o coverage.html
