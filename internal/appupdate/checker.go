@@ -103,6 +103,11 @@ type Checker struct {
 	install       InstallStatus
 	cancelInstall context.CancelFunc
 	restart       atomic.Bool
+
+	// rollbackNotified: the rollback notice (cfg.Failed) has been shown.
+	// Memory only — this launch performed the rollback, so the notice is
+	// for it alone and must never return on a later launch.
+	rollbackNotified atomic.Bool
 }
 
 // NewChecker loads the saved state and reads the Store database (one small
@@ -500,6 +505,25 @@ func (c *Checker) PendingNotice() (Verdict, bool) {
 		return v, false
 	}
 	return v, ShouldNotify(v, c.st.Notified[v.Channel])
+}
+
+// PendingRollbackNotice reports whether the rollback notice is due: true only
+// when launch.sh rolled back a failed install for this process (Config.Failed
+// was non-nil at construction) and the notice has not already been marked
+// shown. Independent of the network and of the update channel. cfg.Failed is
+// never mutated after NewChecker, so reading it needs no lock.
+func (c *Checker) PendingRollbackNotice() (Pending, bool) {
+	if c.cfg.Failed == nil || c.rollbackNotified.Load() {
+		return Pending{}, false
+	}
+	return *c.cfg.Failed, true
+}
+
+// MarkRollbackNotified records that the rollback notice has been shown.
+// Memory only (no state file): this launch is the only one that performed
+// the rollback, so the record must not survive a restart.
+func (c *Checker) MarkRollbackNotified() {
+	c.rollbackNotified.Store(true)
 }
 
 // MarkNotified records that the user has been told about tag on ch: when the

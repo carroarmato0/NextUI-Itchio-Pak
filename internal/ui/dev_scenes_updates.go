@@ -13,13 +13,15 @@ import (
 // devAppUpdater is a stand-in for *appupdate.Checker so scenes can show every
 // Updates state without a network.
 type devAppUpdater struct {
-	disabled bool
-	v        appupdate.Verdict
-	running  bool
-	at       time.Time
-	err      error
-	archive  appupdate.ArchiveStatus
-	inst     appupdate.InstallStatus
+	disabled        bool
+	v               appupdate.Verdict
+	running         bool
+	at              time.Time
+	err             error
+	archive         appupdate.ArchiveStatus
+	inst            appupdate.InstallStatus
+	rollback        appupdate.Pending
+	rollbackPending bool
 }
 
 func (d *devAppUpdater) Enabled() bool                            { return !d.disabled }
@@ -33,6 +35,10 @@ func (d *devAppUpdater) LastError() error                         { return d.err
 func (d *devAppUpdater) RateLimitedUntil() time.Time              { return time.Time{} }
 func (d *devAppUpdater) PendingNotice() (appupdate.Verdict, bool) { return d.v, false }
 func (d *devAppUpdater) MarkNotified(appupdate.Channel, string)   {}
+func (d *devAppUpdater) PendingRollbackNotice() (appupdate.Pending, bool) {
+	return d.rollback, d.rollbackPending
+}
+func (d *devAppUpdater) MarkRollbackNotified() {}
 func (d *devAppUpdater) StartArchiveSave()                        {}
 func (d *devAppUpdater) CancelArchiveSave()                       {}
 func (d *devAppUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return d.archive }
@@ -49,14 +55,16 @@ func devRelease(tag string) *appupdate.Release {
 		Asset: "https://example.invalid/" + appupdate.AssetName(tag), Digest: "sha256:00", Size: 12819887}
 }
 
-// noticeScene draws a screen with the notice resting over it.
+// noticeScene draws a screen with the notice resting over it: either the
+// "available" notice (v) or the rollback notice (rollback), never both.
 type noticeScene struct {
 	Screen
-	v appupdate.Verdict
+	v        appupdate.Verdict
+	rollback *appupdate.Pending
 }
 
 func (s noticeScene) Draw(r *renderer.Renderer) {
-	r.Overlay = func(r *renderer.Renderer) { drawNotice(r, s.v, 1) }
+	r.Overlay = func(r *renderer.Renderer) { drawNotice(r, s.v, s.rollback, 1) }
 	defer func() { r.Overlay = nil }()
 	s.Screen.Draw(r)
 }
@@ -73,17 +81,22 @@ func init() {
 		Running: devVer("v1.0.25"), Latest: devRelease("v1.0.26"), Via: appupdate.ViaPakStore}
 	archive := appupdate.Verdict{Kind: appupdate.Available, Channel: appupdate.RC,
 		Running: devVer("v1.1.0-rc2"), Latest: devRelease("v1.1.0-rc3"), Via: appupdate.ViaArchive}
+	rollback := appupdate.Pending{From: "v1.1.0-rc3", To: "v1.1.0-rc4"}
 
 	devScenes = append(devScenes,
 		// Over the game list, whose top-right header holds the sort, platform
 		// and Offline pills: the audit checks the notice against them.
 		Scene{Name: "update-toast", Desc: "Update notice resting top-right over the game list", Build: func(d SceneDeps) Screen {
 			netstate.SetForTest(netstate.State{Status: netstate.StatusOnline})
-			return noticeScene{devList(d), rcAvail}
+			return noticeScene{Screen: devList(d), v: rcAvail}
 		}},
 		Scene{Name: "update-toast-pakstore", Desc: "Update notice pointing at the Pak Store", Build: func(d SceneDeps) Screen {
 			netstate.SetForTest(netstate.State{Status: netstate.StatusOnline})
-			return noticeScene{devList(d), storeAvail}
+			return noticeScene{Screen: devList(d), v: storeAvail}
+		}},
+		Scene{Name: "update-toast-rollback", Desc: "Rollback notice: the update didn't start, launch.sh restored the previous version", Build: func(d SceneDeps) Screen {
+			netstate.SetForTest(netstate.State{Status: netstate.StatusOnline})
+			return noticeScene{Screen: devList(d), rollback: &rollback}
 		}},
 		Scene{Name: "settings-updates-selected", Desc: "Settings, cursor on Updates, version available (annotation on the Accent pill)", Build: func(d SceneDeps) Screen {
 			netstate.SetForTest(netstate.State{Status: netstate.StatusOnline})

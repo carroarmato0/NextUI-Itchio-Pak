@@ -41,6 +41,10 @@ func (s *stubUpdater) LastError() error                         { return nil }
 func (s *stubUpdater) RateLimitedUntil() time.Time              { return time.Time{} }
 func (s *stubUpdater) PendingNotice() (appupdate.Verdict, bool) { return s.v, false }
 func (s *stubUpdater) MarkNotified(appupdate.Channel, string)   {}
+func (s *stubUpdater) PendingRollbackNotice() (appupdate.Pending, bool) {
+	return appupdate.Pending{}, false
+}
+func (s *stubUpdater) MarkRollbackNotified() {}
 func (s *stubUpdater) StartArchiveSave()                        {}
 func (s *stubUpdater) CancelArchiveSave()                       { s.cancelled++ }
 func (s *stubUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return s.archive }
