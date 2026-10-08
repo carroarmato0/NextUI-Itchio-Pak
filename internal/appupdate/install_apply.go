@@ -26,44 +26,93 @@ type Pending struct {
 // rename is os.Rename; tests replace it to fail the second rename.
 var rename = os.Rename
 
-// StagedReady reports the tag of a complete staged update.
-func StagedReady(pakDir string) (string, bool) {
+// stagedMarker reads .complete: line 1 is the staged tag, an optional later
+// "from=<running>" line (written by StageNextUI) records the version that
+// downloaded it. from is "" when the marker has no such line — either an
+// older build of this branch wrote it, or it isn't there at all.
+func stagedMarker(pakDir string) (tag, from string, ok bool) {
 	b, err := os.ReadFile(filepath.Join(StagedDir(pakDir), completeMarker))
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	tag := strings.TrimSpace(string(b))
-	return tag, tag != ""
+	lines := strings.Split(string(b), "\n")
+	tag = strings.TrimSpace(lines[0])
+	if tag == "" {
+		return "", "", false
+	}
+	for _, line := range lines[1:] {
+		if rest, cut := strings.CutPrefix(strings.TrimSpace(line), "from="); cut {
+			from = rest
+			break
+		}
+	}
+	return tag, from, true
+}
+
+// StagedReady reports the tag of a complete staged update.
+func StagedReady(pakDir string) (string, bool) {
+	tag, _, ok := stagedMarker(pakDir)
+	return tag, ok
+}
+
+// discardStaged removes a staged folder and any leftover staged zip. It
+// reports whether the removal succeeded, so the caller only logs its
+// "discarding" message when something was actually discarded.
+func discardStaged(pakDir string) bool {
+	dir := StagedDir(pakDir)
+	if err := os.RemoveAll(dir); err != nil {
+		logger.Warn("appupdate: remove %s: %v", dir, err)
+		return false
+	}
+	_ = os.Remove(StagedZip(pakDir))
+	return true
 }
 
 // StagedNewer reports the tag of a complete staged update, but only when it
-// is strictly newer than running. A stage can outlive its reason to exist —
-// the user picked "Later" and the Pak Store (or a side-load) later put a
-// different version in the live folder — so a complete stage that is not
-// newer, or either side does not parse (including a "dev" build, which never
-// applies updates), is never applied: it is removed here instead, so the
-// question is not asked again on the next launch.
+// is strictly newer than running AND was downloaded by running itself. A
+// stage can outlive its reason to apply:
+//   - the user picked "Later" and the Pak Store (or a side-load) later put a
+//     different version in the live folder — so a complete stage that is not
+//     newer, or either side does not parse (including a "dev" build, which
+//     never applies updates), is never applied.
+//   - the pak folder was replaced from outside the app (Store install,
+//     manual copy) since the stage was downloaded — so a stage whose
+//     recorded "from" does not match running exactly is never applied
+//     either, even when it is newer: it was downloaded by a version that
+//     is no longer the one installed.
+//
+// Either way the stage is removed here instead, so the question is not asked
+// again on the next launch.
 func StagedNewer(pakDir, running string) (string, bool) {
-	tag, ok := StagedReady(pakDir)
+	tag, from, ok := stagedMarker(pakDir)
 	if !ok {
 		return "", false
 	}
 	staged, sok := Parse(tag)
 	runV, rok := Parse(running)
-	if sok && rok && Compare(staged, runV) > 0 {
+	switch {
+	case !sok || !rok:
+		if discardStaged(pakDir) {
+			logger.Info("update: staged %s cannot be compared with %s, discarding", tag, running)
+		}
+		return "", false
+	case Compare(staged, runV) <= 0:
+		if discardStaged(pakDir) {
+			logger.Info("update: staged %s is not newer than %s, discarding", tag, running)
+		}
+		return "", false
+	case from != running:
+		if discardStaged(pakDir) {
+			shown := from
+			if shown == "" {
+				shown = "(unknown)"
+			}
+			logger.Info("update: staged %s was downloaded by %s but %s is installed now (replaced outside the app), discarding", tag, shown, running)
+		}
+		return "", false
+	default:
 		return tag, true
 	}
-	dir := StagedDir(pakDir)
-	if err := os.RemoveAll(dir); err != nil {
-		logger.Warn("appupdate: remove %s: %v", dir, err)
-		return "", false
-	}
-	if !sok || !rok {
-		logger.Info("update: staged %s cannot be compared with %s, discarding", tag, running)
-	} else {
-		logger.Info("update: staged %s is not newer than %s, discarding", tag, running)
-	}
-	return "", false
 }
 
 // DiscardIncompleteStaged removes a staged folder that never got its

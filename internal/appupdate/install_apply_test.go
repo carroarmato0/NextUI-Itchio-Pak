@@ -18,7 +18,7 @@ func applySetup(t *testing.T) (pak, data string) {
 	}
 	os.WriteFile(filepath.Join(pak, "version"), []byte("old"), 0644)
 	os.WriteFile(filepath.Join(StagedDir(pak), "version"), []byte("new"), 0644)
-	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\n"), 0644)
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\nfrom=v1.1.0-rc4\n"), 0644)
 	return pak, data
 }
 
@@ -101,16 +101,22 @@ func TestSwapStaged_secondRenameFails(t *testing.T) {
 	}
 }
 
-func stagedNewerSetup(t *testing.T, tag string) string {
+// stagedNewerSetup writes a complete stage for tag, downloaded by from.
+// from == "" writes the old single-line marker with no "from=" line.
+func stagedNewerSetup(t *testing.T, tag, from string) string {
 	t.Helper()
 	pak := filepath.Join(t.TempDir(), "Tools", "tg5040", "Itch-io.pak")
 	os.MkdirAll(StagedDir(pak), 0755)
-	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte(tag+"\n"), 0644)
+	marker := tag + "\n"
+	if from != "" {
+		marker += "from=" + from + "\n"
+	}
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte(marker), 0644)
 	return pak
 }
 
 func TestStagedNewer_newer(t *testing.T) {
-	pak := stagedNewerSetup(t, "v1.1.0-rc5")
+	pak := stagedNewerSetup(t, "v1.1.0-rc5", "v1.1.0-rc4")
 	tag, ok := StagedNewer(pak, "v1.1.0-rc4")
 	if !ok || tag != "v1.1.0-rc5" {
 		t.Fatalf("StagedNewer = %q %v, want v1.1.0-rc5 true", tag, ok)
@@ -121,7 +127,7 @@ func TestStagedNewer_newer(t *testing.T) {
 }
 
 func TestStagedNewer_equal(t *testing.T) {
-	pak := stagedNewerSetup(t, "v1.1.0-rc5")
+	pak := stagedNewerSetup(t, "v1.1.0-rc5", "v1.1.0-rc5")
 	if _, ok := StagedNewer(pak, "v1.1.0-rc5"); ok {
 		t.Fatal("a staged version equal to running must not be applied")
 	}
@@ -133,7 +139,7 @@ func TestStagedNewer_equal(t *testing.T) {
 func TestStagedNewer_older(t *testing.T) {
 	// Simulates v1.1.0 staging v1.1.1, the user picking Later, and the Pak
 	// Store (or a side-load) putting v1.1.2 in place before the restart.
-	pak := stagedNewerSetup(t, "v1.1.1")
+	pak := stagedNewerSetup(t, "v1.1.1", "v1.1.0")
 	if _, ok := StagedNewer(pak, "v1.1.2"); ok {
 		t.Fatal("a staged version older than running must not be applied (would be a silent downgrade)")
 	}
@@ -143,12 +149,41 @@ func TestStagedNewer_older(t *testing.T) {
 }
 
 func TestStagedNewer_runningUnparseable(t *testing.T) {
-	pak := stagedNewerSetup(t, "v1.1.0-rc5")
+	pak := stagedNewerSetup(t, "v1.1.0-rc5", "dev")
 	if _, ok := StagedNewer(pak, "dev"); ok {
 		t.Fatal("a dev build must never apply a staged update")
 	}
 	if _, err := os.Stat(StagedDir(pak)); !os.IsNotExist(err) {
 		t.Fatal("the stage must still be discarded when running does not parse")
+	}
+}
+
+// TestStagedNewer_fromMismatch: the Pak Store (or a side-load) replaced the
+// live pak folder with a different version after the stage was downloaded.
+// A newer stage downloaded by someone else must not be applied.
+func TestStagedNewer_fromMismatch(t *testing.T) {
+	pak := stagedNewerSetup(t, "v1.1.2-rc1", "v1.1.0")
+	if _, ok := StagedNewer(pak, "v1.1.1"); ok {
+		t.Fatal("a stage downloaded by a version other than the one now running must not be applied")
+	}
+	if _, err := os.Stat(StagedDir(pak)); !os.IsNotExist(err) {
+		t.Fatal("a from-mismatched stage must be discarded")
+	}
+	if _, err := os.Stat(StagedZip(pak)); !os.IsNotExist(err) {
+		t.Fatal("any leftover staged zip must be discarded too")
+	}
+}
+
+// TestStagedNewer_fromMissing: a .complete marker written by an older build
+// of this branch (single line, no "from=") must be treated as a mismatch,
+// not as a pass.
+func TestStagedNewer_fromMissing(t *testing.T) {
+	pak := stagedNewerSetup(t, "v1.1.0-rc5", "")
+	if _, ok := StagedNewer(pak, "v1.1.0-rc4"); ok {
+		t.Fatal("a stage with no recorded from must not be applied")
+	}
+	if _, err := os.Stat(StagedDir(pak)); !os.IsNotExist(err) {
+		t.Fatal("a stage with no recorded from must be discarded")
 	}
 }
 

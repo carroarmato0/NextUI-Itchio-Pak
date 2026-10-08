@@ -89,10 +89,27 @@ func TestChecker_installCancel(t *testing.T) {
 func TestChecker_stagedFromAnEarlierRunIsReported(t *testing.T) {
 	pak := stageSetup(t)
 	os.MkdirAll(StagedDir(pak), 0755)
-	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\n"), 0644)
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\nfrom=v1.1.0-rc4\n"), 0644)
 	c := installChecker(t, nuiRel("v1.1.0-rc5"), pak, nil)
 	if s := c.InstallStatus(); s.State != InstallStaged || s.Tag != "v1.1.0-rc5" {
 		t.Fatalf("status = %+v", s)
+	}
+}
+
+// TestChecker_stagedFromADifferentVersionIsNotReported: the stage was
+// downloaded by a version other than the one running now (the Pak Store, or
+// a side-load, replaced the pak folder since) — it must not be reported as
+// InstallStaged, and NewChecker's StagedNewer call discards it.
+func TestChecker_stagedFromADifferentVersionIsNotReported(t *testing.T) {
+	pak := stageSetup(t)
+	os.MkdirAll(StagedDir(pak), 0755)
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\nfrom=v1.1.0-rc3\n"), 0644)
+	c := installChecker(t, nuiRel("v1.1.0-rc5"), pak, nil)
+	if s := c.InstallStatus(); s.State == InstallStaged {
+		t.Fatalf("a stage downloaded by a different version must not be reported: status = %+v", s)
+	}
+	if _, err := os.Stat(StagedDir(pak)); !os.IsNotExist(err) {
+		t.Fatal("the mismatched stage must be discarded")
 	}
 }
 
@@ -188,7 +205,7 @@ func TestChecker_newCheckerIgnoresStagedOlderThanRunning(t *testing.T) {
 func TestChecker_startInstallNoopWhenAlreadyStagedSameTag(t *testing.T) {
 	pak := stageSetup(t)
 	os.MkdirAll(StagedDir(pak), 0755)
-	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\n"), 0644)
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\nfrom=v1.1.0-rc4\n"), 0644)
 	c := installChecker(t, nuiRel("v1.1.0-rc5"), pak, nil)
 	if s := c.InstallStatus(); s.State != InstallStaged || s.Tag != "v1.1.0-rc5" {
 		t.Fatalf("precondition: status = %+v", s)
@@ -210,7 +227,7 @@ func TestChecker_startInstallNoopWhenAlreadyStagedSameTag(t *testing.T) {
 func TestChecker_startInstallRestagesWhenNewerIsAvailable(t *testing.T) {
 	pak := stageSetup(t)
 	os.MkdirAll(StagedDir(pak), 0755)
-	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\n"), 0644)
+	os.WriteFile(filepath.Join(StagedDir(pak), completeMarker), []byte("v1.1.0-rc5\nfrom=v1.1.0-rc4\n"), 0644)
 
 	body := pakZip(t, goodPak(t, "v1.1.0-rc6")...)
 	srv := serve(t, body)

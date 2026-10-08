@@ -206,8 +206,11 @@ const unpackFactor = 5 // in halves: 2.5×
 
 // StageNextUI downloads rel's NextUI pak zip next to pakDir, verifies it,
 // unpacks it into StagedDir(pakDir) and checks it, then writes .complete.
-// On any failure or cancel nothing is left behind.
-func StageNextUI(ctx context.Context, hc *http.Client, userAgent string, rel Release, pakDir string,
+// from is the running version doing the staging: it is recorded in
+// .complete so a later launch (StagedNewer) only ever applies a stage to the
+// exact version that downloaded it. On any failure or cancel nothing is left
+// behind.
+func StageNextUI(ctx context.Context, hc *http.Client, userAgent string, rel Release, pakDir string, from string,
 	phase func(InstallPhase), progress func(done, total int64)) (err error) {
 	if !rel.HasNextUIAsset() || pakDir == "" {
 		return fmt.Errorf("%s has no installable NextUI asset", rel.Tag)
@@ -276,7 +279,8 @@ func StageNextUI(ctx context.Context, hc *http.Client, userAgent string, rel Rel
 	if err := os.Remove(zipPath); err != nil {
 		logger.Warn("appupdate: remove %s: %v", zipPath, err)
 	}
-	if err := os.WriteFile(filepath.Join(staged, completeMarker), []byte(rel.Tag+"\n"), 0644); err != nil {
+	marker := rel.Tag + "\nfrom=" + from + "\n"
+	if err := os.WriteFile(filepath.Join(staged, completeMarker), []byte(marker), 0644); err != nil {
 		logger.Error("appupdate: write %s marker: %v", completeMarker, err)
 		return err
 	}

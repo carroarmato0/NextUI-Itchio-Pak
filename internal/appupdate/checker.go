@@ -640,7 +640,7 @@ func (c *Checker) StartInstall() {
 	go func() {
 		defer c.wg.Done()
 		defer cancel()
-		err := StageNextUI(ctx, c.dl, c.cfg.UserAgent, r, c.cfg.PakDir,
+		err := StageNextUI(ctx, c.dl, c.cfg.UserAgent, r, c.cfg.PakDir, c.cfg.Running,
 			func(p InstallPhase) {
 				c.mu.Lock()
 				c.install.Phase = p
