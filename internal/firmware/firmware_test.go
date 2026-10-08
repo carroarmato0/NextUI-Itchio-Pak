@@ -248,6 +248,36 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func TestArchiveDirAndPakStoreDB(t *testing.T) {
+	t.Setenv("PLATFORM", "tg5040")
+	nx := ForTest(KindNextUI, "")
+	if got := nx.PakStoreDB(); got != "/mnt/SDCARD/.userdata/tg5040/nextui-pak-store/pak-store.db" {
+		t.Errorf("NextUI PakStoreDB = %q", got)
+	}
+	if nx.ArchiveDir() != "" {
+		t.Errorf("NextUI ArchiveDir = %q, want empty", nx.ArchiveDir())
+	}
+
+	t.Setenv("PLATFORM", "")
+	if got := ForTest(KindNextUI, "").PakStoreDB(); got != "" {
+		t.Errorf("NextUI without PLATFORM: PakStoreDB = %q, want empty", got)
+	}
+
+	prefix := t.TempDir()
+	mu := ForTest(KindMuOS, prefix)
+	if got, want := mu.ArchiveDir(), filepath.Join(prefix, "/mnt/mmc", "ARCHIVE"); got != want {
+		t.Errorf("muOS ArchiveDir = %q, want %q", got, want)
+	}
+	if mu.PakStoreDB() != "" {
+		t.Errorf("muOS PakStoreDB = %q, want empty", mu.PakStoreDB())
+	}
+
+	host := ForTest(KindHost, "")
+	if host.ArchiveDir() != "" || host.PakStoreDB() != "" {
+		t.Error("host must expose neither path")
+	}
+}
+
 // h700 is a single PLATFORM across eleven SKUs, so the platform code cannot say
 // which handheld this is — $DEVICE can. The fallbacks matter as much as the
 // table: an unrecognised SKU still has to produce something a bug report can be
@@ -303,5 +333,73 @@ func TestControllerMappingSanitisesName(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "guid,Ann Bernic keys,platform:Linux,") {
 		t.Errorf("comma in name not sanitised: %q", got)
+	}
+}
+
+// From NextUI h700-rc11, the firmware's SDL numbers the H700 pad the way TrimUI
+// does and recognises it as a game controller with a positional mapping, under
+// a new GUID. The shell's A then arrives where Xbox puts B, as on tg5040. Older
+// firmware — and rc11 with SDL_JOYSTICK_H700_FIXED_LAYOUT=0 — keep the old GUID
+// and the old arrangement.
+func TestFaceMappingH700FollowsThePadLayout(t *testing.T) {
+	t.Setenv("PLATFORM", "h700")
+	fixed := Pad{GUID: H700FixedLayoutGUID, Name: "ANBERNIC-keys", Buttons: 15, Hats: 1}
+	legacy := Pad{GUID: "19000000010000000100000000010000", Name: "ANBERNIC-keys", Buttons: 18, Hats: 1}
+
+	for _, tc := range []struct {
+		name string
+		pads []Pad
+		want FaceMapping
+	}{
+		{"rc11 fixed layout", []Pad{fixed}, FaceSwapped},
+		{"rc10 and earlier", []Pad{legacy}, FaceABDirect},
+		{"no pad reported", nil, FaceABDirect},
+	} {
+		if got := newNextUI("").FaceMapping(tc.pads...); got != tc.want {
+			t.Errorf("%s: FaceMapping() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The fixed-layout GUID means nothing off H700: another device reporting it
+// must keep its own arrangement.
+func TestFaceMappingFixedLayoutGUIDIgnoredOffH700(t *testing.T) {
+	t.Setenv("PLATFORM", "tg5040")
+	if got := newNextUI("").FaceMapping(Pad{GUID: H700FixedLayoutGUID}); got != FaceSwapped {
+		t.Errorf("FaceMapping() = %q, want %q", got, FaceSwapped)
+	}
+}
+
+// rc11's SDL maps the fixed-layout pad itself, so the app normally never asks.
+// If it does — an SDL that numbers the pad the new way but lacks the database
+// entry — the mapping must be positional, to agree with FaceSwapped, and must
+// not come from the old key-bitmap derivation, whose indices no longer apply.
+func TestControllerMappingH700FixedLayoutIsPositional(t *testing.T) {
+	t.Setenv("PLATFORM", "h700")
+	procInputDevices = filepath.Join(t.TempDir(), "absent")
+	t.Cleanup(func() { procInputDevices = "/proc/bus/input/devices" })
+
+	got, ok := newNextUI("").ControllerMapping(Pad{GUID: H700FixedLayoutGUID, Name: "ANBERNIC-keys", Buttons: 15, Hats: 1})
+	if !ok {
+		t.Fatal("ControllerMapping() ok = false, want the positional mapping")
+	}
+	for _, want := range []string{"a:b0", "b:b1", "x:b2", "y:b3", "back:b6", "start:b7", "guide:b8",
+		"leftshoulder:b4", "rightshoulder:b5", "lefttrigger:a2", "righttrigger:a5", "dpup:h0.1"} {
+		if !strings.Contains(","+got+",", ","+want+",") {
+			t.Errorf("mapping lacks %q: %s", want, got)
+		}
+	}
+}
+
+func TestPakDir(t *testing.T) {
+	executable = func() (string, error) { return "/mnt/SDCARD/Tools/tg5040/Itch-io.pak/itchio", nil }
+	t.Cleanup(func() { executable = os.Executable })
+	t.Setenv("PLATFORM", "tg5040")
+	if got := newNextUI("").PakDir(); got != "/mnt/SDCARD/Tools/tg5040/Itch-io.pak" {
+		t.Errorf("NextUI PakDir = %q", got)
+	}
+	prefix := t.TempDir()
+	if got := (&Env{kind: KindMuOS}).PakDir(); got != "" {
+		t.Errorf("muOS PakDir = %q, want empty (prefix %s)", got, prefix)
 	}
 }

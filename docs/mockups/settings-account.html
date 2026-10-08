@@ -1,0 +1,95 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Settings: account row</title><style>
+@font-face { font-family: 'App'; src: url('../../assets/font.ttf'); }
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { background:#0c0c0c; color:#9a9a9a; font-family:'App',sans-serif; padding:32px; }
+h1 { font-size:22px; font-weight:400; color:#d0d0d0; margin-bottom:6px; }
+p.lede { font-size:14px; line-height:1.5; max-width:78ch; margin-bottom:28px; }
+h2 { font-size:16px; font-weight:400; color:#c0c0c0; margin:36px 0 12px; }
+.panels { display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; }
+figure { display:flex; flex-direction:column; gap:8px; }
+figcaption { font-size:13px; color:#8a8a8a; max-width:60ch; }
+table.spec { border-collapse:collapse; font-size:13px; margin:8px 0 4px; }
+table.spec td, table.spec th { border-bottom:1px solid #2a2a2a; padding:6px 14px 6px 0; text-align:left; font-weight:400; }
+table.spec th { color:#c0c0c0; }
+
+.screen { position:relative; overflow:hidden; width:var(--w); height:var(--h); background:var(--bg);
+  font-family:'App',sans-serif; color:var(--main); flex-shrink:0; outline:1px solid #262626; }
+.hdr { position:absolute; left:0; right:0; top:0; height:var(--hdr); background:var(--surface);
+  border-bottom:2px solid var(--accent); display:flex; align-items:center; padding:0 var(--pad); }
+.hdr-t { font-size:var(--mf); color:var(--main); }
+.hdr.two { height:var(--hdr2); flex-direction:column; align-items:flex-start; justify-content:center; gap:calc(var(--sf)*.15); }
+.dt { font-size:var(--mf); line-height:1.1; }
+.db { font-size:var(--sf); color:var(--hint); }
+.sys { position:absolute; right:calc(var(--pad)*.5); top:calc(var(--hdr2)*.34); font-size:var(--sf);
+  background:var(--chip); color:var(--main); border-radius:999px; padding:0 .5em; }
+.ftr { position:absolute; left:0; right:0; bottom:0; height:var(--ftr); background:var(--surface);
+  display:flex; align-items:center; gap:.35em; padding:0 calc(var(--pad)*.5); font-size:var(--sf); }
+.hk { background:var(--accent); color:var(--accent-t); display:inline-flex; align-items:center; justify-content:center;
+  height:1.5em; font-size:var(--sf); }
+.hk.circle { width:1.5em; border-radius:50%; }
+.hk.pill { padding:0 .35em; border-radius:999px; }
+.ht { color:var(--hint); margin-right:.6em; }
+
+.qr-card { position:absolute; line-height:0; }
+.qr-card.small { outline:none; }
+.qr { display:block; }
+.theme-light .qr-card { box-shadow:0 0 0 1px var(--chip); }
+
+.si-col { position:absolute; display:flex; flex-direction:column; }
+.si-lead { font-size:var(--mf); line-height:1.25; color:var(--main); }
+.si-note { font-size:var(--sf); color:var(--hint); margin-top:calc(var(--mf)*1.1); }
+.si-code { font-weight:700; letter-spacing:.06em; line-height:1.1; color:var(--main);
+  font-variant-numeric:tabular-nums; margin-top:calc(var(--sf)*.3); white-space:nowrap; }
+.si-timer { display:flex; align-items:center; gap:.6em; font-size:var(--sf); color:var(--hint); margin-top:calc(var(--sf)*.7); }
+.si-timer .bar { flex:0 0 38%; height:max(3px,calc(var(--sf)*.2)); background:var(--chip); border-radius:999px; overflow:hidden; }
+.si-timer .fill { height:100%; background:var(--hint); }
+.theme-light .si-timer .fill { background:var(--accent); }
+.si-url { margin-top:auto; display:flex; flex-direction:column; gap:.2em; font-size:var(--sf); color:var(--hint); }
+.si-url .u { color:var(--muted); word-break:break-all; }
+.si-col.stacked { align-items:center; text-align:center; }
+.si-col.stacked .si-note { margin-top:0; }
+.si-col.stacked .si-timer { justify-content:center; width:100%; }
+
+.msg { position:absolute; left:10%; right:10%; top:var(--hdr); bottom:var(--ftr); display:flex; flex-direction:column;
+  justify-content:center; gap:calc(var(--mf)*.55); }
+.msg-t { font-size:calc(var(--mf)*1.25); }
+.msg-b { font-size:var(--mf); line-height:1.35; color:var(--list-t); max-width:32ch; }
+.success { color:var(--success); } .warning { color:var(--warning); } .error { color:var(--error); } .main { color:var(--main); }
+
+.scrim { position:absolute; inset:0; background:var(--scrim); }
+.modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--modal);
+  border:1px solid var(--modal-b); padding:calc(var(--mf)*.55) calc(var(--mf)*.55); }
+.modal-t { font-size:var(--mf); text-align:center; color:var(--main); padding-bottom:calc(var(--mf)*.45); }
+.modal-b { font-size:var(--mf); line-height:1.3; color:var(--list-t); padding:calc(var(--mf)*.5) 0; }
+.modal-h { display:flex; justify-content:center; align-items:center; gap:.35em; font-size:var(--sf); padding-top:calc(var(--mf)*.45); }
+.rule { height:1px; background:var(--chip); }
+
+.row { position:absolute; left:4px; right:4px; display:flex; align-items:center; padding:0 calc(var(--pad) - 4px);
+  font-size:var(--mf); color:var(--list-t); border-radius:999px; }
+.row.sel { background:var(--accent); color:var(--accent-t); }
+.row .muted { color:var(--muted); } .row.sel .muted { color:var(--hint); }
+.row .ok { color:var(--list-t); } .row.sel .ok { color:var(--accent-t); }
+
+.shot { position:absolute; background:var(--surface); color:var(--muted); font-size:var(--sf);
+  display:flex; align-items:center; justify-content:center; }
+.qr-cap { position:absolute; text-align:center; font-size:var(--sf); color:var(--muted); line-height:1.3; }
+.imgn { position:absolute; font-size:var(--mf); color:var(--muted); }
+.arow { position:absolute; display:flex; align-items:center; gap:calc(var(--pad)*.45); font-size:var(--mf); }
+.alabel { white-space:nowrap; flex-shrink:0; }
+.abadge { border-radius:50%; background:var(--accent); color:var(--accent-t); display:inline-flex;
+  align-items:center; justify-content:center; font-size:var(--sf); flex-shrink:0; }
+.abadge.warning-b { background:var(--warning-bg); color:var(--warning); }
+.price { font-size:var(--sf); color:var(--price); background:var(--chip); border-radius:999px; padding:.05em .55em; }
+.status { flex:1 1 auto; margin-left:calc(var(--pad)*.2); display:flex; align-items:center; gap:.45em; font-size:var(--sf);
+  border:1px solid var(--chip); background:var(--scrim); padding:.35em .55em; min-width:0; }
+.status .dl { background:var(--info); color:var(--bg); border-radius:999px; padding:0 .45em; }
+.status .path { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.status .del-b { background:var(--error); color:var(--accent-t); border-radius:50%; width:1.4em; height:1.4em;
+  display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.status .del { color:var(--error); flex-shrink:0; }
+.status .dl { flex-shrink:0; }
+.status .path { flex:1 1 auto; min-width:0; }
+.tags { position:absolute; border-top:1px solid var(--chip); padding-top:calc(var(--sf)*.5); display:flex; flex-wrap:wrap;
+  gap:calc(var(--sf)*.35); font-size:var(--sf); }
+.tag { background:var(--chip); color:var(--main); border-radius:999px; padding:.05em .5em; }
+</style></head><body><h1>Settings: account row</h1><p class="lede">The API Key row becomes Account. The keyboard entry goes away; A starts the QR sign-in.</p><h2>Account row</h2><div class="panels"><figure><div class="screen " style="--bg:#141414;--surface:#1E1E1E;--accent:#3C3C5C;--accent-t:#DCDCDC;--list-t:#DCDCDC;--hint:#8C8C8C;--main:#DCDCDC;--muted:#787878;--success:#50C850;--warning:#F0B43C;--warning-bg:#3B301B;--error:#C83C3C;--info:#3E92A0;--price:#AE8430;--chip:#323232;--modal:#282828;--modal-b:#464646;--scrim:#0A0A0A;--w:1024px;--h:768px;--mf:35px;--sf:24px;--hdr:72px;--hdr2:102px;--ftr:52px;--pad:20px;"><div class="hdr"><span class="hdr-t">Settings</span></div><div class="row sel" style="top:82px;height:64px"><span>Account: <span class="ok">carroarmato0</span></span></div><div class="row" style="top:146px;height:64px"><span>ROM Location: auto</span></div><div class="row" style="top:210px;height:64px"><span>Music Download: off</span></div><div class="row" style="top:274px;height:64px"><span>Use game title as filename: ON</span></div><div class="row" style="top:338px;height:64px"><span>NextUI Theme: Off</span></div><div class="row" style="top:402px;height:64px"><span>Share device info with itch.io: ON</span></div><div class="row" style="top:466px;height:64px"><span>Log Level: Info</span></div><div class="row" style="top:530px;height:64px"><span>Clear Image Cache</span></div><div class="row" style="top:594px;height:64px"><span>Refresh Game List</span></div><div class="ftr"><span class="hk circle">A</span><span class="ht">Sign in again</span><span class="hk circle">Y</span><span class="ht">Sign out</span><span class="hk circle">B</span><span class="ht">Back</span></div></div><figcaption>Signed in</figcaption></figure><figure><div class="screen " style="--bg:#141414;--surface:#1E1E1E;--accent:#3C3C5C;--accent-t:#DCDCDC;--list-t:#DCDCDC;--hint:#8C8C8C;--main:#DCDCDC;--muted:#787878;--success:#50C850;--warning:#F0B43C;--warning-bg:#3B301B;--error:#C83C3C;--info:#3E92A0;--price:#AE8430;--chip:#323232;--modal:#282828;--modal-b:#464646;--scrim:#0A0A0A;--w:1024px;--h:768px;--mf:35px;--sf:24px;--hdr:72px;--hdr2:102px;--ftr:52px;--pad:20px;"><div class="hdr"><span class="hdr-t">Settings</span></div><div class="row sel" style="top:82px;height:64px"><span>Account: <span class="muted">not signed in</span></span></div><div class="row" style="top:146px;height:64px"><span>ROM Location: auto</span></div><div class="row" style="top:210px;height:64px"><span>Music Download: off</span></div><div class="row" style="top:274px;height:64px"><span>Use game title as filename: ON</span></div><div class="row" style="top:338px;height:64px"><span>NextUI Theme: Off</span></div><div class="row" style="top:402px;height:64px"><span>Share device info with itch.io: ON</span></div><div class="row" style="top:466px;height:64px"><span>Log Level: Info</span></div><div class="row" style="top:530px;height:64px"><span>Clear Image Cache</span></div><div class="row" style="top:594px;height:64px"><span>Refresh Game List</span></div><div class="ftr"><span class="hk circle">A</span><span class="ht">Sign in</span><span class="hk circle">B</span><span class="ht">Back</span></div></div><figcaption>Signed out</figcaption></figure><figure><div class="screen " style="--bg:#141414;--surface:#1E1E1E;--accent:#3C3C5C;--accent-t:#DCDCDC;--list-t:#DCDCDC;--hint:#8C8C8C;--main:#DCDCDC;--muted:#787878;--success:#50C850;--warning:#F0B43C;--warning-bg:#3B301B;--error:#C83C3C;--info:#3E92A0;--price:#AE8430;--chip:#323232;--modal:#282828;--modal-b:#464646;--scrim:#0A0A0A;--w:640px;--h:480px;--mf:22px;--sf:15px;--hdr:45px;--hdr2:64px;--ftr:32px;--pad:12px;"><div class="hdr"><span class="hdr-t">Settings</span></div><div class="row sel" style="top:51px;height:40px"><span>Account: <span class="ok">carroarmato0</span></span></div><div class="row" style="top:91px;height:40px"><span>ROM Location: auto</span></div><div class="row" style="top:131px;height:40px"><span>Music Download: off</span></div><div class="row" style="top:171px;height:40px"><span>Use game title as filename: ON</span></div><div class="row" style="top:211px;height:40px"><span>NextUI Theme: Off</span></div><div class="row" style="top:251px;height:40px"><span>Share device info with itch.io: ON</span></div><div class="row" style="top:291px;height:40px"><span>Log Level: Info</span></div><div class="row" style="top:331px;height:40px"><span>Clear Image Cache</span></div><div class="row" style="top:371px;height:40px"><span>Refresh Game List</span></div><div class="ftr"><span class="hk circle">A</span><span class="ht">Sign in again</span><span class="hk circle">Y</span><span class="ht">Sign out</span><span class="hk circle">B</span><span class="ht">Back</span></div></div><figcaption>Signed in, 640x480</figcaption></figure></div></body></html>

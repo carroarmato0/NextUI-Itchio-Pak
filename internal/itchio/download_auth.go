@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 )
 
@@ -292,7 +293,7 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	}
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("auth: upload list HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch uploads: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch uploads", Code: resp.StatusCode}
 	}
 
 	// {"uploads":[...]} normally, but {"uploads":{}} (an object) when there
@@ -313,12 +314,14 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	// "traits" is deliberately not decoded: it is {} when empty and an array
 	// otherwise, the same object-vs-array quirk as owned-keys.
 	var items []struct {
-		ID        int64     `json:"id"`
-		Filename  string    `json:"filename"`
-		Size      int64     `json:"size"`
-		MD5       string    `json:"md5_hash"`
-		BuildID   int64     `json:"build_id"`
-		UpdatedAt time.Time `json:"updated_at"`
+		ID          int64     `json:"id"`
+		Filename    string    `json:"filename"`
+		DisplayName string    `json:"display_name"`
+		Type        string    `json:"type"`
+		Size        int64     `json:"size"`
+		MD5         string    `json:"md5_hash"`
+		BuildID     int64     `json:"build_id"`
+		UpdatedAt   time.Time `json:"updated_at"`
 	}
 	if len(envelope.Uploads) > 0 && envelope.Uploads[0] == '[' {
 		if err := json.Unmarshal(envelope.Uploads, &items); err != nil {
@@ -331,12 +334,14 @@ func (c *Client) FetchUploadsForKey(apiKey, gameID, downloadKeyID string) ([]Upl
 	var uploads []Upload
 	for _, u := range items {
 		up := Upload{
-			Filename:  u.Filename,
-			UploadID:  strconv.FormatInt(u.ID, 10),
-			Size:      u.Size,
-			MD5:       u.MD5,
-			BuildID:   u.BuildID,
-			UpdatedAt: u.UpdatedAt,
+			DisplayName: u.DisplayName,
+			Type:        u.Type,
+			Filename:    u.Filename,
+			UploadID:    strconv.FormatInt(u.ID, 10),
+			Size:        u.Size,
+			MD5:         u.MD5,
+			BuildID:     u.BuildID,
+			UpdatedAt:   u.UpdatedAt,
 		}
 		ext := strings.ToLower(filepath.Ext(u.Filename))
 		if ext == ".gb" || ext == ".gbc" || ext == ".gba" || ext == ".nes" || ext == ".md" || ext == ".gen" || ext == ".smd" || ext == ".zip" {
@@ -393,7 +398,7 @@ func (c *Client) CreateDownloadSession(apiKey, gameID, downloadKeyID string) (st
 	decodeErr := json.NewDecoder(resp.Body).Decode(&result)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		logger.Warn("auth: download session HTTP %d for game_id=%s %s", resp.StatusCode, gameID, strings.Join(result.Errors, "; "))
-		return "", fmt.Errorf("create download session: HTTP %d", resp.StatusCode)
+		return "", &netstate.StatusError{What: "create download session", Code: resp.StatusCode}
 	}
 	if decodeErr != nil {
 		return "", fmt.Errorf("decode download session: %w", decodeErr)
@@ -491,7 +496,7 @@ func (c *Client) ResolveAuthURL(apiKey, uploadID string, session *roms.DownloadS
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 			return "", fmt.Errorf("Game not owned or API key does not grant access to this download")
 		}
-		return "", fmt.Errorf("auth CDN resolve status %d", resp.StatusCode)
+		return "", &netstate.StatusError{What: "auth CDN resolve", Code: resp.StatusCode}
 	}
 }
 

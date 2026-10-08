@@ -33,8 +33,9 @@ Declared once in `scripts/targets.sh` as `<firmware>/<device>`.
 - **Capabilities, not emulation.** `Env.Caps()` switches off NextUI-only features on muOS (palette, MinUI save formats, save/state sync, GBA emulator choice, Pico-8 core choice). Disable rather than guess — a wrong save path writes files the user never finds.
 - **Cover art** is `.media/` on NextUI and the catalogue tree on muOS.
 - **Face buttons** are `btnA`/`btnB`/`btnX`/`btnY` in `internal/ui`, not raw SDL constants: muOS lets the user swap them.
-- **One PLATFORM, eleven devices.** H700 covers the whole Anbernic RG XX family; `$DEVICE` carries the SKU and is what names the handheld in the log. Face buttons differ from every other NextUI device: A/B direct, X/Y swapped.
-- **H700's pad needs a controller mapping the app supplies itself.** SDL has no database entry for `ANBERNIC-keys`, so it stays a plain joystick and emits only `SDL_JOYBUTTONDOWN` — which no screen handles, leaving the UI rendered but completely inert. `firmware.ControllerMapping` supplies the mapping at startup, keyed on the GUID SDL reports at runtime (never a hardcoded one). The evdev **code** of each button is measured and hardcoded (and must stay in step with `FaceABDirect`); the **index** SDL gives each code is derived per device from `/proc/bus/input/devices`, because it depends on what other keys the device exposes and the eleven SKUs do not agree. Hardcoding the indices is what broke every button on rc4 by exactly three. NextUI's h700 SDL2 numbers keys **ascending over the whole key range**, not in stock SDL2's `BTN_JOYSTICK`-first two passes — measured against a tester's dump, and the reason the pad starts at `b3` on a device whose power and volume keys come first. The derivation is validated against the button count SDL reports and the presence of the four face codes, and falls back to the measured indices if anything about the read does not add up. **When an H700 button report looks wrong, ask for `cat /proc/bus/input/devices` before theorising** — it has settled this twice.
+- **One PLATFORM, eleven devices.** H700 covers the whole Anbernic RG XX family; `$DEVICE` carries the SKU and is what names the handheld in the log.
+- **H700 has two button layouts, and the pad's GUID says which.** From NextUI **h700-rc11**, the firmware's SDL numbers the pad as TrimUI does on every model and recognises it as a game controller (GUID `19000000010000000100000000016e01`, `firmware.H700FixedLayoutGUID`) with a positional mapping — so it reads exactly like tg5040 (`FaceSwapped`) and needs nothing from the app. Earlier releases, and rc11 with `SDL_JOYSTICK_H700_FIXED_LAYOUT=0` in a pak's `launch.sh`, report another GUID with model-dependent numbers; everything below is about that legacy layout, where face buttons are A/B direct, X/Y swapped (`FaceABDirect`). `FaceMapping(pads...)` decides from the pads SDL reports at startup. Upstream reference: the NextUI wiki page "Porting NextUI Paks to H700", section "Built-in controls in SDL".
+- **Legacy H700 layout: the pad needs a controller mapping the app supplies itself.** SDL has no database entry for `ANBERNIC-keys`, so it stays a plain joystick and emits only `SDL_JOYBUTTONDOWN` — which no screen handles, leaving the UI rendered but completely inert. `firmware.ControllerMapping` supplies the mapping at startup, keyed on the GUID SDL reports at runtime (never a hardcoded one). The evdev **code** of each button is measured and hardcoded (and must stay in step with `FaceABDirect`); the **index** SDL gives each code is derived per device from `/proc/bus/input/devices`, because it depends on what other keys the device exposes and the eleven SKUs do not agree. Hardcoding the indices is what broke every button on rc4 by exactly three. NextUI's h700 SDL2 numbers keys **ascending over the whole key range**, not in stock SDL2's `BTN_JOYSTICK`-first two passes — measured against a tester's dump, and the reason the pad starts at `b3` on a device whose power and volume keys come first. The derivation is validated against the button count SDL reports and the presence of the four face codes, and falls back to the measured indices if anything about the read does not add up. **When an H700 button report looks wrong, ask for `cat /proc/bus/input/devices` before theorising** — it has settled this twice.
 - **Screen size class** is two predicates in `internal/ui`, not a width comparison — 720×480 is cramped and 720×720 is not. `compact(w, h)` governs spacing (padding, content gap, overlay margins); `abbreviate(w)` governs text (footer hints, QR column width) and is width-only, since horizontal budget doesn't depend on height.
 
 ## Key Commands
@@ -95,6 +96,8 @@ startup and the framebuffer survives a relaunch.
 cmd/itchio-pak/    Entry point (main.go, main_sdl.go, main_headless.go); builds to `itchio`
 internal/firmware/ Firmware detection + all firmware-specific paths and capabilities
 internal/itchio/   HTTP client, RSS feed, scraper, download flows
+internal/appupdate/ App-update checks (GitHub), channels, verdict, NextUI in-place install + rollback, muOS Save to ARCHIVE
+internal/pakstore/ Read-only reader for the Pak Store's SQLite install database
 internal/ui/       Screen definitions (screen_*.go)
 internal/renderer/ SDL2 drawing layer + LRU image cache
 internal/roms/     ROM type detection, destination folder logic
@@ -114,6 +117,13 @@ testdata/          HTML/RSS fixtures for offline unit tests
 it directly. Branch features from `dev` and merge them back there. Pre-releases
 for testers are tagged `vX.Y.Z-rcN` and cut from `dev` with
 `release-github.sh --prerelease`; full releases come off `main`.
+
+**Larger releases get a release branch.** A release made of several features
+(1.1.0: QR sign-in, paid gating, data.json, API update checks) is built on
+`release/X.Y.0`, branched from `dev`: each feature is a `feature/X.Y-<name>`
+branch merged back into it, and its release candidates are cut from it. When
+it ships it merges into `dev`, `dev` into `main`, and `main` back into `dev`.
+Fixes that land on `dev` meanwhile are merged forward into the release branch.
 
 **Not every merge to `main` is a release.** Changes that ship nothing to a
 device — documentation, skills, build and debug tooling — can merge to `main`

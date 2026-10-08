@@ -99,6 +99,11 @@ func newNextUI(prefix string) *Env {
 		logPath = filepath.Join(root, ".userdata", platform, "logs", "itchio.log")
 	}
 
+	pakStoreDB := ""
+	if platform != "" {
+		pakStoreDB = filepath.Join(root, ".userdata", platform, "nextui-pak-store", "pak-store.db")
+	}
+
 	return &Env{
 		kind:        KindNextUI,
 		device:      platform,
@@ -117,6 +122,7 @@ func newNextUI(prefix string) *Env {
 		builtinPaletteDir: filepath.Join(root, ".system", "res", "palettes"),
 		userPaletteDir:    filepath.Join(root, "Palettes"),
 		versionFile:       filepath.Join(root, ".system", "version.txt"),
+		pakStoreDB:        pakStoreDB,
 
 		dataDir: data,
 		logPath: logPath,

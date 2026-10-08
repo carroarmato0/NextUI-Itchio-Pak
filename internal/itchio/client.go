@@ -14,6 +14,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 )
 
 const apiItchIO = "https://api.itch.io"
@@ -141,11 +142,11 @@ func newHTTPClient() *http.Client {
 		Jar:     jar,
 		Timeout: 30 * time.Second,
 		Transport: &uaTransport{
-			wrapped: newRateLimitTransport(&h2FallbackTransport{
+			wrapped: netstate.Transport(newRateLimitTransport(&h2FallbackTransport{
 				h2:      h2t,
 				h1:      h1t,
 				h1hosts: make(map[string]struct{}),
-			}),
+			})),
 		},
 	}
 }
@@ -155,15 +156,13 @@ type Client struct {
 	base   string // itch.io/api/1/... base URL
 	butler string // api.itch.io base URL (butler-style endpoints)
 
-	// Background API key validation state (atomic, written once per session).
-	apiKeyStatus   int32 // stores APIKeyStatus constants
-	apiKeyChecking int32 // 0 = not started, 1 = started (CAS gate)
-
 	// purchaseCounts maps purchase_id to the number of distinct games it
 	// covers, from the last full owned-keys scan. Lets a game_id-filtered
 	// owned-keys answer still tell bundles from individual purchases.
 	ownedMu        sync.Mutex
 	purchaseCounts map[int64]int
+
+	authTokenField
 }
 
 func NewClient() *Client {
@@ -194,6 +193,22 @@ func NewClientWithBaseAndButler(base, butler string) *Client {
 // HTTPClient returns the underlying *http.Client used for all requests.
 func (c *Client) HTTPClient() *http.Client {
 	return c.http
+}
+
+// Probe makes the cheapest request that proves itch.io answers: HEAD on the
+// site root, no body. Only the reconnect monitor calls it, and only offline.
+func (c *Client) Probe() error {
+	req, err := http.NewRequest(http.MethodHead, c.base+"/", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return withoutURL(err)
+	}
+	resp.Body.Close()
+	logger.Debug("probe: HEAD %s/ -> %d", c.base, resp.StatusCode)
+	return nil
 }
 
 // DownloadURL streams directly from a pre-resolved CDN URL to dest.

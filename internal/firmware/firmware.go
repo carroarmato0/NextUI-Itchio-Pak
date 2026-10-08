@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 )
 
 // Kind identifies a supported firmware.
@@ -101,6 +103,11 @@ type Env struct {
 	// its box art belongs in. Separate from displayNames because muOS files
 	// artwork under different names than it displays.
 	catalogueByDir map[string]string
+
+	// archiveDir is where muOS's Archive Manager looks for .muxapp files.
+	archiveDir string
+	// pakStoreDB is the NextUI Pak Store's install database.
+	pakStoreDB string
 
 	dataDir string
 	logPath string
@@ -283,6 +290,32 @@ func (e *Env) DataDir() string { return e.dataDir }
 // LogPath is the full path of the runtime log file.
 func (e *Env) LogPath() string { return e.logPath }
 
+// ArchiveDir is ARCHIVE/ at the root of the card muOS calls SD1, where Archive
+// Manager finds .muxapp files. "" where there is no Archive Manager.
+func (e *Env) ArchiveDir() string { return e.archiveDir }
+
+// executable is os.Executable; tests replace it.
+var executable = os.Executable
+
+// PakDir is the pak folder this binary runs from, which an in-place update
+// replaces. NextUI only: "" elsewhere, and in-place install is then never
+// offered.
+func (e *Env) PakDir() string {
+	if e.kind != KindNextUI {
+		return ""
+	}
+	exe, err := executable()
+	if err != nil {
+		logger.Warn("firmware: cannot resolve the executable: %v", err)
+		return ""
+	}
+	return filepath.Dir(exe)
+}
+
+// PakStoreDB is the Pak Store's install database for this platform. "" off
+// NextUI or without PLATFORM. The file need not exist.
+func (e *Env) PakStoreDB() string { return e.pakStoreDB }
+
 // StatesDir returns the directory holding save states for an emulator core, or
 // "" when this firmware cannot locate them.
 func (e *Env) StatesDir(coreTag, coreName string) string {
@@ -412,9 +445,18 @@ const (
 // back relative to its own default, so it lands where NextUI is.
 //
 // H700 is measured too, though it reached that state the long way round — see
-// the inline comment below.
-func (e *Env) FaceMapping() FaceMapping {
+// the inline comment below. It also depends on the firmware release, which only
+// the pad itself reveals, so pads carries what SDL reported at startup.
+func (e *Env) FaceMapping(pads ...Pad) FaceMapping {
 	if e.kind != KindMuOS {
+		// From h700-rc11, NextUI's SDL numbers the H700 pad as TrimUI does and
+		// maps it positionally, so it reads like tg5040. The pad's GUID is the
+		// only sign of which release is running — and a user can opt back into
+		// the old numbers per pak with SDL_JOYSTICK_H700_FIXED_LAYOUT=0.
+		if e.device == "h700" && h700FixedLayout(pads) {
+			logger.Info("input: h700 pad reports the fixed layout (guid %s), reading it like tg5040", H700FixedLayoutGUID)
+			return FaceSwapped
+		}
 		// Originally derived from NextUI's upstream JOY_* indices, since nobody
 		// here owns the hardware. Since confirmed on a device: a tester's evdev
 		// capture reads the shell's A as code 304 and its B as 305, but its Y

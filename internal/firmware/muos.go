@@ -124,6 +124,7 @@ func newMuOS(prefix string) *Env {
 		catalogueByDir: resolveMuOSCatalogues(
 			filepath.Join(store, "info", "catalogue"), romDirs),
 		versionFile: filepath.Join(prefix, muosGlobalConf, "system", "version"),
+		archiveDir:  filepath.Join(prefix, romMount, "ARCHIVE"),
 
 		dataDir: data,
 		logPath: filepath.Join(data, "itchio.log"),

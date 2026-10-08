@@ -54,10 +54,17 @@ type Renderer struct {
 	W, H          int32
 	Theme         theme.Theme
 	texts         *textCache
-	sizes         map[sizeKey][2]int32 // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
-	runeFont      map[rune]int         // fontIndex result per rune; populated lazily, never evicted
-	wrapCache     map[wrapKey][]string // WrapText output keyed on (text, maxWidth); no LRU needed
+	sizes         map[sizeKey][2]int32     // SizeUTF8 measurement cache (no GPU resources; no LRU needed)
+	runeFont      map[rune]int             // fontIndex result per rune; populated lazily, never evicted
+	wrapCache     map[wrapKey][]string     // WrapText output keyed on (text, maxWidth); no LRU needed
 	pillCache     map[pillKey]*sdl.Texture // pre-rendered pill textures; nil entry = render target unsupported
+	displayFonts  map[int]*ttf.Font        // primary font at custom sizes, see display_text.go
+	descCache     map[string][]descBlock   // parsed game descriptions, see description.go
+
+	// Overlay, when set, draws over whatever the current screen drew, just
+	// before the frame is shown. Used by the app-update notice so no screen
+	// has to know about it. It must not call Present.
+	Overlay func(*Renderer)
 
 	// Dev-only text draw recording; see drawlog.go. Never enabled on device.
 	drawLog   []DrawLogEntry
@@ -169,6 +176,9 @@ func (r *Renderer) Close() {
 			fb.main.Close()
 		}
 	}
+	for _, f := range r.displayFonts {
+		f.Close()
+	}
 	if r.SmallFont != nil {
 		r.SmallFont.Close()
 	}
@@ -194,6 +204,9 @@ func (r *Renderer) Clear(red, green, blue uint8) {
 }
 
 func (r *Renderer) Present() {
+	if r.Overlay != nil {
+		r.Overlay(r)
+	}
 	r.Renderer.Present()
 }
 
@@ -596,26 +609,6 @@ func (r *Renderer) DrawWrappedText(text string, x, y, maxWidth, lineH int32, red
 	return int32(len(lines)) * lineH
 }
 
-// descStripInlineTags removes all HTML tags from s, returning plain text.
-// Used by DrawFormattedText to extract readable text from inline-tagged markup.
-func descStripInlineTags(s string) string {
-	var buf strings.Builder
-	i := 0
-	for i < len(s) {
-		if s[i] == '<' {
-			end := strings.IndexByte(s[i:], '>')
-			if end < 0 {
-				break
-			}
-			i += end + 1
-			continue
-		}
-		buf.WriteByte(s[i])
-		i++
-	}
-	return strings.Join(strings.Fields(buf.String()), " ")
-}
-
 // descClampU8 clamps an int value to [0, 255].
 func descClampU8(v int) uint8 {
 	if v > 255 {
@@ -632,6 +625,9 @@ func descClampU8(v int) uint8 {
 // <ul>, <ol>, <li>. Block-level structure (paragraphs, headings, list items)
 // is honoured; inline <b> content is rendered in a slightly brighter colour.
 // Returns the total pixel height consumed.
+//
+// The markup is parsed once and the blocks cached (see description.go); a
+// frame only draws them.
 func (r *Renderer) DrawFormattedText(markup string, x, y, maxW, lineH int32,
 	baseR, baseG, baseB uint8) int32 {
 	startY := y
@@ -642,118 +638,54 @@ func (r *Renderer) DrawFormattedText(markup string, x, y, maxW, lineH int32,
 	boldG := descClampU8(int(baseG) + 55)
 	boldB := descClampU8(int(baseB) + 55)
 
-	listType := "" // "ul" or "ol"
-	listCounter := 0
-
-	lower := strings.ToLower
-
-	i := 0
-	for i < len(markup) {
-		if markup[i] != '<' {
-			// Bare text — find next tag
-			end := strings.IndexByte(markup[i:], '<')
-			var text string
-			if end < 0 {
-				text = strings.TrimSpace(markup[i:])
-				i = len(markup)
-			} else {
-				text = strings.TrimSpace(markup[i : i+end])
-				i += end
-			}
-			if text != "" {
-				y += r.DrawWrappedText(text, x, y, maxW, lineH, baseR, baseG, baseB)
-			}
-			continue
-		}
-
-		// Parse tag
-		end := strings.IndexByte(markup[i:], '>')
-		if end < 0 {
-			break
-		}
-		tag := strings.TrimSpace(lower(markup[i+1 : i+end]))
-		i += end + 1
-
-		switch tag {
-		case "p":
-			closeIdx := strings.Index(lower(markup[i:]), "</p>")
-			if closeIdx < 0 {
-				closeIdx = len(markup) - i
-			}
-			pText := descStripInlineTags(markup[i : i+closeIdx])
-			if pText != "" {
-				if y > startY {
-					y += fontH / 3
-				}
-				y += r.DrawWrappedText(pText, x, y, maxW, lineH, baseR, baseG, baseB)
+	for _, b := range r.descriptionBlocks(markup) {
+		switch b.kind {
+		case descText:
+			y += r.DrawWrappedText(b.text, x, y, maxW, lineH, baseR, baseG, baseB)
+		case descPara:
+			if y > startY {
 				y += fontH / 3
 			}
-			if closeIdx < len(markup)-i {
-				i += closeIdx + 4
-			} else {
-				i = len(markup)
+			y += r.DrawWrappedText(b.text, x, y, maxW, lineH, baseR, baseG, baseB)
+			y += fontH / 3
+		case descHeading:
+			if y > startY {
+				y += fontH / 2
 			}
-
-		case "h2":
-			closeIdx := strings.Index(lower(markup[i:]), "</h2>")
-			if closeIdx < 0 {
-				closeIdx = len(markup) - i
-			}
-			hText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
-			if hText != "" {
-				if y > startY {
-					y += fontH / 2
-				}
-				r.DrawBoldText(hText, x, y, boldR, boldG, boldB)
-				y += lineH + fontH/4
-			}
-			if closeIdx < len(markup)-i {
-				i += closeIdx + 5
-			} else {
-				i = len(markup)
-			}
-
-		case "ul":
-			listType = "ul"
-		case "ol":
-			listType = "ol"
-			listCounter = 0
-		case "/ul", "/ol":
-			listType = ""
-			listCounter = 0
+			r.DrawBoldText(b.text, x, y, boldR, boldG, boldB)
+			y += lineH + fontH/4
+		case descListEnd:
 			y += fontH / 4
-
-		case "li":
-			closeIdx := strings.Index(lower(markup[i:]), "</li>")
-			if closeIdx < 0 {
-				closeIdx = len(markup) - i
-			}
-			liText := descStripInlineTags(strings.TrimSpace(markup[i : i+closeIdx]))
-			if liText != "" {
-				var prefix string
-				if listType == "ol" {
-					listCounter++
-					prefix = fmt.Sprintf("%d.  ", listCounter)
-				} else {
-					prefix = "•  "
-				}
-				_, smallFH := r.SmallTextSize("Ag")
-				pw, _ := r.SmallTextSize(prefix)
-				r.DrawSmallText(prefix, x, y+(lineH-smallFH)/2, baseR, baseG, baseB)
-				y += r.DrawWrappedText(liText, x+pw, y, maxW-pw, lineH, baseR, baseG, baseB)
-				y += fontH / 6
-			}
-			if closeIdx < len(markup)-i {
-				i += closeIdx + 5
-			} else {
-				i = len(markup)
-			}
-
-		case "br":
+		case descItem:
+			_, smallFH := r.SmallTextSize("Ag")
+			pw, _ := r.SmallTextSize(b.prefix)
+			r.DrawSmallText(b.prefix, x, y+(lineH-smallFH)/2, baseR, baseG, baseB)
+			y += r.DrawWrappedText(b.text, x+pw, y, maxW-pw, lineH, baseR, baseG, baseB)
+			y += fontH / 6
+		case descBreak:
 			y += lineH / 2
 		}
 	}
 	return y - startY
+}
+
+// descriptionCacheSize bounds the parsed descriptions kept: the game page
+// shows one at a time, and a few cover moving back and forth between games.
+const descriptionCacheSize = 8
+
+// descriptionBlocks returns markup parsed into blocks, parsing it only the
+// first time it is drawn.
+func (r *Renderer) descriptionBlocks(markup string) []descBlock {
+	if b, ok := r.descCache[markup]; ok {
+		return b
+	}
+	if r.descCache == nil || len(r.descCache) >= descriptionCacheSize {
+		r.descCache = make(map[string][]descBlock, descriptionCacheSize)
+	}
+	b := parseDescription(markup)
+	r.descCache[markup] = b
+	logger.Debug("renderer: parsed a description once (%d bytes, %d blocks)", len(markup), len(b))
+	return b
 }
 
 // DrawPill draws a filled pill (capsule) shape.
@@ -792,6 +724,34 @@ func (r *Renderer) drawPillDirect(x, y, w, h int32, red, green, blue uint8) {
 	r.Renderer.FillRect(&pillBodyBuf)
 	drawFilledCircle(r.Renderer, x+radius, y+radius, radius, red, green, blue)
 	drawFilledCircle(r.Renderer, x+w-radius, y+radius, radius, red, green, blue)
+}
+
+// DrawRoundedRect fills a rectangle with corners of the given radius: a card,
+// where DrawPill's half-height radius would turn a two-line box into a
+// capsule. Drawn directly, not cached — it is for short-lived overlays.
+func (r *Renderer) DrawRoundedRect(x, y, w, h, radius int32, red, green, blue uint8) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	radius = min(radius, w/2, h/2)
+	if radius < 1 {
+		r.DrawRect(x, y, w, h, red, green, blue)
+		return
+	}
+	r.Renderer.SetDrawColor(red, green, blue, 255)
+	body := sdl.Rect{X: x + radius, Y: y, W: w - radius*2, H: h}
+	r.Renderer.FillRect(&body)
+	sides := [2]sdl.Rect{
+		{X: x, Y: y + radius, W: radius, H: h - radius*2},
+		{X: x + w - radius, Y: y + radius, W: radius, H: h - radius*2},
+	}
+	r.Renderer.FillRects(sides[:])
+	for _, c := range [4][2]int32{
+		{x + radius, y + radius}, {x + w - radius - 1, y + radius},
+		{x + radius, y + h - radius - 1}, {x + w - radius - 1, y + h - radius - 1},
+	} {
+		drawFilledCircle(r.Renderer, c[0], c[1], radius, red, green, blue)
+	}
 }
 
 // createPillTexture pre-renders a pill into an SDL_Texture with the given
@@ -1017,13 +977,41 @@ func (r *Renderer) DrawTagPills(tags []string, x, y, maxW, lineH int32,
 // Circle badges are used for face buttons (A, B); pill badges for function keys.
 // y is the vertical center returned by DrawFooterBar.
 func (r *Renderer) DrawFooterHints(hints []FooterHint, y int32) {
+	r.drawFooterHintsAt(hints, 10, y)
+}
+
+// FooterHintsWidth is the width DrawFooterHints takes for hints, so they can
+// be centred.
+func (r *Renderer) FooterHintsWidth(hints []FooterHint) int32 {
+	_, smallH := r.SmallTextSize("Ag")
+	badgeDiam := smallH + 4
+	var w int32
+	for _, h := range hints {
+		labelW, _ := r.SmallTextSize(h.Label)
+		textW, _ := r.SmallTextSize(h.Text)
+		switch h.Kind {
+		case BadgeCircle:
+			w += badgeDiam + 6
+		case BadgePill:
+			w += labelW + 16 + 6
+		}
+		if h.Text != "" {
+			w += textW + 14
+		} else {
+			w += 8
+		}
+	}
+	return w - 14 // no gap after the last hint
+}
+
+func (r *Renderer) drawFooterHintsAt(hints []FooterHint, x, y int32) {
 	ac := r.Theme.Accent
 	acTxt := r.Theme.AccentText
 	hint := r.Theme.HintText
 
 	_, smallH := r.SmallTextSize("Ag")
 	badgeDiam := smallH + 4
-	cx := int32(10)
+	cx := x
 
 	for _, h := range hints {
 		labelW, _ := r.SmallTextSize(h.Label)
@@ -1095,6 +1083,7 @@ func (r *Renderer) DrawModal(title, body string, hints []FooterHint) {
 	ht := r.Theme.HintText
 	r.DrawWrappedText(body, panelX+pad, panelY+pad+fontH+pad/2, bodyMaxW, lineH, ht[0], ht[1], ht[2])
 
-	// Hints
-	r.DrawFooterHints(hints, panelY+panelH-hintsH)
+	// Hints, centred in the panel: DrawFooterHints starts at the screen edge.
+	hx := panelX + (panelW-r.FooterHintsWidth(hints))/2
+	r.drawFooterHintsAt(hints, hx, panelY+panelH-hintsH+(hintsH-fontH)/2)
 }

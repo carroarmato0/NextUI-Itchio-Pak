@@ -59,7 +59,19 @@ type UpstreamFile struct {
 	UploadID string    `json:"upload_id"`
 	SeenAt   time.Time `json:"seen_at"`
 	IsNew    bool      `json:"is_new,omitempty"`
+	// Fingerprint identifies the file's content, when the itch.io API gave
+	// one ("build:…", "md5:…" or "upd:…"); the public page gives none.
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// Changed marks a known file whose content changed upstream (a re-upload
+	// under the same name). Cleared when the game is downloaded again.
+	Changed bool `json:"changed,omitempty"`
 }
+
+// Where a list of upstream files came from.
+const (
+	SourcePage = "page" // the public game page (signed out)
+	SourceAPI  = "api"  // the itch.io API (signed in)
+)
 
 type Entry struct {
 	GameURL               string           `json:"game_url"`
@@ -75,6 +87,10 @@ type Entry struct {
 	GameRemovedAt         time.Time        `json:"game_removed_at,omitempty"`
 	RemovalDismissedAt    time.Time        `json:"removal_dismissed_at,omitempty"`
 	UnifiedNamingDisabled bool             `json:"unified_naming_disabled,omitempty"`
+	// UpstreamSource is where KnownUpstreamFiles came from (SourcePage or
+	// SourceAPI); empty in inventories written before 1.1.0, which listed
+	// files from the signed download page.
+	UpstreamSource string `json:"upstream_source,omitempty"`
 }
 
 type Inventory struct {
@@ -146,6 +162,11 @@ func (inv *Inventory) Add(gameURL string, e Entry, file DownloadedFile) {
 		existing.Title = e.Title
 		existing.Author = e.Author
 		existing.CoverURL = e.CoverURL
+	}
+	// A download fetches the current version, so content changes seen so
+	// far are resolved.
+	for i := range existing.KnownUpstreamFiles {
+		existing.KnownUpstreamFiles[i].Changed = false
 	}
 	for i, f := range existing.Files {
 		if f.DestPath == file.DestPath || f.Filename == file.Filename {
@@ -286,15 +307,21 @@ func (inv *Inventory) VerifyAndClean(path string) int {
 	return removed
 }
 
-// HasPendingUpdates returns true when any UpstreamFile for gameURL is marked
-// as a new upload (appeared after the first check), has a filename not in the
-// downloaded set, and was seen after UpdateDismissedAt.
+// HasPendingUpdates returns true when PendingUpdateFiles lists anything.
 func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
+	return len(inv.PendingUpdateFiles(gameURL)) > 0
+}
+
+// PendingUpdateFiles returns the upstream files that make up an update: new
+// uploads (appeared after the first check) not in the downloaded set, and
+// files whose content changed since they were downloaded — each seen after
+// UpdateDismissedAt. Changed tells the two apart.
+func (inv *Inventory) PendingUpdateFiles(gameURL string) []UpstreamFile {
 	inv.mu.Lock()
 	defer inv.mu.Unlock()
 	e, ok := inv.Entries[gameURL]
 	if !ok {
-		return false
+		return nil
 	}
 	downloaded := make(map[string]bool, len(e.Files)*3)
 	for _, f := range e.Files {
@@ -315,14 +342,19 @@ func (inv *Inventory) HasPendingUpdates(gameURL string) bool {
 			}
 		}
 	}
+	var out []UpstreamFile
 	for _, u := range e.KnownUpstreamFiles {
-		// Only flag genuinely new uploads (IsNew = true means appeared after first check).
-		// Files discovered on first check were present when the user downloaded the game.
-		if u.IsNew && !downloaded[u.Filename] && u.SeenAt.After(e.UpdateDismissedAt) {
-			return true
+		if !u.SeenAt.After(e.UpdateDismissedAt) {
+			continue
+		}
+		// Only genuinely new uploads (IsNew: appeared after the first check);
+		// files found on the first check were there when the game was downloaded.
+		// Same name with new content means the downloaded copy is the old one.
+		if (u.IsNew && !downloaded[u.Filename]) || u.Changed {
+			out = append(out, u)
 		}
 	}
-	return false
+	return out
 }
 
 // IsRemoved returns true when the game was detected as 404 upstream and the
@@ -388,45 +420,81 @@ func (inv *Inventory) MarkReachable(gameURL string) {
 	e.RemovalDismissedAt = time.Time{}
 }
 
-// SetUpstreamFiles replaces KnownUpstreamFiles for gameURL and sets
-// UpdateCheckedAt to now. Call this after each successful file-list scrape.
-//
-// SeenAt is PRESERVED for files that were already known so that a dismissed
-// update is not re-triggered on the next check cycle. Only genuinely new files
-// (not previously in KnownUpstreamFiles) receive SeenAt = now.
+// SetUpstreamFiles records a file list read from the public game page.
 func (inv *Inventory) SetUpstreamFiles(gameURL string, files []UpstreamFile) {
+	inv.SetUpstreamFilesFrom(gameURL, SourcePage, files)
+}
+
+// SetUpstreamFilesFrom replaces KnownUpstreamFiles for gameURL with a list
+// read from source, and sets UpdateCheckedAt to now.
+//
+// A file already known keeps its first-seen time and new-upload flag, so a
+// dismissed update is not re-triggered. It is matched by upload ID when both
+// sides have one, else by name, so a changed display name is not an upload.
+// Its content changing (a new fingerprint where one was known) marks it
+// Changed.
+//
+// The first check, a first check from a different source, and a check of
+// an entry with no file list yet only record a baseline: the page and the API do not list quite the same files
+// (the API includes uploads the page hides), so comparing across them would
+// report updates that are not there.
+func (inv *Inventory) SetUpstreamFilesFrom(gameURL, source string, files []UpstreamFile) {
 	inv.mu.Lock()
 	defer inv.mu.Unlock()
 	e, ok := inv.Entries[gameURL]
 	if !ok {
 		return
 	}
-	// isFirstCheck: no previous update run — files were already present when the
-	// user downloaded the game and are not genuine new uploads.
-	isFirstCheck := e.UpdateCheckedAt.IsZero()
-	type priorInfo struct {
-		seenAt time.Time
-		isNew  bool
+	// "" is a 1.0.x entry, listed from the signed download page — a source
+	// of its own, since it does not show quite what the public page does.
+	prevSource := e.UpstreamSource
+	if prevSource == "" {
+		prevSource = "download-page"
 	}
-	prior := make(map[string]priorInfo, len(e.KnownUpstreamFiles))
+	// A baseline when there is nothing to compare against: the first check,
+	// a check from a different source, or an entry checked before without
+	// any file list (1.0.x checked paid games that way).
+	baseline := e.UpdateCheckedAt.IsZero() || prevSource != source || len(e.KnownUpstreamFiles) == 0
+	if baseline && !e.UpdateCheckedAt.IsZero() {
+		logger.Info("inventory: %s upstream now read from %s (was %s) — recording a baseline", gameURL, source, prevSource)
+	}
+
+	byID := make(map[string]UpstreamFile, len(e.KnownUpstreamFiles))
+	byName := make(map[string]UpstreamFile, len(e.KnownUpstreamFiles))
 	for _, f := range e.KnownUpstreamFiles {
-		prior[f.Filename] = priorInfo{seenAt: f.SeenAt, isNew: f.IsNew}
-	}
-	for i := range files {
-		if p, ok := prior[files[i].Filename]; ok {
-			files[i].SeenAt = p.seenAt // preserve original first-seen time
-			files[i].IsNew = p.isNew   // preserve new-upload flag
-		} else if !isFirstCheck {
-			// Genuinely new file appearing after the first check — flag it.
-			files[i].IsNew = true
-			if files[i].SeenAt.IsZero() {
-				files[i].SeenAt = time.Now()
-			}
+		if f.UploadID != "" {
+			byID[f.UploadID] = f
 		}
-		// if isFirstCheck: IsNew stays false (zero value); file was already present at download time
+		byName[f.Filename] = f
+	}
+	now := time.Now()
+	for i := range files {
+		f := &files[i]
+		p, known := byID[f.UploadID]
+		if f.UploadID == "" || !known {
+			p, known = byName[f.Filename]
+		}
+		switch {
+		case known:
+			f.SeenAt, f.IsNew, f.Changed = p.SeenAt, p.IsNew, p.Changed
+			if f.Fingerprint == "" {
+				f.Fingerprint = p.Fingerprint // the page has none; keep what the API said
+			} else if !baseline && p.Fingerprint != "" && p.Fingerprint != f.Fingerprint {
+				f.Changed, f.SeenAt = true, now
+				logger.Info("inventory: %s — %q changed upstream", gameURL, f.Filename)
+			}
+		case !baseline:
+			f.IsNew = true
+			if f.SeenAt.IsZero() {
+				f.SeenAt = now
+			}
+		default:
+			f.IsNew = false // present when the baseline was taken
+		}
 	}
 	e.KnownUpstreamFiles = files
-	e.UpdateCheckedAt = time.Now()
+	e.UpstreamSource = source
+	e.UpdateCheckedAt = now
 }
 
 // LatestCheckedAt returns the most recent UpdateCheckedAt across all entries,

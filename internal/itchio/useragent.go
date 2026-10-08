@@ -167,3 +167,11 @@ func UserAgent() string {
 	defer uaMu.RUnlock()
 	return uaCurrent
 }
+
+// CurrentDeviceInfo is DeviceInfo for this device, honouring the "Share
+// device info" setting the same way the User-Agent does.
+func CurrentDeviceInfo() string {
+	uaMu.RLock()
+	defer uaMu.RUnlock()
+	return DeviceInfo(uaInfo, uaDetailed)
+}

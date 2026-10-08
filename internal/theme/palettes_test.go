@@ -435,3 +435,26 @@ func TestShippedPalettes_ContrastTextAlwaysReadable(t *testing.T) {
 		})
 	}
 }
+
+// TestShippedPalettes_StatusPillTextIsReadable: a price or "Downloaded" label
+// is drawn on its tinted pill, not on the background. Price() and Success()
+// are toned against the background, and on light palettes the pill is darker
+// than it, which left "$2.75" at a contrast of 51 on Deep Violet.
+func TestShippedPalettes_StatusPillTextIsReadable(t *testing.T) {
+	for _, p := range shippedPalettes {
+		t.Run(p.name, func(t *testing.T) {
+			th := themeFor(t, p.colors)
+			for _, c := range []struct {
+				name     string
+				text, bg [3]uint8
+			}{
+				{"price", th.PricePillText(), th.PriceBG()},
+				{"success", th.SuccessPillText(), th.SuccessBG()},
+			} {
+				if got := Contrast(c.text, c.bg); got < minReadable {
+					t.Errorf("%s text %v on %v: contrast %d, want >= %d", c.name, c.text, c.bg, got, minReadable)
+				}
+			}
+		})
+	}
+}

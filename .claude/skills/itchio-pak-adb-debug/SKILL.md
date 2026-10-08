@@ -139,9 +139,14 @@ export PLATFORM=tg5040
 export DEVICE=brick
 export SYSTEM_PATH=$SDCARD_PATH/.system/$PLATFORM
 export SHARED_USERDATA_PATH=$SDCARD_PATH/.userdata/shared
-cd /mnt/SDCARD/Tools/tg5040/Itch-io.pak && ./launch.sh 2>&1
+/mnt/SDCARD/Tools/tg5040/Itch-io.pak/launch.sh 2>&1
 '
 ```
+**Always call `launch.sh` by its full path.** It derives the pak name, and so
+`$HOME` (the data directory), from `dirname "$0"`: run as `./launch.sh` that is
+`.`, the name comes out empty, and the app uses `.userdata/shared/` instead of
+`.userdata/shared/Itch-io/` — a different config and inventory. The log's
+`storage: … data=` line shows which one it got.
 `$DEVICE` is the SKU (`brick`, `brickpro`, `smartpro`, or an H700 model) and is
 what names the handheld in the log. Values come from NextUI's own
 `.system/<platform>/paks/MinUI.pak/launch.sh`.

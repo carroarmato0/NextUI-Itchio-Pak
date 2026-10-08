@@ -14,6 +14,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -25,6 +26,17 @@ var (
 	filteredTagsBuf []string
 	footerHintsBuf  []renderer.FooterHint
 )
+
+// coverPlaceholderLabel is what a cover or screenshot box says while it has no
+// texture yet and no Failed verdict either. Offline, ImageCache starts no
+// fetch (see ImageCache.Get), so "Loading..." would never resolve until the
+// connection returns; say so instead of implying one is in flight.
+func coverPlaceholderLabel() string {
+	if netstate.Offline() {
+		return "Offline"
+	}
+	return "Loading..."
+}
 
 const (
 	scrollDelay = time.Second
@@ -130,11 +142,17 @@ type ListScreen struct {
 	// ownedUpdateCh carries owned-URL map updates from the background goroutine
 	// (post-API-key-validation) to the SDL thread. Capacity 1: stale updates
 	// are silently discarded, same as cacheUpdateCh.
-	ownedUpdateCh  chan map[string]bool
+	ownedUpdateCh chan map[string]bool
+	// tokenRejectedCh tells the UI goroutine that itch.io refused the saved
+	// sign-in, so it signs out where cfg is safe to write.
+	tokenRejectedCh chan struct{}
+	// newlyOwnedCh carries a game URL a detail page found owned (bought since
+	// the startup owned-list refresh) to the UI goroutine.
+	newlyOwnedCh   chan string
 	ownedURLs      map[string]bool
 	ownedCachePath string
 
-	// onOwnedReady is called by KeyTestScreen after a successful key validation.
+	// onOwnedReady is called after a successful sign-in or startup token check.
 	// It saves the owned cache to disk and sends the new map to ownedUpdateCh.
 	onOwnedReady func([]itchio.OwnedGame)
 
@@ -176,7 +194,50 @@ type ListScreen struct {
 	// badgePriceCache holds pre-formatted "$X.XX" strings keyed by game URL.
 	// Populated lazily on first Draw access; cleared on rebuildView.
 	badgePriceCache map[string]string
+
+	// reconnected is set from the netstate goroutine and consumed in Draw, the
+	// only place that may touch cacheReady, err and the fetch goroutines' flags.
+	reconnected      atomic.Bool
+	cacheFetchFailed atomic.Bool
 }
+
+// openDetail opens a game page that knows whether the game is owned.
+func (s *ListScreen) openDetail(g itchio.Game) Screen {
+	d := NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, g, s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
+	return d.WithOwnership(s.ownedURLs[g.URL], func(url string) {
+		select {
+		case s.newlyOwnedCh <- url:
+		default:
+		}
+		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	})
+}
+
+// addOwned records one more owned game, on the UI goroutine, and saves the
+// owned cache so the badge survives a restart.
+func (s *ListScreen) addOwned(url string) {
+	if s.ownedURLs[url] {
+		return
+	}
+	next := make(map[string]bool, len(s.ownedURLs)+1)
+	urls := make([]string, 0, len(s.ownedURLs)+1)
+	for u := range s.ownedURLs {
+		next[u] = true
+		urls = append(urls, u)
+	}
+	next[url] = true
+	urls = append(urls, url)
+	s.ownedURLs = next
+	if err := itchio.SaveOwnedCache(s.ownedCachePath, urls); err != nil {
+		logger.Warn("owned: failed to save owned cache: %v", err)
+	}
+	logger.Info("owned: %s added (bought since the last refresh)", url)
+	s.rebuildView()
+}
+
+// OwnedReady is the callback that takes a fresh owned-games list after a
+// sign-in, for screens opened before the list (the account prompt).
+func (s *ListScreen) OwnedReady() func([]itchio.OwnedGame) { return s.onOwnedReady }
 
 func NewListScreen(
 	client *itchio.Client,
@@ -215,6 +276,8 @@ func NewListScreen(
 	}
 	s.ownedCachePath = ownedCachePath
 	s.ownedUpdateCh = make(chan map[string]bool, 1)
+	s.tokenRejectedCh = make(chan struct{}, 1)
+	s.newlyOwnedCh = make(chan string, 4)
 	s.ownedURLs = make(map[string]bool)
 
 	if urls, err := itchio.LoadOwnedCache(ownedCachePath); err == nil && len(urls) > 0 {
@@ -247,13 +310,24 @@ func NewListScreen(
 		logger.Info("owned: %d owned game URL(s) received from key validation", len(m))
 	}
 
-	// If an API key is already configured, validate it in the background so that
-	// owned game data is refreshed without requiring the user to open Settings.
-	if cfg.APIKey != "" {
+	// When signed in, check the token in the background so owned-game data is
+	// fresh without opening Settings. A token itch.io now refuses (revoked on
+	// the website) signs the user out; a network failure does not.
+	if cfg.SignedIn() {
+		token := cfg.AuthToken
 		go func() {
-			_, owned, err := client.ValidateAPIKey(cfg.APIKey)
+			_, owned, err := client.ValidateAPIKey(token)
+			if errors.Is(err, itchio.ErrTokenRejected) {
+				logger.Warn("owned: itch.io rejected the sign-in; signing out (installed games are kept)")
+				select {
+				case s.tokenRejectedCh <- struct{}{}:
+				default:
+				}
+				sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+				return
+			}
 			if err != nil {
-				logger.Warn("owned: startup key validation failed: %v", err)
+				logger.Warn("owned: startup sign-in check failed: %v", err)
 				return
 			}
 			s.onOwnedReady(owned)
@@ -280,16 +354,16 @@ func NewListScreen(
 		} else {
 			logger.Debug("cache: file exists but contains no games, using live feed")
 		}
-		go s.loadPage(1, "")
+		go s.loadPage(1)
 		go s.buildCache()
 	}
 	return s
 }
 
-func (s *ListScreen) loadPage(page int, query string) {
+func (s *ListScreen) loadPage(page int) {
 	s.loading.Store(true)
-	logger.Debug("feed: loading page %d query=%q", page, query)
-	games, err := s.client.FetchGames(page, query)
+	logger.Debug("feed: loading page %d", page)
+	games, err := s.client.FetchGames(page)
 	if err != nil {
 		logger.Error("feed: page %d error: %v", page, err)
 	} else {
@@ -432,6 +506,21 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	default:
 	}
 	select {
+	case u := <-s.newlyOwnedCh:
+		s.addOwned(u)
+	default:
+	}
+	select {
+	case <-s.tokenRejectedCh:
+		// Here, on the UI goroutine that reads cfg, the write is safe.
+		s.cfg.SignOut()
+		s.client.SetAuthToken("")
+		if err := s.cfg.Save(s.cfgPath); err != nil {
+			logger.Warn("owned: save after sign-out failed: %v", err)
+		}
+	default:
+	}
+	select {
 	case res := <-s.pageUpdateCh:
 		s.loading.Store(false)
 		s.viewGames = res.games
@@ -448,6 +537,17 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	if s.needsRebuild {
 		s.needsRebuild = false
 		s.rebuildView()
+	}
+	if s.reconnected.Swap(false) {
+		if s.err != nil && !s.loading.Load() {
+			logger.Info("feed: connection back, retrying page 1")
+			s.err = nil
+			go s.loadPage(1)
+		}
+		if s.cacheFetchFailed.Load() && !s.cacheBuilding.Load() {
+			logger.Info("cache: connection back, retrying the game-list refresh")
+			go s.buildCache()
+		}
 	}
 	s.processAutoRepeat()
 	bg := r.Theme.Background
@@ -549,6 +649,19 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 		}
 		r.DrawPill(platPillX, pillY, platPillW, pillH, platBgR, platBgG, platBgB)
 		r.DrawTextCenteredInRect(platLabel, platPillX, pillY, platPillW, pillH, aT[0], aT[1], aT[2])
+
+		// Offline chip, left of the platform pill. The cached list stays usable;
+		// this only says why nothing new is arriving.
+		if netstate.Offline() {
+			offLabel := "Offline"
+			ow, _ := r.TextSize(offLabel)
+			offW := ow + 24
+			offX := platPillX - offW - 6
+			wr, wg, wb := rgb(r.Theme.WarningBG())
+			r.DrawPill(offX, pillY, offW, pillH, wr, wg, wb)
+			tc := r.Theme.ToneOn(r.Theme.Warning(), r.Theme.WarningBG())
+			r.DrawTextCenteredInRect(offLabel, offX, pillY, offW, pillH, tc[0], tc[1], tc[2])
+		}
 	}
 
 	contentTop := headerH + 4
@@ -561,16 +674,11 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 	}
 	if s.err != nil {
 		_, fontH := r.TextSize("Ag")
-		mid := r.H / 2
-		if errors.Is(s.err, itchio.ErrCloudflareBlocked) {
-			er := r.Theme.Error()
-			r.DrawTextCentered("Cloudflare blocked the request (HTTP 403)", 0, mid-fontH-4, r.W, er[0], er[1], er[2])
-			ht := r.Theme.HintText
-			r.DrawWrappedText("Visit itch.io in a browser on the same WiFi, then press A to retry.", 20, mid+4, r.W-40, fontH+4, ht[0], ht[1], ht[2])
-		} else {
-			er := r.Theme.Error()
-			r.DrawText("Error: "+s.err.Error(), 20, mid, er[0], er[1], er[2])
-		}
+		msg := problemText(s.err)
+		lines := r.WrapText(msg, r.W-40)
+		startY := r.H/2 - int32(len(lines))*(fontH+4)/2
+		er := r.Theme.Error()
+		r.DrawWrappedText(msg, 20, startY, r.W-40, fontH+4, er[0], er[1], er[2])
 		ftrY := r.DrawFooterBar(52)
 		r.DrawFooterHints([]renderer.FooterHint{
 			{Kind: renderer.BadgeCircle, Label: "A", Text: "Retry"},
@@ -931,7 +1039,7 @@ func (s *ListScreen) Draw(r *renderer.Renderer) {
 				r.DrawTextCenteredInRect("No Image", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 			} else {
 				phT := r.Theme.Muted()
-				r.DrawTextCenteredInRect("Loading...", artX, metaY, artW, artH, phT[0], phT[1], phT[2])
+				r.DrawTextCenteredInRect(coverPlaceholderLabel(), artX, metaY, artW, artH, phT[0], phT[1], phT[2])
 			}
 		} else {
 			r.DrawRect(artX+2, metaY+2, artW-4, artH-4, bg[0], bg[1], bg[2])
@@ -1124,7 +1232,7 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 			return nil
 		case sdl.K_RETURN:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
+				return s.openDetail(s.viewGames[s.cursor])
 			}
 		case sdl.K_s:
 			return NewSettingsScreen(s.client, s.cfg, s.cfgPath, s.inv, s.inventoryPath, s.cache, s, s.newCacheRefreshScreen, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle, s.onOwnedReady)
@@ -1208,13 +1316,13 @@ func (s *ListScreen) HandleEvent(e sdl.Event) Screen {
 		// CONTROLLER_BUTTON_A (physical B = back/exit) is intentionally left unhandled
 		// here so it falls through to the exit case below.
 		if s.err != nil && ev.Button == btnA {
-			go s.loadPage(1, "")
+			go s.loadPage(1)
 			return s
 		}
 		switch ev.Button {
 		case btnA:
 			if s.cursor < len(s.viewGames) {
-				return NewDetailScreen(s.client, s.cfg, s.cfgPath, s.cache, s.viewGames[s.cursor], s.inv, s.inventoryPath, s, s.updateSvc, s.nextUITheme, s.defaultTheme, s.themeAvailable, s.paletteName, s.onThemeToggle)
+				return s.openDetail(s.viewGames[s.cursor])
 			}
 		case btnB:
 			return nil
@@ -1468,7 +1576,7 @@ func (s *ListScreen) rebuildView() {
 	}
 	s.cursor = 0
 	if !s.cacheReady {
-		go s.loadPage(1, "")
+		go s.loadPage(1)
 	}
 	logger.Debug("sort: view rebuilt — %d games visible (mode=%s)", len(s.viewGames), itchio.SortModeBadge(s.sortMode))
 }
@@ -1499,8 +1607,10 @@ func (s *ListScreen) buildCache() {
 	})
 	if err != nil {
 		logger.Error("cache: full fetch failed after %d games: %v", len(games), err)
+		s.cacheFetchFailed.Store(true)
 		return
 	}
+	s.cacheFetchFailed.Store(false)
 	if err := itchio.SaveGamesCache(s.cachePath, games); err != nil {
 		logger.Error("cache: save failed: %v", err)
 		return
@@ -1516,6 +1626,13 @@ func (s *ListScreen) buildCache() {
 	if s.updateSvc != nil {
 		s.updateSvc.TriggerNow()
 	}
+}
+
+// RetryAfterReconnect is registered with netstate.OnReconnect. It runs on the
+// netstate goroutine, so it only raises a flag and wakes the UI.
+func (s *ListScreen) RetryAfterReconnect() {
+	s.reconnected.Store(true)
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
 }
 
 // refreshCacheIfStale triggers a full re-fetch if the cache is older than cacheTTL.
@@ -1534,14 +1651,24 @@ func (s *ListScreen) refreshCacheIfStale(fetchedAt time.Time) {
 // It is passed to SettingsScreen as the onRefreshGames callback.
 func (s *ListScreen) newCacheRefreshScreen(prev Screen) Screen {
 	logger.Info("cache: manual refresh triggered from settings")
-	return NewCacheRefreshScreen(s.client, s.cachePath, prev, func(games []itchio.Game) {
-		select {
-		case s.cacheUpdateCh <- games:
-		default:
-		}
-		sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
-		if s.updateSvc != nil {
-			s.updateSvc.TriggerNow()
-		}
-	})
+	return NewCacheRefreshScreen(s.client, s.cachePath, prev, s.manualRefreshDone)
+}
+
+// manualRefreshDone installs the list a manual refresh fetched and saved. It
+// runs on the refresh screen's goroutine.
+func (s *ListScreen) manualRefreshDone(games []itchio.Game) {
+	// The whole list is now fetched, so a background fetch that failed
+	// earlier is no longer owed: without this the next reconnect would run
+	// another full fetch for nothing.
+	if s.cacheFetchFailed.Swap(false) {
+		logger.Info("cache: manual refresh succeeded, reconnect retry of the failed background fetch dropped")
+	}
+	select {
+	case s.cacheUpdateCh <- games:
+	default:
+	}
+	sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT, Code: -1})
+	if s.updateSvc != nil {
+		s.updateSvc.TriggerNow()
+	}
 }

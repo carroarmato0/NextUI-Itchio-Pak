@@ -68,7 +68,7 @@ func NewDownloadScreen(client *itchio.Client, cfg *settings.Config, game itchio.
 
 		var err error
 		if isAuth {
-			err = client.DownloadAuthUpload(cfg.APIKey, upload.UploadID, upload.Session, dest, progress)
+			err = client.DownloadAuthUpload(cfg.AuthToken, upload.UploadID, upload.Session, dest, progress)
 		} else {
 			itchUpload := itchio.Upload{Filename: upload.Filename, URL: upload.URL}
 			err = client.DownloadFree(itchUpload, dest, progress)
@@ -212,7 +212,7 @@ func (s *DownloadScreen) Draw(r *renderer.Renderer) {
 		y := contentTop + 8
 		r.DrawText("Download failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		msg := s.err.Error()
+		msg := problemText(s.err)
 		msgH := r.DrawWrappedText(msg, 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 		y += msgH + 16
 

@@ -470,7 +470,7 @@ func TestPricingClassification_BundlePriceDoesNotLeak(t *testing.T) {
 
 func TestAnnotateBundleNames(t *testing.T) {
 	keys := []itchio.OwnedKey{
-		{ID: 1, BundleSize: 1},                                   // individual
+		{ID: 1, BundleSize: 1}, // individual
 		{ID: 2, BundleSize: 50, CreatedAt: mustParseTime("2026-04-26")}, // bundle B (newer)
 		{ID: 3, BundleSize: 30, CreatedAt: mustParseTime("2026-04-25")}, // bundle A (older)
 	}

@@ -39,7 +39,8 @@ Connect to WiFi before launching.
   ready to play without touching a PC
 - **Search, sort and filter** by platform, name, date, or whether you own or
   have already downloaded a game
-- **Paid games you own** download too, using your [itch.io API key](docs/api-key.md)
+- **Paid games are listed for everyone**, and the ones you own download too:
+  [sign in with your phone](docs/sign-in.md) by scanning a QR code — nothing to type
 - **Name-your-own-price games show the developer's suggested amount**, so you
   can decide whether to support them
 - **Tracks what you have downloaded** and flags games with updates (`[UP]`) or
@@ -49,6 +50,14 @@ Connect to WiFi before launching.
 - **Follows your NextUI colour palette**, including light themes
 - **Content filters** for adult, heavy, substance and queer themes — the first
   three on by default, queer content opt-in
+- **Keeps working when Wi-Fi drops** — cached games and covers stay usable, an
+  `Offline` chip says why nothing new arrives, and everything picks up by itself
+  when the connection is back
+- **Tells you when a new version is out**, with a small notice and
+  **Settings → App updates** — Stable or release-candidate channel. On NextUI it
+  can install the update itself when the Pak Store will not, and puts the
+  previous version back if the new one fails to start; on muOS it saves the
+  update for Archive Manager to install
 - **Sleeps and resumes** with the power button, like any emulator
 
 The [feature reference](docs/features.md) covers all of it in detail, including
@@ -60,15 +69,16 @@ the caveats.
 
 | Button | Action |
 |---|---|
-| D-pad up/down | Navigate list / scroll detail page |
+| D-pad up/down | Navigate list / scroll detail page / move through Settings |
 | D-pad up/down (hold) | Auto-scroll with acceleration |
 | D-pad left / right | Jump one page forward/back in game list; previous/next screenshot in detail view |
 | L1 / R1 (game list, A-Z mode) | Jump to previous/next letter boundary |
 | L1 / R1 (game list, other modes) | Cycle sort mode backward/forward |
+| L1 / R1 (Settings) | Jump to the previous/next section |
 | A | Select / confirm / download |
-| B | Back / cancel |
-| X | Dismiss update (`[UP]`) or removal (`[!]`) notification for the selected game |
-| Y | Manage / delete downloaded ROMs, or edit API key in Settings |
+| B | Back / cancel (also cancels an app update download or Save to ARCHIVE; on a downloaded update, installs it later instead of now) |
+| X | Delete the downloaded ROMs of a game (game page) |
+| Y | Dismiss the update (`[UP]`) or removal (`[!]`) flag of the selected game (game list); turn title-based file naming on or off (game page); sign out (Settings → Account); clear all filters (Filter &amp; Search) |
 | SELECT | Open Filter &amp; Search overlay (game list) |
 | Start | Open Settings from any screen |
 | Power (short press) | Sleep — resumes at the same screen on wake |
@@ -82,7 +92,8 @@ the caveats.
 |---|---|
 | [Installation](docs/install.md) | Every install method, supported devices, NextUI vs muOS differences |
 | [Feature reference](docs/features.md) | Everything the app does, and the limits of each feature |
-| [API key setup](docs/api-key.md) | Four ways to add your itch.io key for paid games |
+| [Signing in](docs/sign-in.md) | Sign in with a QR code to download paid games you own |
+| [App updates](docs/features.md#app-updates) | The update notice, channels, installing on NextUI, the Pak Store and muOS Save to ARCHIVE |
 | [Development](docs/development.md) | Building, testing, releasing, project layout, contributing |
 
 ---
@@ -93,31 +104,41 @@ the caveats.
   <tr>
     <td align="center">
       <img src="docs/screenshots/game.png" alt="Game detail" width="480"/><br/>
-      <sub>Game detail — cover art, screenshots, QR code and description</sub>
+      <sub>Game detail — cover art, screenshots, QR code and the developer's suggested donation</sub>
     </td>
     <td align="center">
-      <img src="docs/screenshots/filter-search.png" alt="Filter and search" width="480"/><br/>
-      <sub>Filter &amp; Search — platform, sort mode, and free-text search in one overlay</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="docs/screenshots/download.png" alt="Download in progress" width="480"/><br/>
-      <sub>Download — progress bar with live percentage and size</sub>
-    </td>
-    <td align="center">
-      <img src="docs/screenshots/downloaded.png" alt="Download complete" width="480"/><br/>
-      <sub>Download complete — saved path shown, ready to play</sub>
+      <img src="docs/screenshots/paid-game.png" alt="A paid game you do not own" width="480"/><br/>
+      <sub>A paid game you don't own — its price, and a QR code to buy it on itch.io</sub>
     </td>
   </tr>
   <tr>
     <td align="center">
       <img src="docs/screenshots/settings.png" alt="Settings" width="480"/><br/>
-      <sub>Settings — API key, ROM selection mode, cache management</sub>
+      <sub>Settings — grouped into sections, values on the right; L1/R1 jump between sections</sub>
     </td>
     <td align="center">
-      <img src="docs/screenshots/theme-macchiato.png" alt="NextUI theme applied" width="480"/><br/>
-      <sub>NextUI theme — Itch-io following the device's Catppuccin Macchiato palette</sub>
+      <img src="docs/screenshots/signin.png" alt="Sign in with a QR code" width="480"/><br/>
+      <sub>Sign in — scan the QR code with your phone and check the code matches</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/update-notice.png" alt="Update notice" width="480"/><br/>
+      <sub>Update notice — shown once per new version, top right</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/app-updates.png" alt="Settings, App updates" width="480"/><br/>
+      <sub>App updates — channel, check now, and the release notes as a QR code</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/filter-search.png" alt="Filter and search" width="480"/><br/>
+      <sub>Filter &amp; Search — platform, sort mode, and free-text search in one overlay</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/download.png" alt="Download in progress" width="480"/><br/>
+      <sub>Download — progress bar with live percentage and size</sub>
     </td>
   </tr>
   <tr>

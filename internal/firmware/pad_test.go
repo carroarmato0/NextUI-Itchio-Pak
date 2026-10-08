@@ -232,3 +232,22 @@ func TestSDLButtonIndexes(t *testing.T) {
 		}
 	}
 }
+
+// The GUID decides H700's face buttons, so all 16 bytes must survive
+// formatting. go-sdl2's formatter kept 11, which made the fixed and legacy
+// layouts indistinguishable and reversed A/B on NextUI h700-rc11.
+func TestGUIDStringKeepsAllSixteenBytes(t *testing.T) {
+	fixed := [16]byte{0x19, 0, 0, 0, 0x01, 0, 0, 0, 0x01, 0, 0, 0, 0, 0x01, 0x6e, 0x01}
+	legacy := [16]byte{0x19, 0, 0, 0, 0x01, 0, 0, 0, 0x01, 0, 0, 0, 0, 0x01, 0, 0}
+
+	if got := GUIDString(fixed); got != H700FixedLayoutGUID {
+		t.Errorf("GUIDString(fixed) = %q, want %q", got, H700FixedLayoutGUID)
+	}
+	if got := GUIDString(legacy); got != "19000000010000000100000000010000" {
+		t.Errorf("GUIDString(legacy) = %q", got)
+	}
+	t.Setenv("PLATFORM", "h700")
+	if got := newNextUI("").FaceMapping(Pad{GUID: GUIDString(fixed)}); got != FaceSwapped {
+		t.Errorf("fixed-layout pad: FaceMapping() = %q, want %q", got, FaceSwapped)
+	}
+}

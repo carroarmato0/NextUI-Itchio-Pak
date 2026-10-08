@@ -57,7 +57,7 @@ docker/               Dockerfile.dev (host/CI builds), Dockerfile.platform (cros
 ## UI Layout
 - **Game list screen:** SDL2 split panel — left 55% scrollable text list, right 45% live cover art (updates as user scrolls, LRU-cached from /tmp)
 - **Game detail screen:** Cover art + screenshot thumbnails (L/R to browse) + metadata + QR code (every game) + Download / Back actions
-- **Settings:** API key entry, ROM selection mode (auto / ask), content moderation filters, tag filter, manage downloads, clear cache, about
+- **Settings:** itch.io account (QR sign-in / sign-out), ROM selection mode (auto / ask), content moderation filters, tag filter, manage downloads, clear cache, about
 
 ## ROM Placement
 ```

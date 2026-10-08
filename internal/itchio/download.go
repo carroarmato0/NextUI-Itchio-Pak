@@ -1,6 +1,7 @@
 package itchio
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,10 +11,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/partfile"
 )
 
 // knownNonROMExts lists extensions that are definitely not GB/GBC ROM files.
@@ -68,7 +72,7 @@ func (c *Client) FetchUploads(gameURL string) ([]Upload, error) {
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		logger.Error("uploads: game page HTTP %d", resp.StatusCode)
-		return nil, fmt.Errorf("fetch game page: HTTP %d", resp.StatusCode)
+		return nil, &netstate.StatusError{What: "fetch game page", Code: resp.StatusCode}
 	}
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -211,8 +215,10 @@ func (c *Client) ResolveFreeURL(upload Upload) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// The body (often an HTML error page) goes to the log only: the
+		// error text is drawn on the download screen.
 		logger.Error("uploads: resolver HTTP %d: %.200s", resp.StatusCode, rawBody)
-		return "", fmt.Errorf("resolve CDN URL: HTTP %d: %.200s", resp.StatusCode, rawBody)
+		return "", &netstate.StatusError{What: "resolve CDN URL", Code: resp.StatusCode}
 	}
 
 	var result struct {
@@ -249,25 +255,117 @@ func (c *Client) DownloadFree(upload Upload, dest string, progress func(int64, i
 	return c.streamToFile(cdnURL, dest, progress)
 }
 
+// streamIdleTimeout aborts a download that receives nothing for this long.
+// There is deliberately no overall timeout: a large file on slow Wi-Fi is fine
+// as long as bytes keep arriving. The same clock covers the wait for the
+// response headers, so a server that accepts the connection and goes silent
+// is caught too, not just a stall partway through the body.
+var streamIdleTimeout = 30 * time.Second
+
+// idleGuard cancels a request's context when nothing has happened for d.
+// It is armed before the request is even sent, so it also bounds the wait
+// for response headers; reset extends it whenever data arrives.
+type idleGuard struct {
+	timer *time.Timer
+	fired atomic.Bool
+}
+
+func newIdleGuard(d time.Duration, cancel func()) *idleGuard {
+	g := &idleGuard{}
+	g.timer = time.AfterFunc(d, func() {
+		g.fired.Store(true)
+		cancel()
+	})
+	return g
+}
+
+func (g *idleGuard) reset(d time.Duration) { g.timer.Reset(d) }
+func (g *idleGuard) stop()                 { g.timer.Stop() }
+
+// pause and resume bracket a rate-limit cooldown: the request is being held
+// back on purpose, not waiting on a silent server, so the clock stops and
+// then restarts in full once the request is released.
+func (g *idleGuard) pause() {
+	g.timer.Stop()
+	logger.Debug("stream: idle timer paused for a rate-limit cooldown")
+}
+func (g *idleGuard) resume(d time.Duration) {
+	g.timer.Reset(d)
+	logger.Debug("stream: rate-limit cooldown over, idle timer restarted")
+}
+
+// idleErr wraps err as an idle-timeout error (classified Unreachable, not
+// Canceled) when the guard is what caused ctx to be cancelled; otherwise err
+// is returned unchanged.
+func (g *idleGuard) idleErr(err error, d time.Duration) error {
+	if g.fired.Load() {
+		return fmt.Errorf("no data for %v: %w", d, os.ErrDeadlineExceeded)
+	}
+	return err
+}
+
+// idleReader resets guard's timer whenever bytes arrive, so the same clock
+// that bounded the wait for headers goes on to bound the gaps between reads.
+type idleReader struct {
+	r     io.Reader
+	d     time.Duration
+	guard *idleGuard
+}
+
+func newIdleReader(r io.Reader, d time.Duration, guard *idleGuard) *idleReader {
+	return &idleReader{r: r, d: d, guard: guard}
+}
+
+func (ir *idleReader) Read(p []byte) (int, error) {
+	n, err := ir.r.Read(p)
+	if n > 0 {
+		ir.guard.reset(ir.d)
+	}
+	return n, err
+}
+
 func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) error {
 	// c.http has a 30-second Timeout that covers the entire response body read —
 	// fine for API calls but fatal for large file downloads. Create a per-call
-	// client with no overall timeout (Timeout: 0) that shares the same
-	// transport so UA injection, h2/h1 fallback and dial timeouts still apply.
+	// client with no overall timeout that shares the same transport, so UA
+	// injection, h2/h1 fallback, dial timeouts and netstate reporting apply.
 	dlClient := &http.Client{
 		Transport:     c.http.Transport,
 		Jar:           c.http.Jar,
 		CheckRedirect: c.http.CheckRedirect,
 	}
-	resp, err := dlClient.Get(srcURL)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Armed now, before the request is sent: a dropped connection or a
+	// silent server must not hang for the kernel's TCP timeout while we wait
+	// for headers that are never coming.
+	idle := newIdleGuard(streamIdleTimeout, cancel)
+	defer idle.stop()
+	// A 429 cooldown can outlast the idle timeout; the limiter stops the
+	// clock while it holds the request back, or the wait would be reported
+	// as the network going silent and take the app offline.
+	ctx = withCooldownHooks(ctx, idle.pause, func() { idle.resume(streamIdleTimeout) })
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {
+		return fmt.Errorf("fetch file: %w", withoutURL(err))
+	}
+	resp, err := dlClient.Do(req)
+	if err != nil {
+		if idle.fired.Load() {
+			err = idle.idleErr(err, streamIdleTimeout)
+			logger.Error("stream: %v", err)
+			netstate.Report(err)
+			return fmt.Errorf("fetch file: %w", err)
+		}
 		return fmt.Errorf("fetch file: %w", withoutURL(err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		logger.Error("stream: HTTP %d fetching file", resp.StatusCode)
-		return fmt.Errorf("file download status %d", resp.StatusCode)
+		return &netstate.StatusError{What: "file download", Code: resp.StatusCode}
 	}
 
 	// Log the destination and size but not the CDN source URL (may contain tokens).
@@ -277,22 +375,24 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 		logger.Info("stream: → %s (unknown size)", dest)
 	}
 
-	dir := filepath.Dir(dest)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
 
-	f, err := os.Create(dest)
+	// The installed file, if any, is not touched until the new one is complete.
+	f, err := partfile.Create(dest)
 	if err != nil {
 		return fmt.Errorf("create dest: %w", err)
 	}
-	defer f.Close()
+	defer f.Abort() // no-op after Commit
+
+	body := newIdleReader(resp.Body, streamIdleTimeout, idle)
 
 	total := resp.ContentLength
 	var downloaded int64
 	buf := make([]byte, 32*1024)
 	for {
-		n, err := resp.Body.Read(buf)
+		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				logger.Error("stream: write error after %d bytes: %v", downloaded, werr)
@@ -303,13 +403,24 @@ func (c *Client) streamToFile(srcURL, dest string, progress func(int64, int64)) 
 				progress(downloaded, total)
 			}
 		}
-		if err == io.EOF {
+		if rerr == io.EOF {
 			break
 		}
-		if err != nil {
-			logger.Error("stream: read error after %d bytes: %v", downloaded, err)
-			return fmt.Errorf("read stream: %w", err)
+		if rerr != nil {
+			rerr = idle.idleErr(rerr, streamIdleTimeout)
+			logger.Error("stream: read error after %d bytes: %v", downloaded, withoutURL(rerr))
+			netstate.Report(rerr)
+			return fmt.Errorf("read stream: %w", withoutURL(rerr))
 		}
+	}
+	if total >= 0 && downloaded != total {
+		err := fmt.Errorf("short download: got %d of %d bytes: %w", downloaded, total, io.ErrUnexpectedEOF)
+		logger.Error("stream: %v", err)
+		netstate.Report(err)
+		return err
+	}
+	if err := f.Commit(); err != nil {
+		return fmt.Errorf("finish download: %w", err)
 	}
 	logger.Info("stream: done, wrote %d bytes", downloaded)
 	return nil
@@ -340,63 +451,6 @@ func (c *Client) FetchFileHeader(cdnURL string, n int) ([]byte, error) {
 	// The CDN URL is signed — log the host only.
 	logger.Debug("header fetch: read %d bytes from %s", len(data), req.URL.Host)
 	return data, nil
-}
-
-var (
-	priceInputRegex  = regexp.MustCompile(`<input[^>]+name="price"[^>]*>`)
-	priceValueRegex  = regexp.MustCompile(`value="([^"]*)"`)
-	priceSanityRegex = regexp.MustCompile(`^\p{Sc}?[\d.,]+$`)
-)
-
-// FetchSuggestedPrice returns the developer's suggested amount for a
-// name-your-own-price game, as itch.io displays it (e.g. "$2.00"). It returns
-// an empty string, and no error, when the game has no purchase page or the
-// developer suggested nothing: both are ordinary states, not failures.
-func (c *Client) FetchSuggestedPrice(gameURL string) (string, error) {
-	purchaseURL := gameURL + "/purchase"
-	resp, err := c.http.Get(purchaseURL)
-	if err != nil {
-		logger.Error("uploads: fetch purchase page: %v", err)
-		return "", fmt.Errorf("fetch purchase page: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
-		logger.Info("uploads: no purchase page for %s (genuinely free)", gameURL)
-		return "", nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		logger.Error("uploads: purchase page HTTP %d for %s", resp.StatusCode, gameURL)
-		return "", fmt.Errorf("fetch purchase page: HTTP %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Error("uploads: read purchase page: %v", err)
-		return "", fmt.Errorf("read purchase page: %w", err)
-	}
-
-	tag := priceInputRegex.FindString(string(body))
-	if tag == "" {
-		logger.Warn("uploads: no price input found on purchase page for %s", gameURL)
-		return "", nil
-	}
-	m := priceValueRegex.FindStringSubmatch(tag)
-	if len(m) < 2 {
-		logger.Warn("uploads: price input has no value attribute for %s", gameURL)
-		return "", nil
-	}
-	value := strings.TrimSpace(m[1])
-	if value == "" || !priceSanityRegex.MatchString(value) {
-		logger.Warn("uploads: price value %q failed sanity check for %s", value, gameURL)
-		return "", nil
-	}
-	if isZeroAmount(value) {
-		logger.Info("uploads: suggested price is zero for %s (donations enabled, no suggestion)", gameURL)
-		return "", nil
-	}
-	logger.Info("uploads: suggested price %s for %s", value, gameURL)
-	return value, nil
 }
 
 // isZeroAmount reports whether value's digits are all zero (e.g. "$0.00"),

@@ -50,7 +50,7 @@ type FetchUploadsScreen struct {
 	uploads       []roms.Upload
 	ownedKeys     []itchio.OwnedKey // populated when fetchNeedsPurchasePick
 	err           error
-	isNotOwned    bool // true when error is "game not owned" — triggers auto-modal on prev screen
+	isNotOwned    bool // true when error is "game not owned" — the game page switches to Buy
 	inv           *inventory.Inventory
 	inventoryPath string
 }
@@ -78,10 +78,10 @@ func NewFetchUploadsScreen(
 
 		var err error
 
-		useAuthPath := !game.IsFree && cfg.APIKey != "" &&
+		useAuthPath := !game.IsFree && cfg.SignedIn() &&
 			detail != nil && detail.GameID != ""
 		logger.Debug("fetch: isFree=%v apiKey=%v detailNil=%v gameID=%q useAuthPath=%v",
-			game.IsFree, cfg.APIKey != "", detail == nil, func() string {
+			game.IsFree, cfg.SignedIn(), detail == nil, func() string {
 				if detail != nil {
 					return detail.GameID
 				}
@@ -90,7 +90,7 @@ func NewFetchUploadsScreen(
 
 		if useAuthPath {
 			// Paid game — find all purchase keys for this game.
-			ownedKeys, keysErr := client.FetchOwnedKeys(cfg.APIKey, detail.GameID)
+			ownedKeys, keysErr := client.FetchOwnedKeys(cfg.AuthToken, detail.GameID)
 			if keysErr != nil {
 				s.err = keysErr
 				s.isNotOwned = strings.Contains(keysErr.Error(), "not owned")
@@ -149,10 +149,10 @@ func NewFetchUploadsScreen(
 // download_url POST) entirely. It reports false — leaving the web flow to run
 // — when there is no key, no game ID, or the API gave nothing usable.
 func (s *FetchUploadsScreen) tryFreeViaAPI() bool {
-	if s.cfg.APIKey == "" || s.detail == nil || s.detail.GameID == "" {
+	if !s.cfg.SignedIn() || s.detail == nil || s.detail.GameID == "" {
 		return false
 	}
-	uploads, err := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, "")
+	uploads, err := s.client.FetchUploadsForKey(s.cfg.AuthToken, s.detail.GameID, "")
 	if err != nil {
 		logger.Warn("fetch: free game via API failed, falling back to web flow: %v", err)
 		return false
@@ -187,7 +187,7 @@ func apiUploads(in []itchio.Upload, session *roms.DownloadSession) []roms.Upload
 // picks a purchase from PurchasePickerScreen.
 func (s *FetchUploadsScreen) applyUploadsForKey(key itchio.OwnedKey) {
 	downloadKeyID := fmt.Sprintf("%d", key.ID)
-	authUploads, authErr := s.client.FetchUploadsForKey(s.cfg.APIKey, s.detail.GameID, downloadKeyID)
+	authUploads, authErr := s.client.FetchUploadsForKey(s.cfg.AuthToken, s.detail.GameID, downloadKeyID)
 	if authErr != nil {
 		s.err = authErr
 		s.isNotOwned = strings.Contains(authErr.Error(), "not owned")
@@ -252,7 +252,7 @@ func (s *FetchUploadsScreen) Draw(r *renderer.Renderer) {
 			r.DrawTextCentered("No downloads available", 0, startY, r.W, warn[0], warn[1], warn[2])
 			r.DrawWrappedText(noDownloadMsg, 20, startY+mainFH+10, r.W-40, smallFH+4, ht[0], ht[1], ht[2])
 		} else {
-			msg := s.err.Error()
+			msg := problemText(s.err)
 			errLines := r.WrapText(msg, r.W-40)
 			errH := int32(len(errLines)) * (smallFH + 4)
 			startY := mid - (mainFH+10+errH)/2
@@ -284,11 +284,12 @@ func (s *FetchUploadsScreen) HandleEvent(e sdl.Event) Screen {
 	switch ev := e.(type) {
 	case *sdl.UserEvent:
 		_ = ev
-		// "Not owned" error: go back to the detail screen and show a modal there
-		// instead of showing a standalone error screen.
+		// Not owned after all (a refund, say): back to the game page, which
+		// now shows how to buy it — no error screen, no modal.
 		if s.isNotOwned {
 			if ds, ok := s.prev.(*DetailScreen); ok {
-				ds.ShowModal("Cannot Download", s.err.Error())
+				logger.Info("fetch: itch.io says %s is not owned; showing the buy state", s.game.URL)
+				ds.owned.Store(false)
 			}
 			return s.prev
 		}

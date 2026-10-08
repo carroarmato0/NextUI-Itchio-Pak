@@ -101,7 +101,7 @@ func (s *ZIPInspectScreen) runInspect() {
 	var cdnURL string
 	var err error
 	if s.upload.ViaAPI() {
-		cdnURL, err = s.client.ResolveAuthURL(s.cfg.APIKey, s.upload.UploadID, s.upload.Session)
+		cdnURL, err = s.client.ResolveAuthURL(s.cfg.AuthToken, s.upload.UploadID, s.upload.Session)
 	} else {
 		itchUpload := itchio.Upload{Filename: s.upload.Filename, URL: s.upload.URL}
 		cdnURL, err = s.client.ResolveFreeURL(itchUpload)
@@ -187,11 +187,12 @@ func (s *ZIPInspectScreen) Draw(r *renderer.Renderer) {
 		}
 		drawLoadingDots(r, mid+8)
 	case zipInspectError:
-		errLines := r.WrapText(s.err.Error(), r.W-40)
+		msg := problemText(s.err)
+		errLines := r.WrapText(msg, r.W-40)
 		errH := int32(len(errLines)) * (smallFH + 4)
 		startY := mid - (mainFH+10+errH)/2
 		r.DrawText("Inspection failed:", 20, startY, bad[0], bad[1], bad[2])
-		r.DrawWrappedText(s.err.Error(), 20, startY+mainFH+10, r.W-40, smallFH+4, badTx[0], badTx[1], badTx[2])
+		r.DrawWrappedText(msg, 20, startY+mainFH+10, r.W-40, smallFH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)

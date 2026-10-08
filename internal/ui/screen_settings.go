@@ -3,14 +3,16 @@
 package ui
 
 import (
-	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/carroarmato0/nextui-itchio-pak/internal/appupdate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/netstate"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/theme"
@@ -27,23 +29,99 @@ type UpdateServicer interface {
 
 type settingsItem int
 
+// Rows in display order, grouped by section (settingsSections). moveCursor
+// walks this order, so a new row goes inside its section's range.
 const (
-	sItemAPIKey settingsItem = iota
+	// Account
+	sItemAccount settingsItem = iota
+	sItemShareDeviceInfo
+	// Downloads
 	sItemROMLocation
-	sItemPico8Core // ← new
+	sItemUnifiedNaming
+	sItemPico8Core
 	sItemMusicDownload
 	sItemMusicLocation
-	sItemUnifiedNaming
-	sItemNextUITheme
-	sItemShareDeviceInfo
-	sItemLogLevel
+	// Library
+	sItemContentModeration
 	sItemClearCache
 	sItemRefreshCache
 	sItemUpdateInventory
-	sItemContentModeration
+	// Appearance
+	sItemNextUITheme
+	// App
+	sItemUpdates
+	sItemLogLevel
 	sItemAbout
 	sItemCount
 )
+
+// settingsSection is a heading and the contiguous run of rows under it.
+type settingsSection struct {
+	title       string
+	first, last settingsItem
+}
+
+var settingsSections = []settingsSection{
+	{"Account", sItemAccount, sItemShareDeviceInfo},
+	{"Downloads", sItemROMLocation, sItemMusicLocation},
+	{"Library", sItemContentModeration, sItemUpdateInventory},
+	{"Appearance", sItemNextUITheme, sItemNextUITheme},
+	{"App", sItemUpdates, sItemAbout},
+}
+
+// sectionIndex is the section item belongs to.
+func sectionIndex(item settingsItem) int {
+	for i, sec := range settingsSections {
+		if item >= sec.first && item <= sec.last {
+			return i
+		}
+	}
+	return 0
+}
+
+// settingsRow is one line of the rendered list: a section heading, or a row
+// the cursor can rest on.
+type settingsRow struct {
+	heading string       // non-empty for a heading
+	id      settingsItem // a row's item; unused for a heading
+}
+
+// rows is the list as drawn: each section with at least one visible row, its
+// heading first. It must agree with rowHidden, which moveCursor uses.
+func (s *SettingsScreen) rows() []settingsRow {
+	var out []settingsRow
+	for _, sec := range settingsSections {
+		var items []settingsRow
+		for id := sec.first; id <= sec.last; id++ {
+			if !s.rowHidden(id) {
+				items = append(items, settingsRow{id: id})
+			}
+		}
+		if len(items) > 0 {
+			out = append(out, settingsRow{heading: sec.title})
+			out = append(out, items...)
+		}
+	}
+	return out
+}
+
+// jumpSection moves the cursor to the first visible row of the next (dir>0)
+// or previous section, wrapping at either end. Sections with no visible row
+// are skipped. Bound to L1/R1.
+func (s *SettingsScreen) jumpSection(dir int) {
+	n := len(settingsSections)
+	cur := sectionIndex(s.cursor)
+	for step := 1; step <= n; step++ {
+		sec := settingsSections[((cur+dir*step)%n+n)%n]
+		for id := sec.first; id <= sec.last; id++ {
+			if !s.rowHidden(id) {
+				s.cursor = id
+				logger.Debug("settings: jumped to section %q", sec.title)
+				return
+			}
+		}
+	}
+}
 
 type SettingsScreen struct {
 	client         *itchio.Client
@@ -56,6 +134,7 @@ type SettingsScreen struct {
 	prev           Screen
 	onRefreshGames func(Screen) Screen // nil if not available
 	updateSvc      UpdateServicer
+	appUpd         AppUpdater // nil hides the Updates row
 
 	nextUITheme    theme.Theme
 	defaultTheme   theme.Theme
@@ -64,13 +143,11 @@ type SettingsScreen struct {
 	onThemeToggle  func(bool)
 	onOwnedReady   func([]itchio.OwnedGame)
 
+	scrollY int32 // list scroll offset in pixels; kept between frames
+
 	heldDir    int
 	heldSince  time.Time
 	lastRepeat time.Time
-
-	// pendingKeyTest is set by the keyboard callback to trigger a KeyTestScreen
-	// transition on the next event cycle (after the keyboard closes).
-	pendingKeyTest bool
 }
 
 func NewSettingsScreen(
@@ -100,22 +177,13 @@ func NewSettingsScreen(
 		prev:           prev,
 		onRefreshGames: onRefreshGames,
 		updateSvc:      updateSvc,
+		appUpd:         appUpdater(),
 		nextUITheme:    nextUITheme,
 		defaultTheme:   defaultTheme,
 		themeAvailable: themeAvailable,
 		paletteName:    paletteName,
 		onThemeToggle:  onThemeToggle,
 		onOwnedReady:   onOwnedReady,
-	}
-	// Start a one-shot background validation the first time Settings is opened
-	// this session. MarkAPIKeyCheckStarted is a CAS gate so subsequent opens
-	// are a no-op.
-	if cfg.APIKey != "" && client.MarkAPIKeyCheckStarted() {
-		go func() {
-			status := client.CheckAPIKey(cfg.APIKey)
-			client.StoreAPIKeyStatus(status)
-			sdl.PushEvent(&sdl.UserEvent{Type: sdl.USEREVENT})
-		}()
 	}
 	return s
 }
@@ -132,18 +200,28 @@ func (s *SettingsScreen) processAutoRepeat() {
 	if now.Sub(s.lastRepeat) < currentRepeatInterval(elapsed-repeatDelay) {
 		return
 	}
-	s.moveCursor(s.heldDir)
+	s.moveCursor(s.heldDir, false)
 	s.lastRepeat = now
 }
 
-func (s *SettingsScreen) moveCursor(dir int) {
+// moveCursor steps one row in dir. With wrap, stepping past either end lands
+// on the other, so the last row is one press away from the first; auto-repeat
+// passes false so a held button stops at the end instead of spinning round.
+func (s *SettingsScreen) moveCursor(dir int, wrap bool) {
+	last := sItemCount - 1
 	if dir > 0 {
-		if int(s.cursor) < int(sItemCount)-1 {
+		if s.cursor < last {
 			s.cursor++
+		} else if wrap {
+			s.cursor = 0
+			logger.Debug("settings: cursor wrapped to the first row")
 		}
 	} else if dir < 0 {
 		if s.cursor > 0 {
 			s.cursor--
+		} else if wrap {
+			s.cursor = last
+			logger.Debug("settings: cursor wrapped to the last row")
 		}
 	}
 	// Step past rows that are not rendered, reversing at either end rather than
@@ -179,6 +257,10 @@ func (s *SettingsScreen) rowHidden(item settingsItem) bool {
 		return !s.themeAvailable
 	case sItemMusicLocation:
 		return s.cfg.MusicDownload == "off"
+	case sItemRefreshCache:
+		return s.onRefreshGames == nil
+	case sItemUpdates:
+		return s.appUpd == nil
 	default:
 		return false
 	}
@@ -189,8 +271,78 @@ func (s *SettingsScreen) NeedsRedraw() bool {
 }
 func (s *SettingsScreen) HasPendingAnimation() bool { return false }
 
+// rowText is a row's name and, right-aligned, its current value. An empty
+// value draws nothing on the right (the row is an action, or it has its own
+// annotation).
+func (s *SettingsScreen) rowText(id settingsItem) (label, value string) {
+	onOff := func(b bool) string {
+		if b {
+			return "On"
+		}
+		return "Off"
+	}
+	autoAsk := func(v string) string {
+		if v == "ask" {
+			return "Ask"
+		}
+		return "Auto"
+	}
+	switch id {
+	case sItemAccount:
+		if s.cfg.SignedIn() {
+			return "Account", s.cfg.AuthUser
+		}
+		return "Account", "not signed in"
+	case sItemShareDeviceInfo:
+		return "Share device info with itch.io", onOff(s.cfg.ShareDeviceInfo)
+	case sItemROMLocation:
+		return "ROM location", autoAsk(s.cfg.ROMLocation)
+	case sItemUnifiedNaming:
+		return "Game title as file name", onOff(s.cfg.UnifiedNaming)
+	case sItemPico8Core:
+		if s.cfg.Pico8Core == "pico8" {
+			return "Pico-8 core", "Pico-8 (official)"
+		}
+		return "Pico-8 core", "FakeO8 (default)"
+	case sItemMusicDownload:
+		switch musicDownloadLabel(s.cfg.MusicDownload) {
+		case "auto":
+			return "Music downloads", "Auto"
+		case "ask":
+			return "Music downloads", "Ask"
+		}
+		return "Music downloads", "Off"
+	case sItemMusicLocation:
+		return "Music location", autoAsk(s.cfg.MusicLocation)
+	case sItemContentModeration:
+		return "Content moderation", ">"
+	case sItemClearCache:
+		return "Clear image cache", ""
+	case sItemRefreshCache:
+		return "Refresh game list", ""
+	case sItemUpdateInventory:
+		return "Update inventory", ""
+	case sItemNextUITheme:
+		// Naming the active palette turns "On" into something checkable: if this
+		// disagrees with NextUI's own Settings, the two are reading different files.
+		if s.cfg.NextUITheme {
+			return "NextUI theme", "On (" + theme.PaletteLabel(s.paletteName) + ")"
+		}
+		return "NextUI theme", "Off"
+	case sItemUpdates:
+		return "App updates", ">"
+	case sItemLogLevel:
+		if s.cfg.LogLevel == "debug" {
+			return "Log level", "Debug"
+		}
+		return "Log level", "Info"
+	case sItemAbout:
+		return "About", ">"
+	}
+	return "", ""
+}
+
 func (s *SettingsScreen) Draw(r *renderer.Renderer) {
-	mu := r.Theme.Muted()
 	s.processAutoRepeat()
 	bg := r.Theme.Background
 	r.Clear(bg[0], bg[1], bg[2])
@@ -202,175 +354,131 @@ func (s *SettingsScreen) Draw(r *renderer.Renderer) {
 	r.DrawText("Settings", 20, textY, mt[0], mt[1], mt[2])
 
 	_, fontH := r.TextSize("Ag")
+	_, smallH := r.SmallTextSize("Ag")
 	rowH := fontH + 14
-
-	logLevelLabel := "Info"
-	if s.cfg.LogLevel == "debug" {
-		logLevelLabel = "Debug"
+	headingH := smallH + 20
+	if compact(r.W, r.H) {
+		headingH = smallH + 14
 	}
 
-	// Naming the active palette turns "On" into something checkable: if this
-	// disagrees with NextUI's own Settings, the two are reading different files.
-	nextUIThemeLabel := "Off"
-	if s.cfg.NextUITheme {
-		nextUIThemeLabel = "On (" + theme.PaletteLabel(s.paletteName) + ")"
-	}
-
-	type menuItem struct {
-		id    settingsItem
-		label string
-	}
-	var items []menuItem
-	items = append(items, menuItem{sItemAPIKey, "API Key: "})
-	items = append(items, menuItem{sItemROMLocation, "ROM Location: " + s.cfg.ROMLocation})
-	// Only offered where the firmware keeps a separate folder per Pico-8
-	// runtime. muOS has one Pico-8 folder and runs the official binary, so
-	// there is nothing to choose and nothing to migrate between.
-	if firmware.Active().Caps().Pico8CoreChoice {
-		pico8CoreLabel := "FakeO8 (default)"
-		if s.cfg.Pico8Core == "pico8" {
-			pico8CoreLabel = "Pico-8 (official)"
-		}
-		items = append(items, menuItem{sItemPico8Core, "Pico-8 Core: " + pico8CoreLabel})
-	}
-	items = append(items, menuItem{sItemMusicDownload, "Music Download: " + musicDownloadLabel(s.cfg.MusicDownload)})
-	if s.cfg.MusicDownload != "off" {
-		items = append(items, menuItem{sItemMusicLocation, "Music Location: " + s.cfg.MusicLocation})
-	}
-	unifiedNamingVal := "OFF"
-	if s.cfg.UnifiedNaming {
-		unifiedNamingVal = "ON"
-	}
-	items = append(items, menuItem{sItemUnifiedNaming, "Use game title as filename: " + unifiedNamingVal})
-	if s.themeAvailable {
-		items = append(items, menuItem{sItemNextUITheme, "NextUI Theme: " + nextUIThemeLabel})
-	}
-	shareDeviceInfoVal := "OFF"
-	if s.cfg.ShareDeviceInfo {
-		shareDeviceInfoVal = "ON"
-	}
-	items = append(items, menuItem{sItemShareDeviceInfo, "Share device info with itch.io: " + shareDeviceInfoVal})
-	items = append(items, menuItem{sItemLogLevel, "Log Level: " + logLevelLabel})
-	items = append(items, menuItem{sItemClearCache, "Clear Image Cache"})
-	if s.onRefreshGames != nil {
-		items = append(items, menuItem{sItemRefreshCache, "Refresh Game List"})
-	}
-	items = append(items, menuItem{sItemUpdateInventory, "Update Inventory"})
-	items = append(items, menuItem{sItemContentModeration, "Content Moderation >"})
-	items = append(items, menuItem{sItemAbout, "About"})
-
-	// Find where the cursor sits in the rendered items slice (theme row may be absent).
-	cursorIdx := 0
-	for j, item := range items {
-		if item.id == s.cursor {
-			cursorIdx = j
-			break
-		}
-	}
-
-	visibleRows := int((r.H - headerH - 10 - footerH) / rowH)
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
-	scrollOffset := 0
-	if cursorIdx >= visibleRows {
-		scrollOffset = cursorIdx - visibleRows + 1
-	}
-
-	for i, item := range items {
-		if i < scrollOffset {
+	// Lay the list out in content coordinates: headings are shorter than rows.
+	rows := s.rows()
+	tops := make([]int32, len(rows))
+	var total, cursorTop, sectionTop int32
+	for i, row := range rows {
+		tops[i] = total
+		if row.heading != "" {
+			total += headingH
 			continue
 		}
-		y := headerH + 10 + int32(i-scrollOffset)*rowH
-		if y >= r.H-footerH {
-			break
-		}
-		isSelected := item.id == s.cursor
-		if isSelected {
-			ac := r.Theme.Accent
-			r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
-		}
-		var tr, tg, tb uint8
-		if isSelected {
-			c := r.Theme.AccentText
-			tr, tg, tb = c[0], c[1], c[2]
-		} else {
-			c := r.Theme.ListText
-			tr, tg, tb = c[0], c[1], c[2]
-		}
-		r.DrawText(item.label, 20, y, tr, tg, tb)
-
-		// API Key row: append live validation status as a small pill badge.
-		if item.id == sItemAPIKey {
-			labelW, _ := r.TextSize(item.label)
-			if s.cfg.APIKey != "" {
-				var statusLabel string
-				var sR, sG, sB uint8
-				switch s.client.GetAPIKeyStatus() {
-				case itchio.APIKeyStatusWorking:
-					ok := r.Theme.Success()
-					statusLabel, sR, sG, sB = "WORKING", ok[0], ok[1], ok[2]
-				case itchio.APIKeyStatusRejected:
-					bad := r.Theme.Error()
-					statusLabel, sR, sG, sB = "REJECTED", bad[0], bad[1], bad[2]
-				default:
-					mu2 := r.Theme.Muted()
-					statusLabel, sR, sG, sB = "PRESENT", mu2[0], mu2[1], mu2[2]
-				}
-				sw, sh := r.SmallTextSize(statusLabel)
-				const sp = int32(8) // padding to match tag list
-				pillW := sw + sp*2
-				pillH := sh + 4
-				pillX := 20 + labelW + 12
-				pillY := y - 4 + (rowH-pillH)/2
-				r.DrawPill(pillX, pillY, pillW, pillH, sR, sG, sB)
-				stC := r.Theme.ContrastText([3]uint8{sR, sG, sB})
-				r.DrawSmallTextCenteredInRect(statusLabel, pillX, pillY, pillW, pillH, stC[0], stC[1], stC[2])
-			} else {
-				// Muted is derived from the background, so on the selected row —
-				// which is filled with an Accent pill — it was unreadable: #867D8C
-				// on #D6559E is a contrast of 2 on Plum Magenta. De-emphasise
-				// relative to whatever this text actually sits on.
-				notSet := mu
-				if isSelected {
-					notSet = theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
-				}
-				r.DrawText("(not set)", 20+labelW, y, notSet[0], notSet[1], notSet[2])
+		if row.id == s.cursor {
+			cursorTop = tops[i]
+			sectionTop = cursorTop
+			if i > 0 && rows[i-1].heading != "" {
+				sectionTop = tops[i-1] // bring a section's heading in with its first row
 			}
 		}
-
-		// Update Inventory row: right-aligned timestamp/running annotation.
-		if item.id == sItemUpdateInventory && s.updateSvc != nil {
-			annotation := updateInventoryAnnotation(s.updateSvc)
-			aw, _ := r.SmallTextSize(annotation)
-			ax := r.W - aw - 20
-			var aR, aG, aB uint8
-			if s.updateSvc.IsRunning() {
-				aR, aG, aB = rgb(r.Theme.Warning())
-			} else {
-				aR, aG, aB = rgb(r.Theme.Muted())
-			}
-			_, fh := r.TextSize("Ag")
-			_, sh := r.SmallTextSize(annotation)
-			r.DrawSmallText(annotation, ax, y+(fh-sh)/2, aR, aG, aB)
-		}
+		total += rowH
 	}
+
+	viewTop := headerH + 6
+	viewH := r.H - footerH - viewTop
+	if sectionTop < s.scrollY {
+		s.scrollY = sectionTop
+	}
+	if cursorTop+rowH > s.scrollY+viewH {
+		s.scrollY = cursorTop + rowH - viewH
+	}
+	s.scrollY = max(0, min(s.scrollY, total-viewH))
+
+	// Rows cut by the edges are clipped rather than skipped, so scrolling moves
+	// the list smoothly instead of leaving a gap under the header.
+	r.SetClipRect(0, viewTop, r.W, viewH)
+	for i, row := range rows {
+		top := viewTop + tops[i] - s.scrollY
+		h := rowH
+		if row.heading != "" {
+			h = headingH
+		}
+		if top+h <= viewTop || top >= viewTop+viewH {
+			continue
+		}
+		if row.heading != "" {
+			// A full-width band in the header bar's colour, inset a little from
+			// the rows around it, so each section reads as its own block.
+			band := r.Theme.Surface()
+			bandY, bandH := top+3, h-6
+			r.DrawRect(0, bandY, r.W, bandH, band[0], band[1], band[2])
+			tc := r.Theme.MutedOn(band)
+			r.DrawSmallText(strings.ToUpper(row.heading), 20, bandY+(bandH-smallH)/2, tc[0], tc[1], tc[2])
+			continue
+		}
+		s.drawRow(r, row.id, top+4, rowH)
+	}
+	r.ClearClipRect()
 
 	ftrY := r.DrawFooterBar(footerH)
 	hints := []renderer.FooterHint{
 		{Kind: renderer.BadgeCircle, Label: "A", Text: "Select"},
 		{Kind: renderer.BadgeCircle, Label: "B", Text: "Back"},
 	}
-	if s.cursor == sItemAPIKey {
-		if s.cfg.APIKey != "" {
-			hints[0].Text = "Test"
-			hints = append(hints, renderer.FooterHint{Kind: renderer.BadgeCircle, Label: "Y", Text: "Edit key"})
+	if s.cursor == sItemAccount {
+		if s.cfg.SignedIn() {
+			hints[0].Text = "Sign in again"
+			hints = []renderer.FooterHint{hints[0],
+				{Kind: renderer.BadgeCircle, Label: "Y", Text: "Sign out"}, hints[1]}
 		} else {
-			hints[0].Text = "Enter key"
+			hints[0].Text = "Sign in"
 		}
 	}
+	shoulder := renderer.FooterHint{Kind: renderer.BadgePill, Label: "L1R1", Text: "Section"}
+	if abbreviate(r.W) {
+		shoulder.Label = "LR"
+	}
+	hints = append(hints, shoulder)
 	r.DrawFooterHints(hints, ftrY)
 	r.Present()
+}
+
+// drawRow draws one selectable row whose text line starts at y.
+func (s *SettingsScreen) drawRow(r *renderer.Renderer, id settingsItem, y, rowH int32) {
+	isSelected := id == s.cursor
+	tc := r.Theme.ListText
+	if isSelected {
+		ac := r.Theme.Accent
+		r.DrawPill(4, y-4, r.W-8, rowH, ac[0], ac[1], ac[2])
+		tc = r.Theme.AccentText
+	}
+	label, value := s.rowText(id)
+
+	right := r.W - 20
+	if value != "" {
+		vc := tc
+		if id == sItemAccount && !s.cfg.SignedIn() || value == ">" {
+			// De-emphasised relative to whatever the row sits on: Muted is
+			// derived from the background, so on the Accent pill it vanished.
+			vc = r.Theme.Muted()
+			if isSelected {
+				vc = theme.Mix(r.Theme.Accent, r.Theme.AccentText, 65)
+			}
+		}
+		vw, _ := r.TextSize(value)
+		r.DrawText(value, right-vw, y, vc[0], vc[1], vc[2])
+		right -= vw + 16
+	}
+	r.DrawText(truncateToWidth(r, label, right-20), 20, y, tc[0], tc[1], tc[2])
+
+	// Right-aligned status, left of the value (if any).
+	switch {
+	case id == sItemUpdateInventory && s.updateSvc != nil:
+		warn := s.updateSvc.IsRunning() || netstate.Offline()
+		drawRowAnnotationAt(r, updateInventoryAnnotation(s.updateSvc), right, y,
+			annotationColor(r, isSelected, r.Theme.Warning(), warn))
+	case id == sItemUpdates && s.appUpd != nil:
+		if a := updatesRowAnnotation(s.appUpd.Verdict()); a != "" {
+			drawRowAnnotationAt(r, a, right, y, annotationColor(r, isSelected, r.Theme.SuccessAction(), true))
+		}
+	}
 }
 
 func (s *SettingsScreen) startHold(dir int) {
@@ -380,8 +488,8 @@ func (s *SettingsScreen) startHold(dir int) {
 	s.heldDir = dir
 	s.heldSince = time.Now()
 	s.lastRepeat = s.heldSince
-	// Move immediately on first press
-	s.moveCursor(dir)
+	// Move immediately on first press; only a fresh press wraps round.
+	s.moveCursor(dir, true)
 }
 
 func (s *SettingsScreen) stopHold(dir int) {
@@ -390,30 +498,22 @@ func (s *SettingsScreen) stopHold(dir int) {
 	}
 }
 
-// openKeyboardForAPIKey opens the virtual keyboard for entering or editing the
-// API key. seed is pre-filled (use s.cfg.APIKey to edit an existing key, or ""
-// to enter a new one). On confirm, the key is saved and a KeyTestScreen is
-// shown so the user sees the validation result immediately.
-func (s *SettingsScreen) openKeyboardForAPIKey() Screen {
-	seed := s.cfg.APIKey
-	return NewKeyboardScreen(s, seed, func(value string) {
-		if value == "" || value == seed {
-			return // no change
-		}
-		s.cfg.APIKey = value
-		go s.cfg.Save(s.cfgPath)
-		logger.Info("settings: API key updated via keyboard, len=%d", len(value))
-		s.pendingKeyTest = true
-	})
+// signOut forgets the itch.io sign-in. Installed games, their files and the
+// owned-games cache are left alone: only downloading needs to be signed in.
+func (s *SettingsScreen) signOut() Screen {
+	if !s.cfg.SignedIn() {
+		return s
+	}
+	s.cfg.SignOut()
+	s.client.SetAuthToken("")
+	if err := s.cfg.Save(s.cfgPath); err != nil {
+		logger.Warn("settings: save after sign-out failed: %v", err)
+	}
+	logger.Info("settings: signed out of itch.io")
+	return s
 }
 
 func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
-	// Keyboard confirmed a new API key — transition to KeyTestScreen now that
-	// the keyboard has closed and we are back on the event loop.
-	if s.pendingKeyTest {
-		s.pendingKeyTest = false
-		return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
-	}
 	switch ev := e.(type) {
 	case *sdl.KeyboardEvent:
 		switch ev.Keysym.Sym {
@@ -437,14 +537,15 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Keysym.Sym {
 		case sdl.K_RETURN:
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
-			}
 			return s.activate()
-		case sdl.K_y: // physical Y — edit API key when one is already set
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return s.openKeyboardForAPIKey()
+		case sdl.K_y: // physical Y — sign out
+			if s.cursor == sItemAccount {
+				return s.signOut()
 			}
+		case sdl.K_PAGEDOWN: // R shoulder
+			s.jumpSection(1)
+		case sdl.K_PAGEUP: // L shoulder
+			s.jumpSection(-1)
 		case sdl.K_ESCAPE:
 			return s.prev
 		case sdl.K_s:
@@ -472,16 +573,17 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 		}
 		switch ev.Button {
 		case btnA:
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return NewKeyTestScreen(s.client, s.cfg, s, s.onOwnedReady)
-			}
 			return s.activate()
-		case btnY: // physical Y — edit API key when one is already set
-			if s.cursor == sItemAPIKey && s.cfg.APIKey != "" {
-				return s.openKeyboardForAPIKey()
+		case btnY: // physical Y — sign out
+			if s.cursor == sItemAccount {
+				return s.signOut()
 			}
 		case btnB:
 			return s.prev
+		case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+			s.jumpSection(1)
+		case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+			s.jumpSection(-1)
 		case sdl.CONTROLLER_BUTTON_START:
 			return s.prev
 		}
@@ -492,24 +594,21 @@ func (s *SettingsScreen) HandleEvent(e sdl.Event) Screen {
 // updateInventoryAnnotation returns a short right-aligned label for the
 // "Update Inventory" settings row.
 func updateInventoryAnnotation(svc UpdateServicer) string {
+	if netstate.Offline() {
+		return "offline"
+	}
 	if svc.IsRunning() {
 		return "checking…"
 	}
-	t := svc.LatestCheckedAt()
-	if t.IsZero() {
-		return "never"
+	return lastCheckedLabel(svc.LatestCheckedAt())
+}
+
+// updatesRowAnnotation is "v1.1.0 available", or nothing.
+func updatesRowAnnotation(v appupdate.Verdict) string {
+	if v.Kind == appupdate.Available && v.Latest != nil {
+		return v.Latest.Tag + " available"
 	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "last: just now"
-	case d < time.Hour:
-		return fmt.Sprintf("last: %dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("last: %dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("last: %dd ago", int(d.Hours()/24))
-	}
+	return ""
 }
 
 func musicDownloadLabel(v string) string {
@@ -525,10 +624,9 @@ func musicDownloadLabel(v string) string {
 
 func (s *SettingsScreen) activate() Screen {
 	switch s.cursor {
-	case sItemAPIKey:
-		if s.cfg.APIKey == "" {
-			return s.openKeyboardForAPIKey()
-		}
+	case sItemAccount:
+		// Signed in or not, A starts a fresh QR sign-in.
+		return NewSignInScreen(s.client, s.cfg, s.cfgPath, s, s.onOwnedReady)
 	case sItemROMLocation:
 		if s.cfg.ROMLocation == "auto" {
 			s.cfg.ROMLocation = "ask"
@@ -608,6 +706,8 @@ func (s *SettingsScreen) activate() Screen {
 		}
 	case sItemContentModeration:
 		return NewContentModerationScreen(s.cfg, s.cfgPath, s)
+	case sItemUpdates:
+		return NewUpdatesScreen(s.cfg, s.cfgPath, s.appUpd, s)
 	case sItemAbout:
 		return NewAboutScreen(s)
 	}

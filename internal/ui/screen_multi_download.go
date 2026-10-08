@@ -103,7 +103,7 @@ func (s *MultiROMDownloadScreen) runDownloads() {
 
 		var err error
 		if isAuth {
-			err = s.client.DownloadAuthUpload(s.cfg.APIKey, dl.Upload.UploadID, dl.Upload.Session, dl.DestPath, progress)
+			err = s.client.DownloadAuthUpload(s.cfg.AuthToken, dl.Upload.UploadID, dl.Upload.Session, dl.DestPath, progress)
 		} else {
 			itchUpload := itchio.Upload{Filename: dl.Upload.Filename, URL: dl.Upload.URL}
 			err = s.client.DownloadFree(itchUpload, dl.DestPath, progress)
@@ -249,7 +249,7 @@ func (s *MultiROMDownloadScreen) Draw(r *renderer.Renderer) {
 		y := headerH + 10 + 8
 		r.DrawText("Download failed:", 20, y, bad[0], bad[1], bad[2])
 		y += fontH + 6
-		r.DrawWrappedText(s.err.Error(), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
+		r.DrawWrappedText(problemText(s.err), 20, y, r.W-40, fontH+4, badTx[0], badTx[1], badTx[2])
 	}
 
 	ftrY := r.DrawFooterBar(footerH)
