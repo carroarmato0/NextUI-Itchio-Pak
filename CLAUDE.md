@@ -96,7 +96,7 @@ startup and the framebuffer survives a relaunch.
 cmd/itchio-pak/    Entry point (main.go, main_sdl.go, main_headless.go); builds to `itchio`
 internal/firmware/ Firmware detection + all firmware-specific paths and capabilities
 internal/itchio/   HTTP client, RSS feed, scraper, download flows
-internal/appupdate/ App-update checks (GitHub), channels, verdict, muOS Save to ARCHIVE
+internal/appupdate/ App-update checks (GitHub), channels, verdict, NextUI in-place install + rollback, muOS Save to ARCHIVE
 internal/pakstore/ Read-only reader for the Pak Store's SQLite install database
 internal/ui/       Screen definitions (screen_*.go)
 internal/renderer/ SDL2 drawing layer + LRU image cache

@@ -189,6 +189,22 @@ pre-release flag.
 A full release is the same commands without `--prerelease`, run on `main` after
 merging `dev` and bumping the version in `pak.json`.
 
+Keep `pak.json`'s changelog entry short: it is shown on the device. Longer notes
+for the GitHub release page go in `docs/release-notes/<version>.md`, which
+replaces the generated notes when present.
+
+### Testing an app update on a device
+
+In-place install (NextUI) can be exercised before two real releases carry it:
+`scripts/update-fixture.sh serve <pak.zip>` serves a NextUI pak zip as a fake
+release and points the device at it (via `adb reverse`, or over the LAN when the
+device's adbd does not support reverse — then the host firewall must let the
+device reach port 8765). `serve --broken` swaps in a binary that exits at once,
+to test the rollback; `off` removes the override. Build the "old" side with
+`pak.json` at one unreleased rc and the "new" side one rc higher
+(`release.sh --allow-dirty`, each version needs a changelog entry), and restore
+`pak.json` afterwards.
+
 ---
 
 ## Contributing

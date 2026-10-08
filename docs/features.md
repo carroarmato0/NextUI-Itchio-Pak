@@ -371,12 +371,26 @@ nagging.
 
 **How to install an update:**
 
-- **NextUI with the Pak Store** — the notice and the Updates screen point you to
-  the Store, which stays the way to install on NextUI. If the Store is about to
+- **NextUI with the Pak Store** — when the Store will offer the update, the
+  notice and the Updates screen point you to it, and Itch-io never installs
+  around it. If the Store is about to
   offer a version *older* than the release candidate you run, the Updates screen
   warns you, so you do not replace it by accident
 - **NextUI without the Store**, or a release candidate the Store never offers —
-  scan the QR code on the Updates screen for the release page
+  **Install vX.Y.Z** on the Updates screen downloads the update, checks its size
+  and checksum against the release, unpacks it beside the app and checks it
+  again before anything is replaced. Then choose **Restart now** (A), or **B**
+  to install it the next time you open Itch-io. **B** during the download
+  cancels it and leaves nothing behind. The release-page QR code is still there
+  if you prefer to install by hand
+- **If an installed update does not start**, the previous version is put back
+  by itself and a warning bubble says so once; the Updates screen then offers
+  **Retry**. Your settings, sign-in and inventory are never touched, because
+  they live outside the app's folder
+- **An update installed some other way wins.** If the Pak Store (or a manual
+  copy) replaces Itch-io after an update was downloaded but before it was
+  installed, the downloaded one is discarded rather than installed over your
+  choice
 - **muOS** — **Save to ARCHIVE** downloads the update, checks its size and
   checksum against the release and that Archive Manager will accept it, and
   leaves it in `ARCHIVE/` on the first card (older Itch-io archives there are

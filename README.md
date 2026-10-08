@@ -54,8 +54,10 @@ Connect to WiFi before launching.
   `Offline` chip says why nothing new arrives, and everything picks up by itself
   when the connection is back
 - **Tells you when a new version is out**, with a small notice and
-  **Settings → App updates** — Stable or release-candidate channel. On muOS it
-  can save the update for Archive Manager to install
+  **Settings → App updates** — Stable or release-candidate channel. On NextUI it
+  can install the update itself when the Pak Store will not, and puts the
+  previous version back if the new one fails to start; on muOS it saves the
+  update for Archive Manager to install
 - **Sleeps and resumes** with the power button, like any emulator
 
 The [feature reference](docs/features.md) covers all of it in detail, including
@@ -74,7 +76,7 @@ the caveats.
 | L1 / R1 (game list, other modes) | Cycle sort mode backward/forward |
 | L1 / R1 (Settings) | Jump to the previous/next section |
 | A | Select / confirm / download |
-| B | Back / cancel (also cancels a Save to ARCHIVE download) |
+| B | Back / cancel (also cancels an app update download or Save to ARCHIVE; on a downloaded update, installs it later instead of now) |
 | X | Delete the downloaded ROMs of a game (game page) |
 | Y | Dismiss the update (`[UP]`) or removal (`[!]`) flag of the selected game (game list); turn title-based file naming on or off (game page); sign out (Settings → Account); clear all filters (Filter &amp; Search) |
 | SELECT | Open Filter &amp; Search overlay (game list) |
@@ -91,7 +93,7 @@ the caveats.
 | [Installation](docs/install.md) | Every install method, supported devices, NextUI vs muOS differences |
 | [Feature reference](docs/features.md) | Everything the app does, and the limits of each feature |
 | [Signing in](docs/sign-in.md) | Sign in with a QR code to download paid games you own |
-| [App updates](docs/features.md#app-updates) | The update notice, channels, the Pak Store and muOS Save to ARCHIVE |
+| [App updates](docs/features.md#app-updates) | The update notice, channels, installing on NextUI, the Pak Store and muOS Save to ARCHIVE |
 | [Development](docs/development.md) | Building, testing, releasing, project layout, contributing |
 
 ---

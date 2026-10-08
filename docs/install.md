@@ -58,7 +58,9 @@ The Pak Store downloads and installs `Itch-io.pak.zip` automatically.
 
 Updates come through the Pak Store too. Itch-io tells you when one is out (a
 small notice, and **Settings → App updates**) and points you to the Store to
-install it. See [App updates](features.md#app-updates).
+install it. For an update the Store does not offer — a release candidate, or an
+install the Store does not manage — **Settings → App updates → Install** puts it
+in place for you. See [App updates](features.md#app-updates).
 
 ## NextUI — manual install, one device
 
