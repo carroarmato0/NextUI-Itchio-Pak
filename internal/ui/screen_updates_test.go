@@ -44,15 +44,15 @@ func (s *stubUpdater) MarkNotified(appupdate.Channel, string)   {}
 func (s *stubUpdater) PendingRollbackNotice() (appupdate.Pending, bool) {
 	return appupdate.Pending{}, false
 }
-func (s *stubUpdater) MarkRollbackNotified() {}
-func (s *stubUpdater) StartArchiveSave()                        {}
-func (s *stubUpdater) CancelArchiveSave()                       { s.cancelled++ }
-func (s *stubUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return s.archive }
-func (s *stubUpdater) StartInstall()                            { s.started = true }
-func (s *stubUpdater) CancelInstall()                           { s.installCancelled = true }
-func (s *stubUpdater) InstallStatus() appupdate.InstallStatus   { return s.inst }
-func (s *stubUpdater) RequestRestart()                          { s.restarted = true }
-func (s *stubUpdater) SourceOverride() string                   { return s.override }
+func (s *stubUpdater) MarkRollbackNotified()                  {}
+func (s *stubUpdater) StartArchiveSave()                      {}
+func (s *stubUpdater) CancelArchiveSave()                     { s.cancelled++ }
+func (s *stubUpdater) ArchiveStatus() appupdate.ArchiveStatus { return s.archive }
+func (s *stubUpdater) StartInstall()                          { s.started = true }
+func (s *stubUpdater) CancelInstall()                         { s.installCancelled = true }
+func (s *stubUpdater) InstallStatus() appupdate.InstallStatus { return s.inst }
+func (s *stubUpdater) RequestRestart()                        { s.restarted = true }
+func (s *stubUpdater) SourceOverride() string                 { return s.override }
 
 // stubScreen is a minimal Screen distinct from *UpdatesScreen, so a test can
 // tell "stayed on Updates" apart from "left to prev" unambiguously.

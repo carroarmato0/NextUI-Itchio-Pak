@@ -38,15 +38,15 @@ func (d *devAppUpdater) MarkNotified(appupdate.Channel, string)   {}
 func (d *devAppUpdater) PendingRollbackNotice() (appupdate.Pending, bool) {
 	return d.rollback, d.rollbackPending
 }
-func (d *devAppUpdater) MarkRollbackNotified() {}
-func (d *devAppUpdater) StartArchiveSave()                        {}
-func (d *devAppUpdater) CancelArchiveSave()                       {}
-func (d *devAppUpdater) ArchiveStatus() appupdate.ArchiveStatus   { return d.archive }
-func (d *devAppUpdater) StartInstall()                            {}
-func (d *devAppUpdater) CancelInstall()                           {}
-func (d *devAppUpdater) InstallStatus() appupdate.InstallStatus   { return d.inst }
-func (d *devAppUpdater) RequestRestart()                          {}
-func (d *devAppUpdater) SourceOverride() string                   { return "" }
+func (d *devAppUpdater) MarkRollbackNotified()                  {}
+func (d *devAppUpdater) StartArchiveSave()                      {}
+func (d *devAppUpdater) CancelArchiveSave()                     {}
+func (d *devAppUpdater) ArchiveStatus() appupdate.ArchiveStatus { return d.archive }
+func (d *devAppUpdater) StartInstall()                          {}
+func (d *devAppUpdater) CancelInstall()                         {}
+func (d *devAppUpdater) InstallStatus() appupdate.InstallStatus { return d.inst }
+func (d *devAppUpdater) RequestRestart()                        {}
+func (d *devAppUpdater) SourceOverride() string                 { return "" }
 
 func devVer(s string) appupdate.Version { v, _ := appupdate.Parse(s); return v }
 
