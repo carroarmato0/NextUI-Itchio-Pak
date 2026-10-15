@@ -11,6 +11,7 @@ import (
 	"github.com/carroarmato0/nextui-itchio-pak/internal/firmware"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/inventory"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/itchio"
+	"github.com/carroarmato0/nextui-itchio-pak/internal/logger"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/renderer"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/roms"
 	"github.com/carroarmato0/nextui-itchio-pak/internal/settings"
@@ -39,22 +40,23 @@ type pickerRow struct {
 // LocationPickerScreen lets the user navigate the SD card filesystem and
 // choose a destination directory for a ROM download.
 type LocationPickerScreen struct {
-	client  *itchio.Client
 	cfg     *settings.Config
 	cfgPath string
 	game    itchio.Game
-	detail  *itchio.GameDetail
-	upload  roms.Upload
 	prev    Screen
+
+	// next receives the chosen directory (ending in "/") and returns the
+	// screen that carries on with the download.
+	next func(dir string) Screen
+	// subtitle, when set, replaces the "by <author>" header line. Archives
+	// use it to say which kind of ROM the folder is being chosen for.
+	subtitle string
 
 	ext          string      // lowercase extension e.g. ".gbc"
 	currentDir   string      // always ends with "/"
 	rows         []pickerRow // [rowSaveHere, optional rowUp, zero or more rowEntry]
 	cursor       int         // index into rows
 	scrollOffset int         // index into rows[] of the first displayed row (for rows[1:])
-
-	inv           *inventory.Inventory
-	inventoryPath string
 }
 
 // NewLocationPickerScreen creates a directory browser that opens at the
@@ -66,22 +68,80 @@ func NewLocationPickerScreen(
 	inv *inventory.Inventory, inventoryPath string,
 	prev Screen,
 ) *LocationPickerScreen {
-	ext := strings.ToLower(filepath.Ext(upload.Filename))
-	startDir := resolveStartDir(cfg, ext, cfgPath)
+	ext := strings.ToLower(roms.ROMExt(upload.Filename))
+	return newLocationPicker(cfg, cfgPath, game, ext, "", prev, func(dir string) Screen {
+		dest := dir + upload.Filename
+		if existing := inv.ExistingDestPath(game.URL, upload.Filename); existing != "" {
+			dest = existing
+		}
+		return NewDownloadScreen(client, cfg, game, detail, upload, dest, inv, inventoryPath, prev)
+	})
+}
+
+// newLocationPicker opens a directory browser for files of type ext and hands
+// the chosen directory to next. Cancelling returns to prev.
+func newLocationPicker(
+	cfg *settings.Config, cfgPath string, game itchio.Game,
+	ext, subtitle string, prev Screen, next func(dir string) Screen,
+) *LocationPickerScreen {
 	s := &LocationPickerScreen{
-		client:        client,
-		cfg:           cfg,
-		cfgPath:       cfgPath,
-		game:          game,
-		detail:        detail,
-		upload:        upload,
-		prev:          prev,
-		ext:           ext,
-		inv:           inv,
-		inventoryPath: inventoryPath,
+		cfg:      cfg,
+		cfgPath:  cfgPath,
+		game:     game,
+		prev:     prev,
+		next:     next,
+		subtitle: subtitle,
+		ext:      ext,
 	}
-	s.loadDir(startDir)
+	s.loadDir(resolveStartDir(cfg, ext, cfgPath))
+	logger.Info("location-picker: choosing folder for %s, starting at %s", ext, s.currentDir)
 	return s
+}
+
+// pickROMDirs asks for a destination folder for every ROM type the archive
+// plan will extract, one picker after another, records each answer in
+// plan.ROMDirs, and hands the completed plan to next. Types that already have
+// a folder (the GBA emulator choice) are not asked again.
+func pickROMDirs(
+	cfg *settings.Config, cfgPath string, game itchio.Game,
+	plan ZIPPlan, prev Screen, next func(ZIPPlan) Screen,
+) Screen {
+	exts := pendingROMExts(plan)
+	if len(exts) == 0 {
+		return next(plan)
+	}
+	ext := exts[0]
+	subtitle := "Folder for " + strings.ToUpper(strings.TrimPrefix(ext, ".")) + " games"
+	return newLocationPicker(cfg, cfgPath, game, ext, subtitle, prev, func(dir string) Screen {
+		dirs := make(map[string]string, len(plan.ROMDirs)+1)
+		for k, v := range plan.ROMDirs {
+			dirs[k] = v
+		}
+		dirs[ext] = dir
+		plan.ROMDirs = dirs
+		return pickROMDirs(cfg, cfgPath, game, plan, prev, next)
+	})
+}
+
+// pendingROMExts lists, sorted, the ROM types plan will extract that have no
+// destination folder yet. A type whose SelectedROMs entry is "" is suppressed
+// and will not be extracted.
+func pendingROMExts(plan ZIPPlan) []string {
+	if !plan.DownloadROMs {
+		return nil
+	}
+	var exts []string
+	for ext := range plan.Manifest.ROMsByExt() {
+		if chosen, ok := plan.SelectedROMs[ext]; ok && chosen == "" {
+			continue
+		}
+		if plan.ROMDirs[ext] != "" {
+			continue
+		}
+		exts = append(exts, ext)
+	}
+	sort.Strings(exts)
+	return exts
 }
 
 // resolveStartDir returns the directory the browser should open at.
@@ -197,7 +257,11 @@ func (s *LocationPickerScreen) Draw(r *renderer.Renderer) {
 	title := truncateToWidth(r, s.game.Title, r.W-24)
 	r.DrawText(title, 12, 8, mt[0], mt[1], mt[2])
 	ht := r.Theme.HintText
-	r.DrawSmallText("by "+s.game.Author, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
+	subtitle := s.subtitle
+	if subtitle == "" {
+		subtitle = "by " + s.game.Author
+	}
+	r.DrawSmallText(subtitle, 12, 8+mainFH+4, ht[0], ht[1], ht[2])
 
 	// ── Path bar ────────────────────────────────────────────────────────────
 	pathBarY := headerH + 2
@@ -384,18 +448,18 @@ func (s *LocationPickerScreen) goUp() Screen {
 	return s
 }
 
-// confirm saves the chosen directory to config and proceeds to download.
+// confirm remembers the chosen directory for this file type and carries on
+// with the download.
 func (s *LocationPickerScreen) confirm() Screen {
 	if s.cfg.LastROMDirs == nil {
 		s.cfg.LastROMDirs = make(map[string]string)
 	}
 	s.cfg.LastROMDirs[s.ext] = s.currentDir
-	s.cfg.Save(s.cfgPath) //nolint:errcheck — best-effort persistence
-	dest := s.currentDir + s.upload.Filename
-	if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
-		dest = existing
+	if err := s.cfg.Save(s.cfgPath); err != nil {
+		logger.Warn("location-picker: remember %s folder: %v", s.ext, err)
 	}
-	return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, s.upload, dest, s.inv, s.inventoryPath, s.prev)
+	logger.Info("location-picker: %s → %s", s.ext, s.currentDir)
+	return s.next(s.currentDir)
 }
 
 // leftTruncatePath shortens text from the left with a "…" prefix so it fits

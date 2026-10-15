@@ -131,6 +131,12 @@ func (s *AutoDetectScreen) run() {
 		if strings.ToLower(roms.ROMExt(upload.Filename)) != ext {
 			upload.Filename = upload.Filename + ext
 		}
+		if s.cfg.ROMLocation == "ask" {
+			logger.Info("auto-detect: routing %q → location picker", upload.Filename)
+			s.next = NewLocationPickerScreen(s.client, s.cfg, s.cfgPath, s.game, s.detail, upload,
+				s.inv, s.invPath, s.prev)
+			break
+		}
 		dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + upload.Filename
 		if existing := s.inv.ExistingDestPath(s.game.URL, upload.Filename); existing != "" {
 			dest = existing
