@@ -136,9 +136,15 @@ func MusicDestinationDir(gameTitle string) string {
 // Pico8GameSubDir returns the subdirectory for a Pico-8 game that ships with
 // multiple files (.p8/.p8.png/.lua). All game files are extracted here.
 func Pico8GameSubDir(core, gameTitle string) string {
+	return GameSubDir(Pico8ROMDir(core), gameTitle)
+}
+
+// GameSubDir returns the per-game subdirectory of base (which ends in "/")
+// that a multi-file game is extracted into.
+func GameSubDir(base, gameTitle string) string {
 	safe := SanitiseFilename(gameTitle, "")
 	if safe == "" {
 		safe = "Unknown"
 	}
-	return Pico8ROMDir(core) + safe + "/"
+	return base + safe + "/"
 }

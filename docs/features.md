@@ -118,7 +118,7 @@ know whether you gave any. Genuinely free games and paid games show nothing new.
   - `.md` / `.gen` / `.smd` → `Roms/Sega Genesis (MD)/`
   - `.p8` / `.p8.png` → `Roms/Pico-8 (P8)/` or `Roms/Pico-8 (PICO)/` depending on the configured **Pico-8 Core** (see [Settings](#settings))
 - Multi-file Pico-8 games (games that ship as several `.p8` carts) are extracted into their own subdirectory inside the Pico-8 ROM folder, preserving the relative paths from the ZIP
-- When **ROM Location** is set to `ask`, a directory browser lets you choose the destination folder before each download; the last chosen path is remembered per file type
+- When **ROM Location** is set to `ask`, a directory browser lets you choose the destination folder before each download; the last chosen path is remembered per file type. This includes ZIP and 7z archives (asked once per ROM type they contain, so a zipped GB game is filed with your other GB games) and multi-file Pico-8 games (you choose where their subdirectory goes)
 - On download failure, a QR code is shown so you can try from a browser
 - **Bundle purchases** — if you own a game both individually and as part of one or more itch.io bundles, a purchase picker lists each transaction (labelled `Individual purchase` or `Bundle: <name>`) so you can choose which to download from
 

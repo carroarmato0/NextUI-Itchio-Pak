@@ -273,24 +273,32 @@ func (s *ZIPInspectScreen) route() Screen {
 			// Pico-8: always extract — emulators cannot load .p8/.p8.png from a ZIP.
 			plan := s.plan
 			plan.DownloadROMs = true
-			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+			return s.extract(plan)
 		}
 
 		// 7z archives must always be extracted — emulators do not support 7z natively.
 		if strings.ToLower(filepath.Ext(s.upload.Filename)) == ".7z" {
 			plan := s.plan
 			plan.DownloadROMs = true
-			return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+			return s.extract(plan)
 		}
 
 		// Non-Pico-8 ZIP: keep on disk (most emulators support ZIP natively).
-		dest := roms.DestinationDir(ext, s.cfg.Pico8Core) + s.upload.Filename
-		if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
-			dest = existing
-		}
 		patched := s.upload
 		patched.URL = s.plan.CDNURL
-		return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
+		download := func(dir string) Screen {
+			dest := dir + s.upload.Filename
+			if existing := s.inv.ExistingDestPath(s.game.URL, s.upload.Filename); existing != "" {
+				dest = existing
+			}
+			return NewDownloadScreen(s.client, s.cfg, s.game, s.detail, patched, dest, s.inv, s.invPath, s.prev)
+		}
+		if s.cfg.ROMLocation == "ask" {
+			// The folder is remembered under the ROM's type, not ".zip": a
+			// zipped GB game belongs with the other GB games.
+			return newLocationPicker(s.cfg, s.cfgPath, s.game, ext, "", s.prev, download)
+		}
+		return download(roms.DestinationDir(ext, s.cfg.Pico8Core))
 	}
 
 	// Mixed Pico-8 ZIP: one compiled .p8.png alongside .p8 source files.
@@ -305,32 +313,24 @@ func (s *ZIPInspectScreen) route() Screen {
 			".p8":     "", // suppress source files
 		}
 		plan.DownloadMusic = m.HasMusic() && s.cfg.MusicDownload == "auto"
-		if plan.DownloadMusic {
-			if s.cfg.MusicLocation == "ask" {
-				return NewMusicLocationPickerScreen(s.client, s.cfg, s.cfgPath,
-					s.game, s.detail, plan, s.inv, s.invPath, s.prev)
-			}
-			plan.MusicDir = roms.MusicDestinationDir(s.game.Title)
-		}
-		return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+		return s.extract(plan)
 	}
 
 	// Multi-file Pico-8: extract all .p8/.p8.png/.lua files to a game
 	// subdirectory, preserving the ZIP's relative path structure.
 	if m.IsPico8MultiFileGame() {
-		gameDir := roms.Pico8GameSubDir(s.cfg.Pico8Core, s.game.Title)
 		plan := s.plan
 		plan.DownloadROMs = true
-		plan.Pico8GameDir = gameDir
+		plan.Pico8GameDir = roms.Pico8GameSubDir(s.cfg.Pico8Core, s.game.Title)
 		plan.DownloadMusic = m.HasMusic() && s.cfg.MusicDownload == "auto"
-		if plan.DownloadMusic {
-			if s.cfg.MusicLocation == "ask" {
-				return NewMusicLocationPickerScreen(s.client, s.cfg, s.cfgPath,
-					s.game, s.detail, plan, s.inv, s.invPath, s.prev)
-			}
-			plan.MusicDir = roms.MusicDestinationDir(s.game.Title)
+		if s.cfg.ROMLocation == "ask" {
+			// The game keeps its own subfolder; the user picks where it goes.
+			return newLocationPicker(s.cfg, s.cfgPath, s.game, ".p8", "", s.prev, func(dir string) Screen {
+				plan.Pico8GameDir = roms.GameSubDir(dir, s.game.Title)
+				return s.withMusic(plan)
+			})
 		}
-		return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
+		return s.withMusic(plan)
 	}
 
 	// Multiple ROMs of same extension, GBA present, or music choice needed → picker.
@@ -343,6 +343,21 @@ func (s *ZIPInspectScreen) route() Screen {
 	plan := s.plan
 	plan.DownloadROMs = m.HasROMs()
 	plan.DownloadMusic = m.HasMusic() && s.cfg.MusicDownload == "auto"
+	return s.extract(plan)
+}
+
+// extract starts an archive extraction for plan. With ROM location set to
+// "ask" it first asks where each type of ROM should go.
+func (s *ZIPInspectScreen) extract(plan ZIPPlan) Screen {
+	if s.cfg.ROMLocation == "ask" {
+		return pickROMDirs(s.cfg, s.cfgPath, s.game, plan, s.prev, s.withMusic)
+	}
+	return s.withMusic(plan)
+}
+
+// withMusic settles where the soundtrack goes, asking when the music location
+// is "ask", then starts the extraction.
+func (s *ZIPInspectScreen) withMusic(plan ZIPPlan) Screen {
 	if plan.DownloadMusic {
 		if s.cfg.MusicLocation == "ask" {
 			return NewMusicLocationPickerScreen(s.client, s.cfg, s.cfgPath,

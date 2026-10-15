@@ -349,6 +349,16 @@ func (s *ZIPContentsScreen) confirm() Screen {
 		plan.DownloadMusic = true
 	}
 
+	logger.Info("zip-contents: confirmed ROMs=%v music=%v gbaDir=%s", plan.DownloadROMs, plan.DownloadMusic, plan.ROMDirs[".gba"])
+	if s.cfg.ROMLocation == "ask" {
+		return pickROMDirs(s.cfg, s.cfgPath, s.game, plan, s.prev, s.withMusic)
+	}
+	return s.withMusic(plan)
+}
+
+// withMusic settles where the soundtrack goes, asking when the music location
+// is "ask", then starts the extraction.
+func (s *ZIPContentsScreen) withMusic(plan ZIPPlan) Screen {
 	if plan.DownloadMusic {
 		if s.cfg.MusicLocation == "ask" {
 			return NewMusicLocationPickerScreen(s.client, s.cfg, s.cfgPath,
@@ -356,7 +366,6 @@ func (s *ZIPContentsScreen) confirm() Screen {
 		}
 		plan.MusicDir = roms.MusicDestinationDir(s.game.Title)
 	}
-
-	logger.Info("zip-contents: confirmed ROMs=%v music=%v musicDir=%s gbaDir=%s", plan.DownloadROMs, plan.DownloadMusic, plan.MusicDir, plan.ROMDirs[".gba"])
+	logger.Info("zip-contents: extracting, musicDir=%s romDirs=%v", plan.MusicDir, plan.ROMDirs)
 	return NewZIPDownloadScreen(s.client, s.cfg, s.game, s.detail, plan, s.inv, s.invPath, s.prev)
 }
