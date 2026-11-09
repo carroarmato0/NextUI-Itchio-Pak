@@ -72,7 +72,7 @@ func TestCommit_syncFailureLeavesDestUntouched(t *testing.T) {
 	}
 	defer r.Close()
 	fd := int(f.File.Fd())
-	if err := syscall.Dup2(int(w.Fd()), fd); err != nil {
+	if err := dupOnto(int(w.Fd()), fd); err != nil {
 		t.Fatalf("dup2: %v", err)
 	}
 	w.Close() // fd now solely refers to the pipe's write end

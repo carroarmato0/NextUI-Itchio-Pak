@@ -142,10 +142,12 @@ func newHTTPClient() *http.Client {
 		Jar:     jar,
 		Timeout: 30 * time.Second,
 		Transport: &uaTransport{
-			wrapped: netstate.Transport(newRateLimitTransport(&h2FallbackTransport{
-				h2:      h2t,
-				h1:      h1t,
-				h1hosts: make(map[string]struct{}),
+			wrapped: netstate.Transport(newRateLimitTransport(&refusalLogTransport{
+				wrapped: &h2FallbackTransport{
+					h2:      h2t,
+					h1:      h1t,
+					h1hosts: make(map[string]struct{}),
+				},
 			})),
 		},
 	}

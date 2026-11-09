@@ -1,6 +1,6 @@
 {
   "name": "Itch-io",
-  "version": "v1.1.0",
+  "version": "v1.1.1",
   "type": "TOOL",
   "description": "Browse and download GB/GBC games from Itch.io's GB Studio collection.",
   "author": "Carroarmato0",
@@ -47,6 +47,7 @@
     }
   ],
   "changelog": {
+    "v1.1.1": "\n• When itch.io refuses a request, the log now records the request ID itch.io needs to trace it.",
     "v1.1.0": "\n• Sign in with a QR code on your phone; API keys are gone.\n• Paid games shown to all, with price and a QR code to buy.\n• Update notices, with Stable or Release candidate channels.\n• NextUI: install updates in the app; a failed one is rolled back.\n• muOS: save updates for Archive Manager.\n• Works offline: cached list, Offline chip, plain-language errors.\n• Downloads no longer damage a game if the connection drops.\n• Settings grouped into sections; L1/R1 jump between them.\n• H700 on NextUI rc11: A and B the right way round.\n• Many smaller fixes — see the release page.",
     "v1.0.25": "\n• Itch-io now tells itch.io who it is. It used to pose as a Chrome browser; at itch.io's request it now sends its own name and version, plus your firmware and device so itch.io can see which handhelds use it. Settings → \"Share device info with itch.io\" turns the firmware and device details off.\n• When itch.io says it is busy, the app now pauses all its requests briefly instead of each one retrying on its own.\n• Fixes \"Refresh Game List\" failing partway through when a feed ran out of pages.\n• Paid downloads use itch.io's newer API: your API key is no longer put in web addresses, and itch.io is asked for just the game you picked instead of your whole library. With an API key set, free games download through it too.\n• Built with a current, supported Go release, which brings its security fixes to the app's secure connections. The app is about 2 MB bigger as a result.",
     "v1.0.24": "\n• Game pages for name-your-own-price games now show the amount the developer suggests, so you can decide whether to chip in before you download.\n• Nothing about downloading changes — pay-what-you-want games still download for free.",
